@@ -47,8 +47,13 @@ function MapUpdater({ center, zoom }: MapUpdaterProps) {
   const map = useMap();
 
   useEffect(() => {
-    if (map && center) {
-      map.setView(center, zoom, { animate: true, duration: 1 });
+    if (map && center && map.getContainer()) {
+      try {
+        map.setView(center, zoom, { animate: true, duration: 1 });
+      } catch (error) {
+        // Ignore errors when map is not ready
+        console.warn('Map not ready for setView:', error);
+      }
     }
   }, [center, zoom, map]);
 

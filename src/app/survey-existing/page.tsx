@@ -63,7 +63,7 @@ function SurveyExistingContent() {
 
   const [gpsCoords, setGpsCoords] = useState<GPSCoordinates | null>(null);
   const [isGPSActive, setIsGPSActive] = useState(false);
-  const [fotoTiangAPM, setFotoTiangAPM] = useState<string>("");
+  const [fotoTiangARM, setFotoTiangARM] = useState<string>("");
   const [fotoTitikActual, setFotoTitikActual] = useState<string>("");
   const [showLokasiModal, setShowLokasiModal] = useState(false);
   const [tempNamaJalan, setTempNamaJalan] = useState("");
@@ -126,12 +126,11 @@ function SurveyExistingContent() {
     lebarJalanDisplay: "",
     lebarTrotoar: "",
     lamnyaBerdekatan: "",
-    tinggiAPM: "",
+    tinggiARM: "",
     keterangan: "",
     lebarBahuBertiang: "",
     lebarTrotoarBertiang: "",
     lainnyaBertiang: "",
-    tinggiARM: "",
   });
 
   // Handle save location from modal
@@ -600,7 +599,7 @@ function SurveyExistingContent() {
 
   const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    type: "tiangAPM" | "titikActual"
+    type: "tiangARM" | "titikActual"
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -613,8 +612,8 @@ function SurveyExistingContent() {
 
     try {
       const webpUrl = await convertToWebP(file);
-      if (type === "tiangAPM") {
-        setFotoTiangAPM(webpUrl);
+      if (type === "tiangARM") {
+        setFotoTiangARM(webpUrl);
       } else {
         setFotoTitikActual(webpUrl);
       }
@@ -788,8 +787,8 @@ function SurveyExistingContent() {
       return;
     }
 
-    if (!fotoTiangAPM || !fotoTitikActual) {
-      alert("Mohon upload kedua foto (Tiang APM dan Titik Actual)");
+    if (!fotoTiangARM || !fotoTitikActual) {
+      alert("Mohon upload kedua foto (Tiang ARM dan Titik Actual)");
       return;
     }
 
@@ -814,7 +813,7 @@ function SurveyExistingContent() {
       
       // Convert images to WebP format
       setSubmitProgress("Mengkonversi gambar ke WebP...");
-      const fotoTiangAPMWebP = await convertImageToWebP(fotoTiangAPM);
+      const fotoTiangARMWebP = await convertImageToWebP(fotoTiangARM);
       const fotoTitikActualWebP = await convertImageToWebP(fotoTitikActual);
 
       // Generate unique filename with timestamp
@@ -823,13 +822,13 @@ function SurveyExistingContent() {
       
       console.log("Uploading to Firebase Storage...");
       
-      // Upload Foto Tiang APM to Firebase Storage
-      setSubmitProgress("Mengupload foto Tiang APM...");
-      const tiangAPMRef = ref(storage, `survey-existing/${userName}_tiang_apm_${timestamp}.webp`);
-      await uploadString(tiangAPMRef, fotoTiangAPMWebP, 'data_url');
-      const tiangAPMUrl = await getDownloadURL(tiangAPMRef);
+      // Upload Foto Tiang ARM to Firebase Storage
+      setSubmitProgress("Mengupload foto Tiang ARM...");
+      const tiangARMRef = ref(storage, `survey-existing/${userName}_tiang_arm_${timestamp}.webp`);
+      await uploadString(tiangARMRef, fotoTiangARMWebP, 'data_url');
+      const tiangARMUrl = await getDownloadURL(tiangARMRef);
       
-      console.log("Tiang APM uploaded:", tiangAPMUrl);
+      console.log("Tiang ARM uploaded:", tiangARMUrl);
 
       // Upload Foto Titik Actual to Firebase Storage
       setSubmitProgress("Mengupload foto Titik Actual...");
@@ -862,12 +861,11 @@ function SurveyExistingContent() {
         lebarJalanDisplay: formData.lebarJalanDisplay,
         lebarTrotoar: formData.lebarTrotoar,
         lamnyaBerdekatan: formData.lamnyaBerdekatan,
-        tinggiAPM: formData.tinggiAPM,
+        tinggiARM: formData.tinggiARM,
         keterangan: formData.keterangan,
         lebarBahuBertiang: formData.lebarBahuBertiang,
         lebarTrotoarBertiang: formData.lebarTrotoarBertiang,
         lainnyaBertiang: formData.lainnyaBertiang,
-        tinggiARM: formData.tinggiARM,
         
         // GPS coordinates
         latitude: gpsCoords.latitude,
@@ -875,7 +873,7 @@ function SurveyExistingContent() {
         accuracy: gpsCoords.accuracy,
         
         // Photo URLs
-        fotoTiangAPM: tiangAPMUrl,
+        fotoTiangARM: tiangARMUrl,
         fotoTitikActual: titikActualUrl,
         
         // Metadata
@@ -1128,8 +1126,6 @@ function SurveyExistingContent() {
                   <li>Lainnya Bertiang</li>
                   <li>Tinggi ARM</li>
                   <li>Lebar Trotoar Berdekatan</li>
-                  <li>Lamnya Berdekatan</li>
-                  <li>Tinggi APM</li>
                 </ul>
               )}
             </div>
@@ -1621,8 +1617,6 @@ function SurveyExistingContent() {
                   <li>Lainnya Bertiang</li>
                   <li>Tinggi ARM</li>
                   <li>Lebar Trotoar Berdekatan</li>
-                  <li>Lamnya Berdekatan</li>
-                  <li>Tinggi APM</li>
                 </ul>
                 <p className="text-xs text-orange-600 mt-2 italic">
                   Ubah pilihan ke "Murni" jika ingin mengisi semua form.
@@ -1662,42 +1656,28 @@ function SurveyExistingContent() {
           </div>
         )}
 
-        {/* Lamnya Berdekatan - Hidden when Tidak Murni */}
+        {/* Tinggi ARM - Hidden when Tidak Murni */}
         {jenisExisting === "Murni" && (
           <div className="bg-white rounded-2xl shadow-md p-5 border border-gray-200">
-            <label className="block text-sm font-bold text-gray-700 mb-3">Lamnya Berdekatan</label>
-            <input
-              type="text"
-              value={formData.lamnyaBerdekatan}
-              onChange={(e) => setFormData({ ...formData, lamnyaBerdekatan: e.target.value })}
-              placeholder="Masukkan lamnya berdekatan"
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all font-semibold text-gray-900 placeholder:text-gray-500"
-            />
-          </div>
-        )}
-
-        {/* Tinggi APM - Hidden when Tidak Murni */}
-        {jenisExisting === "Murni" && (
-          <div className="bg-white rounded-2xl shadow-md p-5 border border-gray-200">
-            <label className="block text-sm font-bold text-gray-700 mb-3">Tinggi APM (m)</label>
+            <label className="block text-sm font-bold text-gray-700 mb-3">Tinggi ARM (m)</label>
             <input
               type="number"
               step="0.1"
-              value={formData.tinggiAPM}
-              onChange={(e) => setFormData({ ...formData, tinggiAPM: e.target.value })}
+              value={formData.tinggiARM}
+              onChange={(e) => setFormData({ ...formData, tinggiARM: e.target.value })}
               placeholder="0.0"
               className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all font-semibold text-gray-900 placeholder:text-gray-500"
             />
           </div>
         )}
 
-        {/* Foto Tiang APM */}
+        {/* Foto Tiang ARM */}
         <div className="bg-white rounded-2xl shadow-md p-5 border border-gray-200">
-          <label className="block text-sm font-bold text-gray-700 mb-3">Foto Tiang APM (m)</label>
+          <label className="block text-sm font-bold text-gray-700 mb-3">Foto Tiang ARM</label>
           <div className="space-y-3">
-            {fotoTiangAPM && (
+            {fotoTiangARM && (
               <div className="relative w-full h-48 rounded-xl overflow-hidden border-2 border-gray-200">
-                <Image src={fotoTiangAPM} alt="Foto Tiang APM" fill className="object-cover" />
+                <Image src={fotoTiangARM} alt="Foto Tiang ARM" fill className="object-cover" />
               </div>
             )}
             <label className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl cursor-pointer transition-all active:scale-95 shadow-md">
@@ -1709,7 +1689,7 @@ function SurveyExistingContent() {
                 type="file"
                 accept="image/*"
                 capture="environment"
-                onChange={(e) => handleFileUpload(e, "tiangAPM")}
+                onChange={(e) => handleFileUpload(e, "tiangARM")}
                 className="hidden"
               />
             </label>

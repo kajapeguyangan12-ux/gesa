@@ -93,8 +93,8 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
       setLoadingTasks(true);
       
       // Get current admin info
-      const userData = localStorage.getItem('userData');
-      const currentAdmin = userData ? JSON.parse(userData) : null;
+      const storedUser = localStorage.getItem('gesa_user');
+      const currentAdmin = storedUser ? JSON.parse(storedUser) : null;
       const adminId = currentAdmin?.uid || null;
       
       const tasksRef = collection(db, "tasks");
@@ -161,7 +161,7 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
           name: doc.data().name,
           email: doc.data().email,
           role: doc.data().role,
-          uid: doc.data().uid,
+          uid: doc.data().uid || doc.id, // Fallback ke document ID jika uid tidak ada
         })) as (Petugas & { role: string; uid: string })[];
       
       setPetugasList(data);
@@ -241,8 +241,8 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
       }
 
       // Get current admin info
-      const userData = localStorage.getItem('userData');
-      const currentAdmin = userData ? JSON.parse(userData) : null;
+      const storedUser = localStorage.getItem('gesa_user');
+      const currentAdmin = storedUser ? JSON.parse(storedUser) : null;
 
       // Create task document
       const taskData = {

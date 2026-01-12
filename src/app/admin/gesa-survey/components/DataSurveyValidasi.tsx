@@ -122,8 +122,8 @@ export default function DataSurveyValidasi() {
       setLoading(true);
       
       // Get current admin info
-      const userData = localStorage.getItem('userData');
-      const currentAdmin = userData ? JSON.parse(userData) : null;
+      const storedUser = localStorage.getItem('gesa_user');
+      const currentAdmin = storedUser ? JSON.parse(storedUser) : null;
       const adminId = currentAdmin?.uid || null;
       setCurrentAdminId(adminId);
       
@@ -164,11 +164,12 @@ export default function DataSurveyValidasi() {
       ]);
       
       // Combine data from both collections with full data
-      // Filter only surveys from surveyors assigned by THIS admin
+      // Filter only surveys from surveyors assigned by THIS admin AND with status 'diverifikasi'
       const existingData = existingSnapshot.docs
         .filter((doc) => {
           const surveyorUid = doc.data().surveyorUid;
-          return surveyorUid && assignedSurveyorIds.includes(surveyorUid);
+          const status = doc.data().status;
+          return surveyorUid && assignedSurveyorIds.includes(surveyorUid) && status === "diverifikasi";
         })
         .map((doc) => ({
           id: doc.id,
@@ -181,7 +182,8 @@ export default function DataSurveyValidasi() {
       const proposeData = proposeSnapshot.docs
         .filter((doc) => {
           const surveyorUid = doc.data().surveyorUid;
-          return surveyorUid && assignedSurveyorIds.includes(surveyorUid);
+          const status = doc.data().status;
+          return surveyorUid && assignedSurveyorIds.includes(surveyorUid) && status === "diverifikasi";
         })
         .map((doc) => ({
           id: doc.id,
@@ -224,8 +226,8 @@ export default function DataSurveyValidasi() {
       const collectionName = editFormData.type === "existing" ? "survey-existing" : "survey-apj-propose";
       const surveyDoc = doc(db, collectionName, editFormData.id);
       
-      const userData = localStorage.getItem('userData');
-      const currentUser = userData ? JSON.parse(userData) : null;
+      const storedUser = localStorage.getItem('gesa_user');
+      const currentUser = storedUser ? JSON.parse(storedUser) : null;
       
       await updateDoc(surveyDoc, {
         ...editFormData,
@@ -247,24 +249,24 @@ export default function DataSurveyValidasi() {
   };
 
   const handleValidasi = async (survey: Survey) => {
-    if (!confirm('Apakah Anda yakin ingin memvalidasi survey ini? Survey akan dipindahkan ke Validasi Survey untuk verifikasi lebih lanjut.')) return;
+    if (!confirm('Apakah Anda yakin ingin memvalidasi survey ini? Survey akan dipindahkan ke Data Survey Valid.')) return;
     
     try {
       const collectionName = survey.type === "existing" ? "survey-existing" : "survey-apj-propose";
       const surveyDoc = doc(db, collectionName, survey.id);
       
-      const userData = localStorage.getItem('userData');
-      const currentUser = userData ? JSON.parse(userData) : null;
+      const storedUser = localStorage.getItem('gesa_user');
+      const currentUser = storedUser ? JSON.parse(storedUser) : null;
       
       await updateDoc(surveyDoc, {
-        status: "diverifikasi",
-        verifiedBy: currentUser?.name || currentUser?.email || 'Admin',
-        verifiedAt: new Date()
+        status: "tervalidasi",
+        validatedBy: currentUser?.name || currentUser?.email || 'Admin',
+        validatedAt: new Date()
       });
       
       await fetchAllSurveys();
       
-      alert('Survey berhasil diverifikasi! Survey dipindahkan ke halaman Validasi Survey.');
+      alert('Survey berhasil divalidasi! Survey dipindahkan ke Data Survey Valid.');
     } catch (error) {
       console.error('Error validating survey:', error);
       alert('Gagal memvalidasi survey: ' + error);
@@ -279,8 +281,8 @@ export default function DataSurveyValidasi() {
       const collectionName = survey.type === "existing" ? "survey-existing" : "survey-apj-propose";
       const surveyDoc = doc(db, collectionName, survey.id);
       
-      const userData = localStorage.getItem('userData');
-      const currentUser = userData ? JSON.parse(userData) : null;
+      const storedUser = localStorage.getItem('gesa_user');
+      const currentUser = storedUser ? JSON.parse(storedUser) : null;
       
       await updateDoc(surveyDoc, {
         status: "ditolak",
@@ -369,7 +371,7 @@ export default function DataSurveyValidasi() {
               Data Survey Validasi
             </h2>
             <p className="text-sm text-gray-600">
-              Data survey dari petugas yang sudah ditugaskan. Setelah diverifikasi, data akan pindah ke Validasi Survey.
+              Data survey yang sudah diverifikasi. Setelah divalidasi, data akan pindah ke Data Survey Valid.
             </p>
           </div>
         </div>

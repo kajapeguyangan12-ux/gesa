@@ -129,7 +129,7 @@ export default function ValidasiSurvey() {
       ]);
       
       const existingData = existingSnapshot.docs
-        .filter((doc) => doc.data().status === "diverifikasi")
+        .filter((doc) => doc.data().status === "menunggu")
         .map((doc) => ({
           id: doc.id,
           ...doc.data(),
@@ -143,7 +143,7 @@ export default function ValidasiSurvey() {
         })) as Survey[];
       
       const proposeData = proposeSnapshot.docs
-        .filter((doc) => doc.data().status === "diverifikasi")
+        .filter((doc) => doc.data().status === "menunggu")
         .map((doc) => ({
           id: doc.id,
           ...doc.data(),
@@ -217,8 +217,8 @@ export default function ValidasiSurvey() {
       const surveyDoc = doc(db, collectionName, editFormData.id);
       
       // Get current user from localStorage
-      const userData = localStorage.getItem('userData');
-      const currentUser = userData ? JSON.parse(userData) : null;
+      const storedUser = localStorage.getItem('gesa_user');
+      const currentUser = storedUser ? JSON.parse(storedUser) : null;
       
       // Update document
       await updateDoc(surveyDoc, {
@@ -242,21 +242,21 @@ export default function ValidasiSurvey() {
   };
 
   const handleValidasi = async (survey: Survey) => {
-    if (!confirm('Apakah Anda yakin ingin memvalidasi survey ini? Survey akan dipindahkan ke Data Survey Valid.')) return;
+    if (!confirm('Apakah Anda yakin ingin memverifikasi survey ini? Survey akan dipindahkan ke Data Survey Validasi.')) return;
     
     try {
       const collectionName = survey.type === "existing" ? "survey-existing" : "survey-apj-propose";
       const surveyDoc = doc(db, collectionName, survey.id);
       
       // Get current user from localStorage
-      const userData = localStorage.getItem('userData');
-      const currentUser = userData ? JSON.parse(userData) : null;
+      const storedUser = localStorage.getItem('gesa_user');
+      const currentUser = storedUser ? JSON.parse(storedUser) : null;
       
-      // Update status to tervalidasi (final validation)
+      // Update status to diverifikasi (first stage verification)
       await updateDoc(surveyDoc, {
-        status: "tervalidasi",
-        validatedBy: currentUser?.name || currentUser?.email || 'Admin',
-        validatedAt: new Date()
+        status: "diverifikasi",
+        verifiedBy: currentUser?.name || currentUser?.email || 'Admin',
+        verifiedAt: new Date()
       });
       
       // Refresh surveys
@@ -264,10 +264,10 @@ export default function ValidasiSurvey() {
       setShowDetailModal(false);
       setSelectedSurvey(null);
       
-      alert('Survey berhasil divalidasi! Survey dipindahkan ke Data Survey Valid.');
+      alert('Survey berhasil diverifikasi! Survey dipindahkan ke Data Survey Validasi.');
     } catch (error) {
-      console.error('Error validating survey:', error);
-      alert('Gagal memvalidasi survey: ' + error);
+      console.error('Error verifying survey:', error);
+      alert('Gagal memverifikasi survey: ' + error);
     }
   };
 
@@ -280,8 +280,8 @@ export default function ValidasiSurvey() {
       const surveyDoc = doc(db, collectionName, survey.id);
       
       // Get current user from localStorage
-      const userData = localStorage.getItem('userData');
-      const currentUser = userData ? JSON.parse(userData) : null;
+      const storedUser = localStorage.getItem('gesa_user');
+      const currentUser = storedUser ? JSON.parse(storedUser) : null;
       
       // Update status to ditolak
       await updateDoc(surveyDoc, {
@@ -329,7 +329,7 @@ export default function ValidasiSurvey() {
               Validasi Survey
             </h2>
             <p className="text-sm text-gray-600">
-              Data survey yang sudah diverifikasi, menunggu validasi akhir untuk dipindahkan ke Data Survey Valid
+              Data survey dari petugas yang menunggu verifikasi awal. Setelah diverifikasi, data akan pindah ke Data Survey Validasi
             </p>
           </div>
         </div>
