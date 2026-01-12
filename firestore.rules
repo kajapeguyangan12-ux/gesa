@@ -1,0 +1,42 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // DEVELOPMENT MODE - Allow all access
+    // ⚠️ CHANGE THIS IN PRODUCTION!
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+
+// PRODUCTION RULES (uncomment when using real Firebase Auth):
+/*
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Allow authenticated users to read and write User-Admin collection
+    match /User-Admin/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    // Allow authenticated users to read and write survey collections
+    match /survey-existing/{surveyId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    match /survey-apj-propose/{surveyId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    match /tasks/{taskId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+  }
+}
+*/

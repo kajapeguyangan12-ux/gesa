@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 
-export default function Home() {
+export default function AdminLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -21,15 +21,15 @@ export default function Home() {
 
   useEffect(() => {
     if (user) {
-      // Login petugas - untuk petugas dan super admin
-      if (user.role.startsWith("petugas-") || user.role === "super-admin") {
-        // Redirect ke module selection petugas
-        router.push("/module-selection");
-      } else if (user.role === "admin") {
-        // Admin tidak bisa login di halaman petugas
-        setError("Silakan gunakan halaman login admin.");
+      // Admin login page - untuk admin dan super-admin
+      if (user.role === "admin" || user.role === "super-admin") {
+        // Redirect ke admin module selection
+        router.push("/admin/module-selection");
+      } else {
+        // Jika bukan admin/super-admin (berarti petugas), redirect ke halaman petugas
+        setError("Anda tidak memiliki akses admin. Silakan gunakan login petugas.");
         setTimeout(() => {
-          router.push("/admin/login");
+          router.push("/");
         }, 2000);
       }
     }
@@ -42,13 +42,18 @@ export default function Home() {
     
     try {
       await signIn(identifier, password);
-      // Redirect handled by useEffect above
+      // Validasi role setelah login
+      // Note: The actual check will be done in the useEffect above
     } catch (error: any) {
       console.error("Login error:", error);
       setError(error.message || "Login gagal. Silakan cek kredensial Anda.");
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleBackToMain = () => {
+    router.push("/");
   };
 
   return (
@@ -94,8 +99,8 @@ export default function Home() {
             </div>
             
             <div className="mt-16 text-center">
-              <p className="text-2xl font-bold text-white mb-1">Selamat Datang Di Sistem</p>
-              <p className="text-xl text-white/90">GESA</p>
+              <p className="text-2xl font-bold text-white mb-1">Admin Panel</p>
+              <p className="text-xl text-white/90">Sistem Uji Sinar</p>
             </div>
           </div>
         </div>
@@ -106,6 +111,17 @@ export default function Home() {
         <div className={`w-full max-w-md transition-all duration-1000 delay-500 ${isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
           {/* Login Card */}
           <div className="bg-white rounded-2xl shadow-2xl p-10 border border-gray-100">
+            {/* Back Button */}
+            <button
+              onClick={handleBackToMain}
+              className="mb-4 flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              <span className="text-sm font-medium">Kembali</span>
+            </button>
+
             {/* Logo and Header */}
             <div className="text-center mb-8">
               <div className="mb-6 flex justify-center">
@@ -118,19 +134,19 @@ export default function Home() {
                   priority
                 />
               </div>
-              <h1 className="text-xl font-bold text-gray-800">
-                Silakan Login Untuk Masuk Ke Sistem
+              <h1 className="text-2xl font-bold text-gray-800">
+                Login Admin
               </h1>
               <p className="text-sm text-gray-600 mt-2">
-                Login Petugas Survey
+                Silakan masukkan kredensial admin Anda
               </p>
             </div>
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Petugas Access Notice */}
-              <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg">
-                <p className="text-sm font-semibold mb-1">👷 Login Petugas & Super Admin</p>
+              {/* Admin Access Notice */}
+              <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
+                <p className="text-sm font-semibold mb-1">🔒 Admin & Super Admin Access</p>
                 <p className="text-xs">
                   Masukkan username/email dan password yang telah dibuat oleh Super Admin
                 </p>
@@ -156,51 +172,59 @@ export default function Home() {
 
               {/* Email/Username Input */}
               <div>
+                <label htmlFor="identifier" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Email Admin
+                </label>
                 <input
                   type="text"
                   id="identifier"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  className="w-full px-4 py-3.5 border-2 border-gray-200 rounded-lg focus:border-blue-400 focus:ring-4 focus:ring-blue-100 outline-none transition-all duration-200 text-gray-900 placeholder-gray-500 hover:border-gray-300"
-                  placeholder="Masukkan Email atau Username"
+                  className="w-full px-4 py-3.5 border-2 border-gray-200 rounded-lg focus:border-red-400 focus:ring-4 focus:ring-red-100 outline-none transition-all duration-200 text-gray-900 placeholder-gray-500 hover:border-gray-300"
+                  placeholder="admin@example.com"
                   required
                 />
               </div>
 
               {/* Password Input */}
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  id="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3.5 border-2 border-gray-200 rounded-lg focus:border-blue-400 focus:ring-4 focus:ring-blue-100 outline-none transition-all duration-200 text-gray-900 placeholder-gray-500 hover:border-gray-300"
-                  placeholder="Masukkan Password"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  {showPassword ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  )}
-                </button>
+              <div>
+                <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    id="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-4 py-3.5 border-2 border-gray-200 rounded-lg focus:border-red-400 focus:ring-4 focus:ring-red-100 outline-none transition-all duration-200 text-gray-900 placeholder-gray-500 hover:border-gray-300"
+                    placeholder="••••••••"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    {showPassword ? (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Login Button */}
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-blue-400 to-blue-500 text-white py-3.5 rounded-lg font-semibold hover:from-blue-500 hover:to-blue-600 transition-all duration-200 transform hover:scale-[1.02] active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                className="w-full bg-gradient-to-r from-red-500 to-red-600 text-white py-3.5 rounded-lg font-semibold hover:from-red-600 hover:to-red-700 transition-all duration-200 transform hover:scale-[1.02] active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
               >
                 {isLoading ? (
                   <span className="flex items-center justify-center gap-2">
@@ -211,24 +235,22 @@ export default function Home() {
                     <span>Memproses...</span>
                   </span>
                 ) : (
-                  "LOGIN"
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                    <span>LOGIN SEBAGAI ADMIN</span>
+                  </span>
                 )}
               </button>
-            </form>
 
-            {/* Admin Login Button */}
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={() => router.push('/admin/login')}
-                className="w-full bg-gradient-to-r from-red-500 to-red-600 text-white py-3.5 rounded-lg font-semibold hover:from-red-600 hover:to-red-700 transition-all duration-200 transform hover:scale-[1.02] active:scale-95 shadow-md hover:shadow-lg flex items-center justify-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-                <span>LOGIN SEBAGAI ADMIN</span>
-              </button>
-            </div>
+              {/* Info Text */}
+              <div className="mt-4 text-center">
+                <p className="text-xs text-gray-500">
+                  Pastikan Anda memiliki hak akses administrator
+                </p>
+              </div>
+            </form>
           </div>
         </div>
       </div>
