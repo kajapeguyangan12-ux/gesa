@@ -12,6 +12,7 @@ interface User {
   role: "admin" | "super-admin" | "petugas-existing" | "petugas-apj-propose" | "petugas-survey-cahaya" | "petugas-kontruksi" | "petugas-om" | "petugas-bmd-gudang";
   uid: string;
   name: string;
+  phoneNumber?: string;
 }
 
 interface AuthContextType {
@@ -100,6 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         name: userData.name,
         role: userData.role,
         uid: userData.uid || userDoc.id, // Gunakan field uid jika ada, fallback ke document ID
+        phoneNumber: userData.phoneNumber || userData.phone || userData.noTelp || userData.no_telp || "",
       };
 
       console.log("Authenticated user object:", authenticatedUser);
