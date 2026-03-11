@@ -11,7 +11,8 @@ function AdminKemeratanCahayaPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (user && user.role !== "admin") {
+    if (!user) return;
+    if (user.role !== "admin" && user.role !== "super-admin") {
       router.push("/dashboard-pengukuran");
     }
   }, [user, router]);

@@ -91,29 +91,61 @@ function ReportViewContent() {
         return [];
       }
     }
-    if (!Array.isArray(gd)) return [];
-    return gd.map((row: any) =>
-      Array.isArray(row)
-        ? row.map((cell: any) => {
-            if (typeof cell === "number") return cell;
-            if (typeof cell === "string") {
-              const n = parseFloat(cell.replace(/[^0-9.+-eE]/g, ""));
-              return isNaN(n) ? 0 : n;
-            }
-            if (typeof cell === "object" && cell) {
-              const candidates = ["lux", "LUX", "value", "valor", "reading", "illuminance", "v", "val", "measurement", "nilai"];
-              for (const k of candidates) {
-                if (k in cell) {
-                  const v = (cell as any)[k];
-                  const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[^0-9.+-eE]/g, ""));
-                  return isNaN(n) ? 0 : n;
+    if (Array.isArray(gd)) {
+      return gd.map((row: any) =>
+        Array.isArray(row)
+          ? row.map((cell: any) => {
+              if (typeof cell === "number") return cell;
+              if (typeof cell === "string") {
+                const n = parseFloat(cell.replace(/[^0-9.+-eE]/g, ""));
+                return isNaN(n) ? 0 : n;
+              }
+              if (typeof cell === "object" && cell) {
+                const candidates = ["lux", "LUX", "value", "valor", "reading", "illuminance", "v", "val", "measurement", "nilai"];
+                for (const k of candidates) {
+                  if (k in cell) {
+                    const v = (cell as any)[k];
+                    const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[^0-9.+-eE]/g, ""));
+                    return isNaN(n) ? 0 : n;
+                  }
                 }
               }
-            }
-            return 0;
-          })
-        : []
-    );
+              return 0;
+            })
+          : []
+      );
+    }
+
+    // Support new grid payload format: { rows, cols, cells: [{ row, col, value, ... }] }
+    if (gd && typeof gd === "object") {
+      const rowsCount = Math.max(0, parseInt(String(gd.rows ?? 0), 10) || 0);
+      const colsCount = Math.max(0, parseInt(String(gd.cols ?? 0), 10) || 0);
+      if (rowsCount === 0 || colsCount === 0) return [];
+      const grid: number[][] = Array.from({ length: rowsCount }, () => Array.from({ length: colsCount }, () => 0));
+      const cells = Array.isArray(gd.cells) ? gd.cells : [];
+      for (const cell of cells) {
+        if (!cell) continue;
+        const r = typeof cell.row === "number" ? cell.row : parseInt(String(cell.row ?? ""), 10);
+        const c = typeof cell.col === "number" ? cell.col : parseInt(String(cell.col ?? ""), 10);
+        if (!isFinite(r) || !isFinite(c)) continue;
+        if (r < 0 || c < 0 || r >= rowsCount || c >= colsCount) continue;
+        const rawValue =
+          cell?.value ??
+          cell?.lux ??
+          cell?.LUX ??
+          cell?.val ??
+          cell?.v ??
+          cell?.reading ??
+          cell?.illuminance ??
+          cell?.measurement ??
+          cell?.nilai;
+        const n = typeof rawValue === "number" ? rawValue : parseFloat(String(rawValue ?? "").replace(/[^0-9.+-eE]/g, ""));
+        grid[r][c] = isNaN(n) ? 0 : n;
+      }
+      return grid;
+    }
+
+    return [];
   };
 
   const gridData = useMemo(() => parseGridData(report), [report]);

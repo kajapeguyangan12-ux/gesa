@@ -47,9 +47,9 @@ function AdminPanelContent() {
     status: "Semua",
   });
 
-  // Check if user is admin, redirect if not
+  // Check if user is admin (allow super-admin)
   useEffect(() => {
-    if (user && user.role !== "admin") {
+    if (user && user.role !== "admin" && user.role !== "super-admin") {
       router.push("/dashboard-pengukuran");
     }
   }, [user, router]);

@@ -110,7 +110,7 @@ function ReportEditContent() {
       cell?.nilai;
     const num = typeof rawValue === "number" ? rawValue : parseFloat(String(rawValue ?? "").replace(/[^0-9.+-eE]/g, ""));
     const value = isNaN(num) ? 0 : num;
-    const type = cell?.type || cell?.tipe || cell?.cellType || "normal";
+    const type = cell?.type || cell?.tipe || cell?.tipeApi || cell?.cellType || "normal";
     const note = cell?.note || cell?.deskripsi || cell?.description || cell?.keterangan || "";
     const attachmentUrl =
       cell?.attachmentUrl ||
@@ -134,25 +134,49 @@ function ReportEditContent() {
         return [];
       }
     }
-    if (!Array.isArray(gd)) return [];
-    return gd.map((row: any) =>
-      Array.isArray(row)
-        ? row.map((cell: any) => {
-            if (typeof cell === "number") return cell;
-            if (typeof cell === "string") {
-              const n = parseFloat(cell.replace(/[^0-9.+-eE]/g, ""));
-              return isNaN(n) ? 0 : n;
-            }
-            if (typeof cell === "object" && cell) {
-              const meta = extractCellMeta(cell);
-              if (meta.value !== 0 || meta.note || meta.attachmentUrl || meta.type !== "normal") {
-                return meta as CellValue;
+    if (Array.isArray(gd)) {
+      return gd.map((row: any) =>
+        Array.isArray(row)
+          ? row.map((cell: any) => {
+              if (typeof cell === "number") return cell;
+              if (typeof cell === "string") {
+                const n = parseFloat(cell.replace(/[^0-9.+-eE]/g, ""));
+                return isNaN(n) ? 0 : n;
               }
-            }
-            return 0;
-          })
-        : []
-    );
+              if (typeof cell === "object" && cell) {
+                const meta = extractCellMeta(cell);
+                if (meta.value !== 0 || meta.note || meta.attachmentUrl || meta.type !== "normal") {
+                  return meta as CellValue;
+                }
+              }
+              return 0;
+            })
+          : []
+      );
+    }
+
+    // Support new grid payload format: { rows, cols, cells: [{ row, col, value, tipeApi, attachmentUrl, ... }] }
+    if (gd && typeof gd === "object") {
+      const rowsCount = Math.max(0, parseInt(String(gd.rows ?? 0), 10) || 0);
+      const colsCount = Math.max(0, parseInt(String(gd.cols ?? 0), 10) || 0);
+      if (rowsCount === 0 || colsCount === 0) return [];
+      const grid: CellValue[][] = Array.from({ length: rowsCount }, () => Array.from({ length: colsCount }, () => 0));
+      const cells = Array.isArray(gd.cells) ? gd.cells : [];
+      for (const cell of cells) {
+        if (!cell) continue;
+        const r = typeof cell.row === "number" ? cell.row : parseInt(String(cell.row ?? ""), 10);
+        const c = typeof cell.col === "number" ? cell.col : parseInt(String(cell.col ?? ""), 10);
+        if (!isFinite(r) || !isFinite(c)) continue;
+        if (r < 0 || c < 0 || r >= rowsCount || c >= colsCount) continue;
+        const meta = extractCellMeta(cell);
+        grid[r][c] = meta.value !== 0 || meta.note || meta.attachmentUrl || meta.type !== "normal"
+          ? (meta as CellValue)
+          : meta.value;
+      }
+      return grid;
+    }
+
+    return [];
   };
 
   const getCellNumber = (cell: CellValue) => {
@@ -347,12 +371,42 @@ function ReportEditContent() {
     setModalOpen(false);
   };
 
+  const buildGridPayload = () => {
+    const rowsCount = gridData.length;
+    const colsCount = gridData[0]?.length || 0;
+    const cells: Array<any> = [];
+    for (let r = 0; r < rowsCount; r++) {
+      for (let c = 0; c < colsCount; c++) {
+        const cell = gridData[r]?.[c];
+        if (cell === null || cell === undefined) continue;
+        if (typeof cell === "number") {
+          if (cell > 0) cells.push({ row: r, col: c, value: cell });
+          continue;
+        }
+        if (typeof cell === "object") {
+          const meta = extractCellMeta(cell);
+          if (meta.value !== 0 || meta.note || meta.attachmentUrl || meta.type !== "normal") {
+            cells.push({
+              row: r,
+              col: c,
+              value: meta.value,
+              type: meta.type,
+              note: meta.note,
+              attachmentUrl: meta.attachmentUrl,
+            });
+          }
+        }
+      }
+    }
+    return { rows: rowsCount, cols: colsCount, cells };
+  };
+
   const handleSaveReport = async () => {
     if (!reportId) return;
     setSaving(true);
     try {
       const updates: any = {
-        gridData,
+        gridData: buildGridPayload(),
         stats: {
           lmin: stats.min.toFixed(2),
           lmax: stats.max.toFixed(2),
@@ -362,6 +416,7 @@ function ReportEditContent() {
         modifiedAt: new Date().toISOString(),
       };
       await updateDoc(doc(db, "reports", reportId), updates);
+      alert("Perubahan berhasil disimpan.");
     } catch (e) {
       console.error("Failed to update report:", e);
       alert("Gagal menyimpan perubahan.");

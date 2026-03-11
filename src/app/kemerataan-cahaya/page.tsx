@@ -17,7 +17,7 @@ type JenisJalan = "arterial" | "kolektor" | "lokal" | "lingkungan" | "";
 export function KemeratanCahayaContent() {
   const router = useRouter();
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "super-admin";
   
   const [jenisJalan, setJenisJalan] = useState<JenisJalan>("");
   const [jarakTiang, setJarakTiang] = useState("");
@@ -33,7 +33,11 @@ export function KemeratanCahayaContent() {
   const [cols, setCols] = useState(0);
   const [isGridReady, setIsGridReady] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
-  const [dimmingPercent, setDimmingPercent] = useState(100);
+  const [analysisMode, setAnalysisMode] = useState<"full" | "avg-only">("full");
+  const [dimmingTop, setDimmingTop] = useState(100);
+  const [dimmingMiddle, setDimmingMiddle] = useState(100);
+  const [dimmingBottom, setDimmingBottom] = useState(100);
+  const [showSidebar, setShowSidebar] = useState(true);
   const [reportsList, setReportsList] = useState<Array<{ id: string; label: string; data: any }>>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [showTopList, setShowTopList] = useState(false);
@@ -56,7 +60,7 @@ export function KemeratanCahayaContent() {
   const jenisJalanOptions = [
     {
       id: "arterial",
-      name: "Arterial",
+      name: "Arteri",
       icon: "🛣️",
       description: "Jalan utama dengan lalu lintas tinggi",
     },
@@ -83,7 +87,7 @@ export function KemeratanCahayaContent() {
   // Calculate statistics
   const calculateStats = useCallback(() => {
     const values = Array.from(gridData.values())
-      .map(cell => parseFloat(cell.value) * (dimmingPercent / 100))
+      .map(cell => parseFloat(cell.value))
       .filter(val => !isNaN(val) && isFinite(val) && val > 0);
 
     if (values.length === 0) {
@@ -96,7 +100,7 @@ export function KemeratanCahayaContent() {
     const uniformity = min > 0 ? (avg / min) : 0;
 
     return { min, max, avg, uniformity };
-  }, [gridData, dimmingPercent]);
+  }, [gridData]);
 
   const stats = useMemo(() => calculateStats(), [calculateStats]);
 
@@ -111,7 +115,7 @@ export function KemeratanCahayaContent() {
   const ratioActual = stats.min > 0 ? stats.avg / stats.min : 0;
   const avgOk = activeStandard ? stats.avg >= activeStandard.avgMin : false;
   const ratioOk = activeStandard ? ratioActual <= activeStandard.ratioMax : false;
-  const overallOk = avgOk && ratioOk;
+  const overallOk = analysisMode === "avg-only" ? avgOk : (avgOk && ratioOk);
 
   const TARGET_AVG_BY_ROAD: Record<JenisJalan, number> = {
     arterial: 13,
@@ -120,6 +124,7 @@ export function KemeratanCahayaContent() {
     lingkungan: 4,
     "": 0,
   };
+  const dimmingOptions = [100, 90, 80, 70, 60, 50];
 
   const parsePositiveInt = (value: string) => {
     const n = Math.ceil(parseFloat(value));
@@ -149,8 +154,8 @@ export function KemeratanCahayaContent() {
       return;
     }
 
-    if (isNaN(jarakValue) || isNaN(lebarValue) || jarakValue < 10 || jarakValue > 100 || lebarValue < 10 || lebarValue > 50) {
-      alert("Masukkan jarak tiang (10-100) dan lebar jalan (10-50) yang valid!");
+    if (!isFinite(jarakValue) || !isFinite(lebarValue) || jarakValue <= 0 || lebarValue <= 0) {
+      alert("Masukkan jarak tiang dan lebar jalan yang valid!");
       return;
     }
 
@@ -360,9 +365,28 @@ export function KemeratanCahayaContent() {
     if (typeof gd === "string") {
       try { gd = JSON.parse(gd); } catch (e) { console.warn("Failed to parse gridData", e); }
     }
-    if (!Array.isArray(gd)) return null;
-    const normalized = gd.map((row: any) => Array.isArray(row) ? row.map((cell: any) => extractNumericFromCell(cell)) : []);
-    return normalized;
+    if (Array.isArray(gd)) {
+      const normalized = gd.map((row: any) => Array.isArray(row) ? row.map((cell: any) => extractNumericFromCell(cell)) : []);
+      return normalized;
+    }
+    // Support new grid payload format: { rows, cols, cells: [{ row, col, value, tipeApi, ... }] }
+    if (gd && typeof gd === "object") {
+      const rowsCount = Math.max(0, parseInt(String(gd.rows ?? 0), 10) || 0);
+      const colsCount = Math.max(0, parseInt(String(gd.cols ?? 0), 10) || 0);
+      if (rowsCount === 0 || colsCount === 0) return null;
+      const grid: number[][] = Array.from({ length: rowsCount }, () => Array.from({ length: colsCount }, () => 0));
+      const cells = Array.isArray(gd.cells) ? gd.cells : [];
+      for (const cell of cells) {
+        if (!cell) continue;
+        const r = typeof cell.row === "number" ? cell.row : parseInt(String(cell.row ?? ""), 10);
+        const c = typeof cell.col === "number" ? cell.col : parseInt(String(cell.col ?? ""), 10);
+        if (!isFinite(r) || !isFinite(c)) continue;
+        if (r < 0 || c < 0 || r >= rowsCount || c >= colsCount) continue;
+        grid[r][c] = extractNumericFromCell(cell);
+      }
+      return grid;
+    }
+    return null;
   };
 
   const alignGridToSize = (incoming: number[][], rowsCount: number, colsCount: number, direction: "top" | "bottom") => {
@@ -434,16 +458,32 @@ export function KemeratanCahayaContent() {
     return nextMap;
   };
 
-  const combineLayerMaps = (layers: Array<Map<string, GridCell>>, rowsCount: number, colsCount: number) => {
+  const combineLayerMaps = (
+    topLayer: Map<string, GridCell>,
+    middleLayer: Map<string, GridCell>,
+    bottomLayer: Map<string, GridCell>,
+    rowsCount: number,
+    colsCount: number
+  ) => {
     const nextMap = new Map<string, GridCell>();
+    if (rowsCount <= 0 || colsCount <= 0) return nextMap;
+    const topFactor = isFinite(dimmingTop) ? dimmingTop / 100 : 1;
+    const middleFactor = isFinite(dimmingMiddle) ? dimmingMiddle / 100 : 1;
+    const bottomFactor = isFinite(dimmingBottom) ? dimmingBottom / 100 : 1;
     for (let r = 0; r < rowsCount; r++) {
       for (let c = 0; c < colsCount; c++) {
         const key = getCellKey(r, c);
         let sum = 0;
-        for (const layer of layers) {
-          const v = parseFloat(layer.get(key)?.value || "0");
-          if (isFinite(v) && !isNaN(v) && v > 0) sum += v;
+        const topVal = parseFloat(topLayer.get(key)?.value || "0");
+        if (isFinite(topVal) && !isNaN(topVal) && topVal > 0) sum += topVal * topFactor;
+
+        if (loadMode === "3") {
+          const middleVal = parseFloat(middleLayer.get(key)?.value || "0");
+          if (isFinite(middleVal) && !isNaN(middleVal) && middleVal > 0) sum += middleVal * middleFactor;
         }
+
+        const bottomVal = parseFloat(bottomLayer.get(key)?.value || "0");
+        if (isFinite(bottomVal) && !isNaN(bottomVal) && bottomVal > 0) sum += bottomVal * bottomFactor;
         if (sum > 0) nextMap.set(key, { value: String(sum) });
       }
     }
@@ -492,7 +532,7 @@ export function KemeratanCahayaContent() {
     setTopGridData(nextTop);
     setMiddleGridData(nextMiddle);
     setBottomGridData(nextBottom);
-    setGridData(combineLayerMaps([nextTop, nextMiddle, nextBottom], rows, cols));
+    setGridData(combineLayerMaps(nextTop, nextMiddle, nextBottom, rows, cols));
     if (direction === "top" && reportId) setLastLoadedTopId(reportId);
     if (direction === "middle" && reportId) setLastLoadedMiddleId(reportId);
     if (direction === "bottom" && reportId) setLastLoadedBottomId(reportId);
@@ -557,7 +597,18 @@ export function KemeratanCahayaContent() {
     setLastLoadedTopId(null);
     setLastLoadedMiddleId(null);
     setLastLoadedBottomId(null);
+    setDimmingTop(100);
+    setDimmingMiddle(100);
+    setDimmingBottom(100);
   }, []);
+
+  useEffect(() => {
+    if (!isGridReady) {
+      setGridData(new Map());
+      return;
+    }
+    setGridData(combineLayerMaps(topGridData, middleGridData, bottomGridData, rows, cols));
+  }, [isGridReady, rows, cols, loadMode, topGridData, middleGridData, bottomGridData, dimmingTop, dimmingMiddle, dimmingBottom]);
 
   const formatLuxNumber = (num: number, preferDecimal: boolean) => {
     if (!isFinite(num) || isNaN(num)) return "0";
@@ -591,18 +642,13 @@ export function KemeratanCahayaContent() {
     return String(cell);
   };
 
-  const applyDimming = (num: number) => {
-    if (!isFinite(num) || isNaN(num)) return 0;
-    return num * (dimmingPercent / 100);
-  };
-
   const getRowMaxLux = (rowIndex: number) => {
     if (rowIndex < 0 || rowIndex >= rows) return 0;
     let maxVal = 0;
     for (let c = 0; c < cols; c++) {
       const key = getCellKey(rowIndex, c);
       const raw = parseFloat(gridData.get(key)?.value || "0");
-      const v = applyDimming(isNaN(raw) ? 0 : raw);
+      const v = isNaN(raw) ? 0 : raw;
       if (v > maxVal) maxVal = v;
     }
     return maxVal;
@@ -625,14 +671,43 @@ export function KemeratanCahayaContent() {
   const presetRows = useMemo(() => {
     if (!isGridReady) return [];
     const presets = [
-      buildPreset("Lampu Atas", 0),
-      buildPreset("Lampu Bawah", rows - 1),
+      buildPreset("Lampu 1", 0),
+      buildPreset("Lampu 2", rows - 1),
     ];
     if (loadMode === "3") {
-      presets.splice(1, 0, buildPreset("Lampu Tengah", getMiddleRowIndex()));
+      presets.splice(1, 0, buildPreset("Lampu 3", getMiddleRowIndex()));
     }
     return presets;
-  }, [isGridReady, rows, cols, gridData, dimmingPercent, jenisJalan, loadMode, middleUpRows]);
+  }, [isGridReady, rows, cols, gridData, jenisJalan, loadMode, middleUpRows]);
+
+  const titikApiCells = useMemo(() => {
+    if (!isGridReady) return new Set<string>();
+    const positions: Array<{ row: number; col: number; label: string }> = [];
+    if (topGridData.size > 0) {
+      positions.push({ row: 0, col: 2, label: "Titik Api Lampu 1" });
+    }
+    if (loadMode === "3" && middleGridData.size > 0) {
+      positions.push({ row: getMiddleRowIndex(), col: 2, label: "Titik Api Lampu 3" });
+    }
+    if (bottomGridData.size > 0) {
+      positions.push({ row: Math.max(0, rows - 1), col: 2, label: "Titik Api Lampu 2" });
+    }
+    const set = new Set<string>();
+    positions.forEach((p) => {
+      if (p.row >= 0 && p.row < rows && p.col >= 0 && p.col < cols) {
+        set.add(`${p.row}-${p.col}`);
+      }
+    });
+    return set;
+  }, [isGridReady, rows, cols, loadMode, middleUpRows, middleDownRows, topGridData, middleGridData, bottomGridData]);
+
+  const getTitikApiLabel = useCallback((row: number, col: number) => {
+    if (col !== 2) return null;
+    if (row === 0 && topGridData.size > 0) return "Titik Api Lampu 1";
+    if (row === Math.max(0, rows - 1) && bottomGridData.size > 0) return "Titik Api Lampu 2";
+    if (loadMode === "3" && row === getMiddleRowIndex() && middleGridData.size > 0) return "Titik Api Lampu 3";
+    return null;
+  }, [rows, loadMode, middleUpRows, middleDownRows, topGridData, middleGridData, bottomGridData]);
 
   return (
     <>
@@ -673,6 +748,16 @@ export function KemeratanCahayaContent() {
               </div>
             </div>
 
+            <button
+              onClick={() => setShowSidebar(!showSidebar)}
+              className="sm:hidden w-10 h-10 flex items-center justify-center text-red-600 bg-red-50 hover:bg-red-100 rounded-xl shadow-sm transition-all active:scale-95"
+              aria-label="Toggle Sidebar"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+
             {/* Right Section: User Info */}
             {user && (
               <div className="hidden sm:flex items-center gap-3 px-4 py-2.5 bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-xl shadow-sm flex-shrink-0">
@@ -688,10 +773,34 @@ export function KemeratanCahayaContent() {
         </div>
       </header>
 
+      {showSidebar && (
+        <div
+          className="sm:hidden fixed inset-0 bg-black/40 z-40"
+          onClick={() => setShowSidebar(false)}
+        />
+      )}
+
       {/* Main Content */}
-      <main className="flex gap-4 px-4 sm:px-6 py-4">
+      <main className="relative flex gap-4 px-4 sm:px-6 py-4">
         {/* Left Sidebar - Fixed with own scroll */}
-        <aside className="w-80 flex-shrink-0 sticky top-20 h-[calc(100vh-6rem)] overflow-y-auto space-y-4" style={{ scrollbarWidth: 'thin' }}>
+        <aside
+          className={`w-80 max-w-[90vw] flex-shrink-0 space-y-4 transition-all duration-300 ease-in-out
+            fixed sm:sticky top-0 sm:top-20 left-0 h-screen sm:h-[calc(100vh-6rem)] z-50 sm:z-auto
+            overflow-y-auto bg-gradient-to-br from-gray-50 via-red-50 to-red-100 sm:bg-transparent
+            ${showSidebar ? "translate-x-0" : "-translate-x-full sm:translate-x-0"}`}
+          style={{ scrollbarWidth: 'thin' }}
+        >
+          <div className="sm:hidden px-4 pt-4">
+            <button
+              onClick={() => setShowSidebar(false)}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 rounded-xl transition-all active:scale-95 border border-gray-200 shadow-sm"
+            >
+              <span>Tutup Panel</span>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
           {/* Setup Card */}
           <div className="bg-white rounded-xl shadow-lg p-5 border border-gray-200">
             <h2 className="text-base font-bold text-gray-900 mb-4">Pilih jenis jalan dan span untuk memulai analisis</h2>
@@ -835,7 +944,7 @@ export function KemeratanCahayaContent() {
                 <label className="block text-xs font-semibold text-gray-800 mb-1.5">Jarak Tiang</label>
                 <input
                   type="number"
-                  placeholder="Masukkan jarak (10-100)"
+                  placeholder="Masukkan jarak"
                   value={jarakTiang}
                   onChange={(e) => setJarakTiang(e.target.value)}
                   className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-sm font-semibold text-gray-900 placeholder:text-gray-500 bg-white"
@@ -845,7 +954,7 @@ export function KemeratanCahayaContent() {
                 <label className="block text-xs font-semibold text-gray-800 mb-1.5">Lebar Jalan</label>
                 <input
                   type="number"
-                  placeholder="Masukkan lebar (10-50)"
+                  placeholder="Masukkan lebar"
                   value={lebarJalan}
                   onChange={(e) => setLebarJalan(e.target.value)}
                   className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-sm font-semibold text-gray-900 placeholder:text-gray-500 bg-white"
@@ -854,7 +963,7 @@ export function KemeratanCahayaContent() {
               {loadMode === "3" && (
                 <>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-800 mb-1.5">Jarak Atas (baris, opsional)</label>
+                    <label className="block text-xs font-semibold text-gray-800 mb-1.5">Jarak Gawang Satu (baris, opsional)</label>
                     <input
                       type="number"
                       placeholder="Contoh: 34"
@@ -864,7 +973,7 @@ export function KemeratanCahayaContent() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-800 mb-1.5">Jarak Bawah (baris, opsional)</label>
+                    <label className="block text-xs font-semibold text-gray-800 mb-1.5">Jarak Gawang Dua (baris, opsional)</label>
                     <input
                       type="number"
                       placeholder="Contoh: 40"
@@ -1172,15 +1281,46 @@ export function KemeratanCahayaContent() {
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 bg-white/20 rounded-lg px-2 py-1.5">
                       <span className="text-xs font-semibold text-white">Dimming</span>
-                      <select
-                        value={dimmingPercent}
-                        onChange={(e) => setDimmingPercent(parseInt(e.target.value, 10) || 100)}
-                        className="bg-white text-gray-900 text-xs font-bold rounded-md px-2 py-1 outline-none"
-                      >
-                        {[100, 90, 80, 70, 60, 50].map((p) => (
-                          <option key={p} value={p}>{p}%</option>
-                        ))}
-                      </select>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] font-semibold text-white">Lampu 1</span>
+                          <select
+                            value={dimmingTop}
+                            onChange={(e) => setDimmingTop(parseInt(e.target.value, 10) || 100)}
+                            className="bg-white text-gray-900 text-xs font-bold rounded-md px-2 py-1 outline-none"
+                          >
+                            {dimmingOptions.map((p) => (
+                              <option key={`top-${p}`} value={p}>{p}%</option>
+                            ))}
+                          </select>
+                        </div>
+                        {loadMode === "3" && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] font-semibold text-white">Lampu 3</span>
+                            <select
+                              value={dimmingMiddle}
+                              onChange={(e) => setDimmingMiddle(parseInt(e.target.value, 10) || 100)}
+                              className="bg-white text-gray-900 text-xs font-bold rounded-md px-2 py-1 outline-none"
+                            >
+                              {dimmingOptions.map((p) => (
+                                <option key={`mid-${p}`} value={p}>{p}%</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] font-semibold text-white">Lampu 2</span>
+                          <select
+                            value={dimmingBottom}
+                            onChange={(e) => setDimmingBottom(parseInt(e.target.value, 10) || 100)}
+                            className="bg-white text-gray-900 text-xs font-bold rounded-md px-2 py-1 outline-none"
+                          >
+                            {dimmingOptions.map((p) => (
+                              <option key={`bot-${p}`} value={p}>{p}%</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
                     </div>
                     <button
                       onClick={handleReset}
@@ -1234,7 +1374,7 @@ export function KemeratanCahayaContent() {
                           const cellData = gridData.get(cellKey);
                           const value = cellData?.value || "0";
                           const numValue = parseFloat(value);
-                          const dimmedValue = applyDimming(numValue);
+                          const dimmedValue = isNaN(numValue) ? 0 : numValue;
                           
                           // Color coding based on value (similar to measurement grid)
                           let cellColor = "bg-white text-gray-500"; // Default empty
@@ -1248,13 +1388,21 @@ export function KemeratanCahayaContent() {
                             else cellColor = "bg-white text-gray-500";
                           }
                           
+                          const cellKeyStr = `${row}-${col}`;
+                          const isTitikApiCell = titikApiCells.has(cellKeyStr);
+                          const titikApiLabel = isTitikApiCell ? getTitikApiLabel(row, col) : null;
                           return (
                             <div
                               key={cellKey}
-                              className={`h-14 px-2 flex items-center justify-center border-2 border-gray-200 rounded-lg text-sm font-bold transition-all ${cellColor}`}
+                              className={`relative h-14 px-2 flex items-center justify-center border-2 border-gray-200 rounded-lg text-sm font-bold transition-all ${cellColor}`}
                               style={{ contain: 'layout style paint' }}
                               title={`Row ${row + 1}, Col ${col + 1}: ${formatLuxNumber(dimmedValue, !Number.isInteger(dimmedValue))}`}
                             >
+                              {titikApiLabel && (
+                                <span className="absolute top-1 right-1 bg-white/90 text-red-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow">
+                                  {titikApiLabel}
+                                </span>
+                              )}
                               {formatLuxNumber(dimmedValue, !Number.isInteger(dimmedValue))}
                             </div>
                           );
@@ -1288,6 +1436,17 @@ export function KemeratanCahayaContent() {
             <div>
               <h3 className="text-xl font-bold text-gray-900">Evaluasi Standar Jalan {jenisJalanOptions.find(j => j.id === jenisJalan)?.name || "-"}</h3>
               <p className="text-sm text-gray-600">Analisis kesesuaian dengan standar pencahayaan</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-gray-600">Mode</span>
+              <select
+                value={analysisMode}
+                onChange={(e) => setAnalysisMode((e.target.value as "full" | "avg-only") || "full")}
+                className="text-xs font-semibold border border-gray-300 rounded-lg px-2 py-1 bg-white text-gray-900"
+              >
+                <option value="full">2 Parameter (Avg + Rasio)</option>
+                <option value="avg-only">Hanya L-avg</option>
+              </select>
             </div>
             <button
               onClick={() => setShowAnalysis(false)}
@@ -1334,7 +1493,7 @@ export function KemeratanCahayaContent() {
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl border bg-green-50 border-green-200">
+              <div className={`p-4 rounded-xl border ${analysisMode === "avg-only" ? "bg-gray-50 border-gray-200 opacity-70" : "bg-green-50 border-green-200"}`}>
                 <div className="flex items-center gap-2 mb-2">
                   <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1343,7 +1502,9 @@ export function KemeratanCahayaContent() {
                 </div>
                 <div className="text-sm text-gray-600">Nilai Aktual: <span className="font-bold text-gray-900">{ratioActual.toFixed(2)}</span></div>
                 <div className="text-sm text-gray-600">Batas Maksimum: <span className="font-bold text-gray-900">{activeStandard?.ratioMax ?? 0}</span></div>
-                <div className={`mt-2 text-sm font-bold ${ratioOk ? "text-green-700" : "text-red-700"}`}>Status: {ratioOk ? "OK" : "NOT OK"}</div>
+                <div className={`mt-2 text-sm font-bold ${analysisMode === "avg-only" ? "text-gray-600" : (ratioOk ? "text-green-700" : "text-red-700")}`}>
+                  Status: {analysisMode === "avg-only" ? "DIABAIKAN" : (ratioOk ? "OK" : "NOT OK")}
+                </div>
                 <div className="mt-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-2">
                   Kriteria: Rasio di bawah atau sama dengan {activeStandard?.ratioMax ?? 0} = OK, di atas = NOT OK
                 </div>

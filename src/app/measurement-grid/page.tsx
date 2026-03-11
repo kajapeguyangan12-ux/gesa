@@ -2,9 +2,13 @@
 
 import { useState, useEffect, Suspense, useMemo, useCallback, memo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { collection, doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
+import { db, storage } from "@/lib/firebase";
+import { FIREBASE_COLLECTIONS } from "@/utils/constants";
 
 interface CellData {
   row: number;
@@ -51,6 +55,7 @@ function MeasurementGridContent() {
   const ROWS = 45;
   const COLS = 35;
   const [showSidebar, setShowSidebar] = useState(true);
+  const [isSavingReport, setIsSavingReport] = useState(false);
 
   useEffect(() => {
     setIsLoaded(true);
@@ -241,6 +246,105 @@ function MeasurementGridContent() {
     if (lux >= 5) return "bg-orange-50 hover:bg-orange-100 text-gray-600"; // Sangat redup = Putih kekuningan
     return "bg-white hover:bg-gray-50 text-gray-500 border border-gray-200"; // Tidak terang = Putih
   }, [gridData]);
+
+  const buildGridPayload = useCallback((attachments?: Map<string, string>) => {
+    const cells = Array.from(gridData.values())
+      .map((cell) => {
+        const n = parseFloat(cell.nilaiLux);
+        if (isNaN(n) || !isFinite(n)) return null;
+        if (cell.row < 0 || cell.row >= ROWS || cell.col < 0 || cell.col >= COLS) return null;
+        const attachmentUrl = attachments?.get(getCellKey(cell.row, cell.col)) || "";
+        return {
+          row: cell.row,
+          col: cell.col,
+          value: n,
+          tipeApi: cell.tipeApi,
+          ...(attachmentUrl ? { attachmentUrl } : {}),
+        };
+      })
+      .filter((cell): cell is { row: number; col: number; value: number; tipeApi: "normal" | "titik-api" } => cell !== null);
+
+    return {
+      rows: ROWS,
+      cols: COLS,
+      cells,
+    };
+  }, [gridData, ROWS, COLS]);
+
+  const uploadCellAttachments = useCallback(async (reportId: string) => {
+    if (!storage) return new Map<string, string>();
+    const uploads = Array.from(gridData.values())
+      .filter((cell) => cell.lampiran instanceof File)
+      .map(async (cell) => {
+        const file = cell.lampiran as File;
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const key = getCellKey(cell.row, cell.col);
+        const path = `reports/${reportId}/cells/${key}-${Date.now()}-${safeName}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, file, { contentType: file.type || "image/webp" });
+        const url = await getDownloadURL(storageRef);
+        return { key, url };
+      });
+    if (uploads.length === 0) return new Map<string, string>();
+    const results = await Promise.all(uploads);
+    const map = new Map<string, string>();
+    for (const item of results) {
+      if (item?.key && item?.url) map.set(item.key, item.url);
+    }
+    return map;
+  }, [gridData]);
+
+  const handleSaveReport = useCallback(async () => {
+    if (!user) {
+      alert("Silakan login terlebih dahulu.");
+      return;
+    }
+    if (gridData.size === 0) {
+      alert("Grid masih kosong. Isi data terlebih dahulu.");
+      return;
+    }
+    try {
+      setIsSavingReport(true);
+      const now = new Date();
+      const reportRef = doc(collection(db, FIREBASE_COLLECTIONS.SURVEYS));
+      const reportId = reportRef.id;
+      let attachmentMap = new Map<string, string>();
+      try {
+        attachmentMap = await uploadCellAttachments(reportId);
+      } catch (err) {
+        console.error("Failed to upload attachments:", err);
+      }
+      const gridPayload = buildGridPayload(attachmentMap);
+      const payload = {
+        projectTitle: surveyData.namaLampu || "Pengukuran Cahaya",
+        title: surveyData.namaLampu || "Pengukuran Cahaya",
+        projectLocation: modalState.lokasi,
+        location: modalState.lokasi,
+        reporterName: user.displayName || user.email || "Petugas",
+        officer: user.displayName || user.email || "Petugas",
+        createdById: user.uid || "",
+        createdByEmail: user.email || "",
+        createdByName: user.displayName || user.email || "Petugas",
+        createdByRole: (user as any).role || "",
+        watt: surveyData.dayaLampu,
+        meter: surveyData.tinggiTiang,
+        voltage: surveyData.teganganAwal,
+        gridData: gridPayload,
+        date: now.toLocaleDateString("id-ID"),
+        time: now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }).replace(":", "."),
+        status: "pending",
+        source: "survey-cahaya",
+        createdAt: serverTimestamp(),
+      };
+      await setDoc(reportRef, payload);
+      alert("Laporan berhasil disimpan.");
+    } catch (error) {
+      console.error("Error saving report:", error);
+      alert("Gagal menyimpan laporan. Silakan coba lagi.");
+    } finally {
+      setIsSavingReport(false);
+    }
+  }, [user, gridData, buildGridPayload, uploadCellAttachments, surveyData, modalState.lokasi]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50" style={{ contain: 'layout style' }}>
@@ -485,6 +589,23 @@ function MeasurementGridContent() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Simpan Laporan */}
+            <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+              <div className="p-4">
+                <button
+                  onClick={handleSaveReport}
+                  disabled={isSavingReport}
+                  className={`w-full py-3 rounded-xl font-bold text-sm transition-all shadow-md active:scale-95 ${
+                    isSavingReport
+                      ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                      : "bg-green-600 hover:bg-green-700 text-white"
+                  }`}
+                >
+                  {isSavingReport ? "Menyimpan..." : "Simpan Laporan"}
+                </button>
               </div>
             </div>
             </div>

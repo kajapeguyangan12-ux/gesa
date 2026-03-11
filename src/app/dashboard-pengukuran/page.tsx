@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
+import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 function DashboardPengukuranContent() {
   const { user } = useAuth();
@@ -16,6 +18,10 @@ function DashboardPengukuranContent() {
     teganganAwal: "",
     tinggiTiang: "",
   });
+  const [loadingReport, setLoadingReport] = useState(false);
+  const [showReportPicker, setShowReportPicker] = useState(false);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsList, setReportsList] = useState<Array<{ id: string; label: string }>>([]);
 
   useEffect(() => {
     setIsLoaded(true);
@@ -31,9 +37,39 @@ function DashboardPengukuranContent() {
     router.push(`/measurement-grid?namaLampu=${encodeURIComponent(formData.namaLampu)}&dayaLampu=${formData.dayaLampu}&teganganAwal=${formData.teganganAwal}&tinggiTiang=${formData.tinggiTiang}`);
   };
 
-  const handleMuatLaporan = () => {
-    console.log("Muat Laporan Petugas");
-    // TODO: Load existing reports
+  const buildReportLabel = (data: any) => {
+    const title = data?.projectTitle || data?.title || data?.namaLampu || data?.judul || "(untitled)";
+    const location = data?.projectLocation || data?.location || data?.lokasi || "";
+    const reporter = data?.reporterName || data?.officer || data?.petugas || data?.createdByName || "";
+    const date = data?.date || data?.tanggal || "";
+    const parts = [title, reporter ? `oleh ${reporter}` : "", location, date].filter(Boolean);
+    return parts.join(" | ");
+  };
+
+  const handleMuatLaporan = async () => {
+    try {
+      setLoadingReport(true);
+      setShowReportPicker(true);
+      setReportsLoading(true);
+      const q = query(collection(db, "reports"), orderBy("createdAt", "desc"), limit(100));
+      const snapshot = await getDocs(q);
+      let docs = snapshot.docs;
+      if (user?.uid) {
+        const mine = docs.filter((doc) => doc.data()?.createdById === user.uid);
+        if (mine.length > 0) docs = mine;
+      }
+      const list = docs.map((doc) => ({
+        id: doc.id,
+        label: buildReportLabel(doc.data()),
+      }));
+      setReportsList(list);
+    } catch (err) {
+      console.error("Gagal memuat laporan:", err);
+      alert("Gagal memuat laporan. Silakan coba lagi.");
+    } finally {
+      setLoadingReport(false);
+      setReportsLoading(false);
+    }
   };
 
   const isFormValid = formData.namaLampu && formData.dayaLampu && formData.teganganAwal && formData.tinggiTiang;
@@ -187,13 +223,13 @@ function DashboardPengukuranContent() {
                   className="w-full pl-12 pr-12 py-3 sm:py-4 border-2 border-gray-200 rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 transition-all text-gray-900 appearance-none bg-gray-50 focus:bg-white cursor-pointer text-sm sm:text-base font-medium touch-manipulation"
                 >
                   <option value="" disabled>Pilih Tinggi Tiang...</option>
-                  <option value="4">5 Meter</option>
+                  <option value="5">5 Meter</option>
                   <option value="6">6 Meter</option>
-                  <option value="8">7 Meter</option>
-                  <option value="10">8 Meter</option>
-                  <option value="12">9 Meter</option>
-                  <option value="15">9.5 Meter</option>
-                  <option value="15">10 Meter</option>
+                  <option value="7">7 Meter</option>
+                  <option value="8">8 Meter</option>
+                  <option value="9">9 Meter</option>
+                  <option value="9.5">9.5 Meter</option>
+                  <option value="10">10 Meter</option>
                 </select>
                 <svg className="w-5 h-5 text-gray-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -227,15 +263,22 @@ function DashboardPengukuranContent() {
               {/* Muat Laporan Petugas */}
               <button
                 onClick={handleMuatLaporan}
-                className="group w-full py-3.5 sm:py-4 bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-500 hover:from-amber-500 hover:via-yellow-600 hover:to-amber-600 text-gray-900 rounded-xl sm:rounded-2xl font-bold text-sm sm:text-base transition-all duration-300 shadow-lg hover:shadow-2xl active:scale-95 touch-manipulation relative overflow-hidden"
+                disabled={loadingReport}
+                className={`group w-full py-3.5 sm:py-4 rounded-xl sm:rounded-2xl font-bold text-sm sm:text-base transition-all duration-300 shadow-lg active:scale-95 touch-manipulation relative overflow-hidden ${
+                  loadingReport
+                    ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                    : "bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-500 hover:from-amber-500 hover:via-yellow-600 hover:to-amber-600 text-gray-900 hover:shadow-2xl"
+                }`}
               >
                 <span className="relative z-10 flex items-center justify-center gap-2">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  Muat Laporan Petugas
+                  {loadingReport ? "Memuat..." : "Muat Laporan Petugas"}
                 </span>
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-30 transform -translate-x-full group-hover:translate-x-full transition-all duration-1000"></div>
+                {!loadingReport && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-30 transform -translate-x-full group-hover:translate-x-full transition-all duration-1000"></div>
+                )}
               </button>
             </div>
           </div>
@@ -269,6 +312,43 @@ function DashboardPengukuranContent() {
           </div>
         </div>
       </main>
+
+      {showReportPicker && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Pilih Laporan Petugas</h3>
+                <p className="text-xs text-gray-500">Pilih satu laporan untuk dibuka di admin</p>
+              </div>
+              <button onClick={() => setShowReportPicker(false)} className="w-9 h-9 rounded-lg hover:bg-gray-100">
+                <svg className="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-4 space-y-2">
+              {reportsLoading ? (
+                <div className="text-sm text-gray-500">Memuat daftar laporan...</div>
+              ) : reportsList.length === 0 ? (
+                <div className="text-sm text-gray-500">Belum ada laporan yang bisa dipilih.</div>
+              ) : (
+                reportsList.map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => router.push(`/admin/reports/${r.id}/edit`)}
+                    className="w-full text-left px-3 py-3 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all"
+                  >
+                    <div className="text-sm font-semibold text-gray-900 truncate">{r.label}</div>
+                    <div className="text-xs text-gray-500">ID: {r.id}</div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

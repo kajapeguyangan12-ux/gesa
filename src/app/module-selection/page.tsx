@@ -296,6 +296,21 @@ function ModuleSelectionContent() {
               <p className="text-gray-600">
                 Role Anda tidak memiliki akses ke modul manapun. Hubungi administrator untuk informasi lebih lanjut.
               </p>
+              <button
+                onClick={() => {
+                  if (user?.role === "admin" || user?.role === "super-admin") {
+                    router.push("/admin/module-selection");
+                  } else {
+                    router.push("/");
+                  }
+                }}
+                className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-300 hover:border-gray-400 text-gray-700 rounded-xl font-semibold transition-all"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Kembali
+              </button>
             </div>
           </div>
         )}
