@@ -223,6 +223,11 @@ function ReportViewContent() {
     report?.user,
     report?.reporter
   );
+  const kabupaten = pickFirstString(
+    report?.kabupaten,
+    report?.kabupaten_id,
+    report?.kabupatenId
+  );
   const watt = formatWatt(
     report?.watt ??
       report?.power ??
@@ -320,6 +325,13 @@ function ReportViewContent() {
             </button>
 
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden p-4 space-y-4">
+              {kabupaten && kabupaten !== "-" && (
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-full">
+                  <span className="text-xs font-semibold text-blue-700">
+                    Kabupaten: {kabupaten}
+                  </span>
+                </div>
+              )}
               <div>
                 <label className="text-xs font-semibold text-gray-500 uppercase">Lokasi Proyek</label>
                 <div className="flex items-start gap-2 mt-2 px-3 py-2 bg-gray-50 rounded-xl border border-gray-200">

@@ -33,8 +33,8 @@ interface Survey {
   status: string;
   surveyorName: string;
   surveyorEmail?: string;
-  createdAt: any;
-  validatedAt: any;
+  createdAt: TimestampLike;
+  validatedAt: TimestampLike;
   validatedBy: string;
   latitude: number;
   longitude: number;
@@ -71,6 +71,26 @@ interface Survey {
   median?: string;
   lebarJalan?: string;
   jarakAntarTiang?: string;
+  // Pra existing fields
+  jenisLampu?: string;
+  jumlahLampu?: string;
+  kondisi?: string;
+  jenisTiang?: string;
+  kabupaten?: string;
+  kabupatenName?: string;
+  kecamatan?: string;
+  desa?: string;
+  banjar?: string;
+  kepemilikanTiang?: string;
+  kepemilikanDisplay?: string;
+  tipeTiangPLN?: string;
+  fungsiLampu?: string;
+  garduStatus?: string;
+  kodeGardu?: string;
+  adminLatitude?: number;
+  adminLongitude?: number;
+  hasAdminCoordinateOverride?: boolean;
+  fotoAktual?: string;
   fotoKemerataan?: string;
   fotoTiangAPM?: string;
   fotoTitikActual?: string;
@@ -82,6 +102,14 @@ interface Survey {
   rejectionReason?: string;
   surveyorUid?: string;
 }
+
+type TimestampLike =
+  | { toDate?: () => Date; seconds?: number }
+  | Date
+  | string
+  | number
+  | null
+  | undefined;
 
 interface Task {
   id: string;
@@ -95,7 +123,7 @@ interface Task {
   createdByAdminEmail?: string;
 }
 
-export default function DataSurveyValidasi() {
+export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupaten?: string | null }) {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,11 +139,12 @@ export default function DataSurveyValidasi() {
     total: 0,
     existing: 0,
     propose: 0,
+    praExisting: 0,
   });
 
   useEffect(() => {
     fetchAllSurveys();
-  }, []);
+  }, [activeKabupaten]);
 
   const fetchAllSurveys = async () => {
     try {
@@ -154,13 +183,24 @@ export default function DataSurveyValidasi() {
       // Get list of assigned surveyor UIDs (only from tasks created by this admin)
       const assignedSurveyorIds = tasksData.map(task => task.surveyorId);
       
-      // Fetch from both collections
+      // Fetch from all collections
       const existingRef = collection(db, "survey-existing");
       const proposeRef = collection(db, "survey-apj-propose");
+      const praExistingRef = collection(db, "survey-pra-existing");
+      const existingQuery = activeKabupaten
+        ? query(existingRef, where("kabupaten", "==", activeKabupaten))
+        : existingRef;
+      const proposeQuery = activeKabupaten
+        ? query(proposeRef, where("kabupaten", "==", activeKabupaten))
+        : proposeRef;
+      const praExistingQuery = activeKabupaten
+        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten))
+        : praExistingRef;
       
-      const [existingSnapshot, proposeSnapshot] = await Promise.all([
-        getDocs(existingRef),
-        getDocs(proposeRef)
+      const [existingSnapshot, proposeSnapshot, praExistingSnapshot] = await Promise.all([
+        getDocs(existingQuery),
+        getDocs(proposeQuery),
+        getDocs(praExistingQuery),
       ]);
       
       // Combine data from both collections with full data
@@ -192,14 +232,29 @@ export default function DataSurveyValidasi() {
           type: "propose",
           surveyorName: doc.data().surveyorName || "Unknown",
         })) as Survey[];
+
+      const praExistingData = praExistingSnapshot.docs
+        .filter((doc) => {
+          const surveyorUid = doc.data().surveyorUid;
+          const status = doc.data().status;
+          return surveyorUid && assignedSurveyorIds.includes(surveyorUid) && status === "diverifikasi";
+        })
+        .map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          title: doc.data().title || `Survey Pra Existing - ${doc.data().jenisLampu || "Untitled"}`,
+          type: "pra-existing",
+          surveyorName: doc.data().surveyorName || "Unknown",
+        })) as Survey[];
       
-      const allSurveys = [...existingData, ...proposeData];
+      const allSurveys = [...existingData, ...proposeData, ...praExistingData];
       setSurveys(allSurveys);
       
       setStats({
         total: allSurveys.length,
         existing: existingData.length,
         propose: proposeData.length,
+        praExisting: praExistingData.length,
       });
     } catch (error) {
       console.error("Error fetching surveys:", error);
@@ -223,14 +278,30 @@ export default function DataSurveyValidasi() {
     
     try {
       setIsSaving(true);
-      const collectionName = editFormData.type === "existing" ? "survey-existing" : "survey-apj-propose";
+      const collectionName =
+        editFormData.type === "existing"
+          ? "survey-existing"
+          : editFormData.type === "propose"
+          ? "survey-apj-propose"
+          : "survey-pra-existing";
       const surveyDoc = doc(db, collectionName, editFormData.id);
       
       const storedUser = localStorage.getItem('gesa_user');
       const currentUser = storedUser ? JSON.parse(storedUser) : null;
+      const normalizedAdminLatitude = Number(editFormData.adminLatitude);
+      const normalizedAdminLongitude = Number(editFormData.adminLongitude);
+      const hasValidAdminCoords = Number.isFinite(normalizedAdminLatitude) && Number.isFinite(normalizedAdminLongitude);
       
       await updateDoc(surveyDoc, {
         ...editFormData,
+        adminLatitude: hasValidAdminCoords ? normalizedAdminLatitude : null,
+        adminLongitude: hasValidAdminCoords ? normalizedAdminLongitude : null,
+        hasAdminCoordinateOverride:
+          editFormData.type === "pra-existing" &&
+          hasValidAdminCoords &&
+          (Math.abs(normalizedAdminLatitude - editFormData.latitude) > 0.0000001 ||
+            Math.abs(normalizedAdminLongitude - editFormData.longitude) > 0.0000001),
+        kepemilikanTiang: editFormData.kepemilikanDisplay || editFormData.kepemilikanTiang,
         editedBy: currentUser?.name || currentUser?.email || 'Admin',
         updatedAt: new Date()
       });
@@ -252,14 +323,34 @@ export default function DataSurveyValidasi() {
     if (!confirm('Apakah Anda yakin ingin memvalidasi survey ini? Survey akan dipindahkan ke Data Survey Valid.')) return;
     
     try {
-      const collectionName = survey.type === "existing" ? "survey-existing" : "survey-apj-propose";
+      const collectionName =
+        survey.type === "existing"
+          ? "survey-existing"
+          : survey.type === "propose"
+          ? "survey-apj-propose"
+          : "survey-pra-existing";
       const surveyDoc = doc(db, collectionName, survey.id);
       
       const storedUser = localStorage.getItem('gesa_user');
       const currentUser = storedUser ? JSON.parse(storedUser) : null;
+      const normalizedAdminLatitude = Number(survey.adminLatitude);
+      const normalizedAdminLongitude = Number(survey.adminLongitude);
+      const shouldUseAdminCoordinate =
+        survey.type === "pra-existing" &&
+        Number.isFinite(normalizedAdminLatitude) &&
+        Number.isFinite(normalizedAdminLongitude);
       
       await updateDoc(surveyDoc, {
         status: "tervalidasi",
+        ...(shouldUseAdminCoordinate
+          ? {
+              latitude: normalizedAdminLatitude,
+              longitude: normalizedAdminLongitude,
+              finalLatitude: normalizedAdminLatitude,
+              finalLongitude: normalizedAdminLongitude,
+              coordinateSource: "admin",
+            }
+          : {}),
         validatedBy: currentUser?.name || currentUser?.email || 'Admin',
         validatedAt: new Date()
       });
@@ -278,7 +369,12 @@ export default function DataSurveyValidasi() {
     if (!alasan) return;
     
     try {
-      const collectionName = survey.type === "existing" ? "survey-existing" : "survey-apj-propose";
+      const collectionName =
+        survey.type === "existing"
+          ? "survey-existing"
+          : survey.type === "propose"
+          ? "survey-apj-propose"
+          : "survey-pra-existing";
       const surveyDoc = doc(db, collectionName, survey.id);
       
       const storedUser = localStorage.getItem('gesa_user');
@@ -306,7 +402,12 @@ export default function DataSurveyValidasi() {
     if (!confirm('Apakah Anda yakin ingin menghapus survey ini? Data tidak dapat dikembalikan!')) return;
     
     try {
-      const collectionName = survey.type === "existing" ? "survey-existing" : "survey-apj-propose";
+      const collectionName =
+        survey.type === "existing"
+          ? "survey-existing"
+          : survey.type === "propose"
+          ? "survey-apj-propose"
+          : "survey-pra-existing";
       const surveyDoc = doc(db, collectionName, survey.id);
       
       await deleteDoc(surveyDoc);
@@ -319,10 +420,18 @@ export default function DataSurveyValidasi() {
     }
   };
 
-  const formatDate = (timestamp: any) => {
+  const formatDate = (timestamp: TimestampLike) => {
     if (!timestamp) return "N/A";
     try {
-      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      const date =
+        typeof timestamp === "object" && timestamp !== null && "toDate" in timestamp && typeof timestamp.toDate === "function"
+          ? timestamp.toDate()
+          : timestamp instanceof Date
+            ? timestamp
+            : typeof timestamp === "string" || typeof timestamp === "number"
+              ? new Date(timestamp)
+              : null;
+      if (!date || Number.isNaN(date.getTime())) return "N/A";
       return date.toLocaleString('id-ID', {
         day: '2-digit',
         month: '2-digit',
@@ -330,7 +439,7 @@ export default function DataSurveyValidasi() {
         hour: '2-digit',
         minute: '2-digit'
       });
-    } catch (error) {
+    } catch {
       return "N/A";
     }
   };
@@ -351,9 +460,9 @@ export default function DataSurveyValidasi() {
   };
 
   const getTypeBadge = (type: string) => {
-    return type === "existing" 
-      ? "bg-blue-100 text-blue-700" 
-      : "bg-purple-100 text-purple-700";
+    if (type === "existing") return "bg-blue-100 text-blue-700";
+    if (type === "propose") return "bg-purple-100 text-purple-700";
+    return "bg-emerald-100 text-emerald-700";
   };
 
   const filteredSurveys = surveys.filter(survey => {
@@ -393,6 +502,7 @@ export default function DataSurveyValidasi() {
               <option value="all">Semua Tipe</option>
               <option value="existing">Survey Existing</option>
               <option value="propose">Survey APJ Propose</option>
+              <option value="pra-existing">Survey Pra Existing</option>
             </select>
             <select 
               value={filterStatus}
@@ -450,7 +560,11 @@ export default function DataSurveyValidasi() {
                     </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${getTypeBadge(survey.type)}`}>
-                        {survey.type === "existing" ? "Existing" : "APJ Propose"}
+                        {survey.type === "existing"
+                          ? "Existing"
+                          : survey.type === "propose"
+                          ? "APJ Propose"
+                          : "Pra Existing"}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900">{survey.surveyorName || "N/A"}</td>
@@ -568,7 +682,7 @@ function DetailModal({
   onClose: () => void; 
   onEdit: () => void;
   onTolak: () => void;
-  formatDate: (date: any) => string;
+  formatDate: (date: TimestampLike) => string;
 }) {
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 lg:p-4 overflow-y-auto">
@@ -666,6 +780,12 @@ function DetailModal({
                   <img src={survey.fotoKemerataan} alt="Kemerataan" className="w-full h-48 object-cover rounded-lg border border-gray-200" />
                 </div>
               )}
+              {survey.fotoAktual && (
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">Foto Aktual</p>
+                  <img src={survey.fotoAktual} alt="Foto Aktual" className="w-full h-48 object-cover rounded-lg border border-gray-200" />
+                </div>
+              )}
             </div>
           </div>
 
@@ -701,7 +821,7 @@ function DetailModal({
                     <InfoField label="13. Lebar Jalan (m)" value={survey.lebarJalanDisplay} />
                     <InfoField label="14. Keterangan" value={survey.keterangan} />
                   </>
-                ) : (
+                ) : survey.type === "propose" ? (
                   <>
                     <InfoField label="7. Status ID Titik" value={survey.statusIDTitik} />
                     <InfoField label="8. ID Titik" value={survey.idTitik} />
@@ -711,6 +831,33 @@ function DetailModal({
                     <InfoField label="12. Sub Ruas" value={survey.subRuas} />
                     <InfoField label="13. Jarak Antar Tiang (m)" value={survey.jarakAntarTiang} />
                     <InfoField label="14. Keterangan" value={survey.keterangan} />
+                  </>
+                ) : (
+                  <>
+                    <InfoField label="7. Kabupaten" value={survey.kabupatenName || survey.kabupaten} />
+                    <InfoField label="8. Kecamatan" value={survey.kecamatan} />
+                    <InfoField label="9. Desa" value={survey.desa} />
+                    <InfoField label="10. Banjar" value={survey.banjar} />
+                    <InfoField label="11. Kepemilikan Tiang" value={survey.kepemilikanDisplay || survey.kepemilikanTiang} />
+                    <InfoField label="12. Tipe Tiang PLN" value={survey.tipeTiangPLN} />
+                    <InfoField label="13. Jenis Lampu" value={survey.jenisLampu} />
+                    <InfoField label="14. Jumlah Lampu" value={survey.jumlahLampu} />
+                    <InfoField label="15. Daya Lampu" value={survey.dayaLampu} />
+                    <InfoField label="16. Fungsi Lampu" value={survey.fungsiLampu} />
+                    <InfoField label="17. Lebar Jalan" value={survey.lebarJalan} />
+                    <InfoField label="18. Kondisi" value={survey.kondisi} />
+                    <InfoField label="19. Jenis Tiang" value={survey.jenisTiang} />
+                    <InfoField label="20. Gardu" value={survey.garduStatus} />
+                    <InfoField label="21. Kode Gardu" value={survey.kodeGardu} />
+                    <InfoField
+                      label="22. Koordinat Final Admin"
+                      value={
+                        Number.isFinite(survey.adminLatitude) && Number.isFinite(survey.adminLongitude)
+                          ? `${survey.adminLatitude?.toFixed(7)}, ${survey.adminLongitude?.toFixed(7)}`
+                          : undefined
+                      }
+                    />
+                    <InfoField label="23. Keterangan" value={survey.keterangan} />
                   </>
                 )}
               </div>
@@ -753,7 +900,7 @@ function DetailModal({
 }
 
 // Info Field Component
-function InfoField({ label, value }: { label: string; value: any }) {
+function InfoField({ label, value }: { label: string; value: string | number | undefined | null }) {
   return (
     <div className="bg-gray-50 px-4 py-3 rounded-lg border border-gray-200">
       <p className="text-xs font-medium text-gray-600 mb-1">{label}</p>
@@ -776,7 +923,7 @@ function EditModal({
   onSave: () => void;
   onChange: (survey: Survey) => void;
 }) {
-  const handleChange = (field: keyof Survey, value: any) => {
+  const handleChange = (field: keyof Survey, value: string | number) => {
     onChange({ ...survey, [field]: value });
   };
 
@@ -807,9 +954,9 @@ function EditModal({
               Preview Lokasi Survey
             </h3>
             <DynamicDetailMap 
-              key={`${survey.latitude}-${survey.longitude}`}
-              latitude={survey.latitude} 
-              longitude={survey.longitude}
+              key={`${survey.type === "pra-existing" && Number.isFinite(survey.adminLatitude) ? survey.adminLatitude : survey.latitude}-${survey.type === "pra-existing" && Number.isFinite(survey.adminLongitude) ? survey.adminLongitude : survey.longitude}`}
+              latitude={survey.type === "pra-existing" && Number.isFinite(survey.adminLatitude) ? survey.adminLatitude || 0 : survey.latitude} 
+              longitude={survey.type === "pra-existing" && Number.isFinite(survey.adminLongitude) ? survey.adminLongitude || 0 : survey.longitude}
               accuracy={survey.accuracy || 0}
               title={survey.title || survey.namaJalan || "Survey Location"}
             />
@@ -843,7 +990,7 @@ function EditModal({
                 <EditField label="Tinggi ARM (m)" value={survey.tinggiARM || survey.tinggiArm} onChange={(v) => handleChange('tinggiARM', v)} />
                 <EditField label="Metode Ukur" value={survey.metodeUkur} onChange={(v) => handleChange('metodeUkur', v)} />
               </>
-            ) : (
+            ) : survey.type === "propose" ? (
               <>
                 <EditField label="Status ID Titik" value={survey.statusIDTitik} onChange={(v) => handleChange('statusIDTitik', v)} />
                 <EditField label="ID Titik" value={survey.idTitik} onChange={(v) => handleChange('idTitik', v)} />
@@ -852,6 +999,26 @@ function EditModal({
                 <EditField label="Data Ruas" value={survey.dataRuas} onChange={(v) => handleChange('dataRuas', v)} />
                 <EditField label="Sub Ruas" value={survey.subRuas} onChange={(v) => handleChange('subRuas', v)} />
                 <EditField label="Jarak Antar Tiang (m)" value={survey.jarakAntarTiang} onChange={(v) => handleChange('jarakAntarTiang', v)} />
+              </>
+            ) : (
+              <>
+                <EditField label="Kabupaten" value={survey.kabupatenName || survey.kabupaten} onChange={(v) => handleChange('kabupatenName', v)} />
+                <EditField label="Kecamatan" value={survey.kecamatan} onChange={(v) => handleChange('kecamatan', v)} />
+                <EditField label="Desa" value={survey.desa} onChange={(v) => handleChange('desa', v)} />
+                <EditField label="Banjar" value={survey.banjar} onChange={(v) => handleChange('banjar', v)} />
+                <EditField label="Kepemilikan Tiang" value={survey.kepemilikanDisplay || survey.kepemilikanTiang} onChange={(v) => handleChange('kepemilikanDisplay', v)} />
+                <EditField label="Tipe Tiang PLN" value={survey.tipeTiangPLN} onChange={(v) => handleChange('tipeTiangPLN', v)} />
+                <EditField label="Jenis Lampu" value={survey.jenisLampu} onChange={(v) => handleChange('jenisLampu', v)} />
+                <EditField label="Jumlah Lampu" value={survey.jumlahLampu} onChange={(v) => handleChange('jumlahLampu', v)} />
+                <EditField label="Daya Lampu" value={survey.dayaLampu} onChange={(v) => handleChange('dayaLampu', v)} />
+                <EditField label="Fungsi Lampu" value={survey.fungsiLampu} onChange={(v) => handleChange('fungsiLampu', v)} />
+                <EditField label="Lebar Jalan" value={survey.lebarJalan} onChange={(v) => handleChange('lebarJalan', v)} />
+                <EditField label="Kondisi" value={survey.kondisi} onChange={(v) => handleChange('kondisi', v)} />
+                <EditField label="Jenis Tiang" value={survey.jenisTiang} onChange={(v) => handleChange('jenisTiang', v)} />
+                <EditField label="Gardu" value={survey.garduStatus} onChange={(v) => handleChange('garduStatus', v)} />
+                <EditField label="Kode Gardu" value={survey.kodeGardu} onChange={(v) => handleChange('kodeGardu', v)} />
+                <EditField label="Koordinat Final Admin Latitude" value={survey.adminLatitude?.toString()} onChange={(v) => handleChange('adminLatitude', parseFloat(v) || 0)} type="number" />
+                <EditField label="Koordinat Final Admin Longitude" value={survey.adminLongitude?.toString()} onChange={(v) => handleChange('adminLongitude', parseFloat(v) || 0)} type="number" />
               </>
             )}
             
@@ -904,7 +1071,7 @@ function EditField({
   multiline = false 
 }: { 
   label: string; 
-  value: any; 
+  value: string | number | undefined | null; 
   onChange: (value: string) => void;
   type?: string;
   multiline?: boolean;

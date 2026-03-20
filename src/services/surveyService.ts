@@ -14,6 +14,7 @@ import {
 import { db } from "@/lib/firebase";
 import { SurveyData } from "@/types/survey";
 import { FIREBASE_COLLECTIONS } from "@/utils/constants";
+import { getActiveKabupatenFromStorage } from "@/utils/helpers";
 
 /**
  * Fetch all surveys from Firestore
@@ -72,10 +73,12 @@ export async function addSurvey(
   surveyData: Omit<SurveyData, "id">
 ): Promise<string> {
   try {
+    const kabupaten = getActiveKabupatenFromStorage((surveyData as any)?.surveyorUid || "");
     const docRef = await addDoc(
       collection(db, FIREBASE_COLLECTIONS.SURVEYS),
       {
         ...surveyData,
+        kabupaten: (surveyData as any).kabupaten || kabupaten || "",
         createdAt: new Date().toISOString(),
       }
     );

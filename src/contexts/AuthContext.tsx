@@ -9,7 +9,7 @@ interface User {
   email: string;
   username: string;
   displayName: string;
-  role: "admin" | "super-admin" | "petugas-existing" | "petugas-apj-propose" | "petugas-survey-cahaya" | "petugas-kontruksi" | "petugas-om" | "petugas-bmd-gudang";
+  role: "admin" | "super-admin" | "petugas-existing" | "petugas-apj-propose" | "petugas-pra-existing" | "petugas-survey-cahaya" | "petugas-kontruksi" | "petugas-om" | "petugas-bmd-gudang";
   uid: string;
   name: string;
   phoneNumber?: string;

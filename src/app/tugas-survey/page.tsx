@@ -32,7 +32,7 @@ interface Task {
   surveyorName: string;
   surveyorEmail: string;
   status: string; // "pending", "in-progress", "completed"
-  type: string; // "propose", "existing", "propose-existing"
+  type: string; // "propose", "existing", "propose-existing", "pra-existing"
   kmzFileUrl?: string;
   kmzFileUrl2?: string;
   excelFileUrl?: string;
@@ -134,6 +134,8 @@ function TugasSurveyContent() {
       } else if (task.type === "propose-existing") {
         // User can choose which to start first
         router.push("/survey-selection");
+      } else if (task.type === "pra-existing") {
+        router.push("/survey-pra-existing");
       }
     } catch (error) {
       console.error("Error starting task:", error);

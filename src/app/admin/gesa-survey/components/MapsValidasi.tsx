@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
@@ -28,8 +28,8 @@ interface Survey {
   validatedBy: string;
   latitude: number;
   longitude: number;
-  createdAt: any;
-  validatedAt: any;
+  createdAt: TimestampLike;
+  validatedAt: TimestampLike;
   // Data sesuai modal
   namaJalan: string;
   zona: string;
@@ -42,9 +42,30 @@ interface Survey {
   subRuas: string;
   jarakAntarTiang: string;
   keterangan: string;
+  kabupaten?: string;
+  kecamatan?: string;
+  desa?: string;
+  banjar?: string;
+  kepemilikanDisplay?: string;
+  tipeTiangPLN?: string;
+  jenisLampu?: string;
+  jumlahLampu?: string;
+  fungsiLampu?: string;
+  garduStatus?: string;
+  kodeGardu?: string;
+  finalLatitude?: number;
+  finalLongitude?: number;
 }
 
-export default function MapsValidasi() {
+type TimestampLike =
+  | { toDate?: () => Date; seconds?: number }
+  | Date
+  | string
+  | number
+  | null
+  | undefined;
+
+export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: string | null }) {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -52,27 +73,35 @@ export default function MapsValidasi() {
     visible: 0,
     existing: 0,
     propose: 0,
+    praExisting: 0,
   });
 
-  useEffect(() => {
-    fetchSurveys();
-  }, []);
-
-  const fetchSurveys = async () => {
+  const fetchSurveys = useCallback(async () => {
     try {
       setLoading(true);
       
       // Fetch dari survey-existing
       const existingRef = collection(db, "survey-existing");
-      const existingQuery = query(existingRef, where("status", "==", "tervalidasi"));
+      const existingQuery = activeKabupaten
+        ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "tervalidasi"))
+        : query(existingRef, where("status", "==", "tervalidasi"));
       const existingSnapshot = await getDocs(existingQuery);
       
       // Fetch dari survey-apj-propose
       const proposeRef = collection(db, "survey-apj-propose");
-      const proposeQuery = query(proposeRef, where("status", "==", "tervalidasi"));
+      const proposeQuery = activeKabupaten
+        ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "tervalidasi"))
+        : query(proposeRef, where("status", "==", "tervalidasi"));
       const proposeSnapshot = await getDocs(proposeQuery);
       
-      // Combine data dari kedua collection
+      // Fetch dari survey-pra-existing
+      const praExistingRef = collection(db, "survey-pra-existing");
+      const praExistingQuery = activeKabupaten
+        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "tervalidasi"))
+        : query(praExistingRef, where("status", "==", "tervalidasi"));
+      const praExistingSnapshot = await getDocs(praExistingQuery);
+
+      // Combine data dari collection
       const existingData = existingSnapshot.docs.map((doc) => {
         const surveyData = doc.data();
         return {
@@ -126,8 +155,48 @@ export default function MapsValidasi() {
           keterangan: surveyData.keterangan || "N/A",
         };
       }) as Survey[];
+
+      const praExistingData = praExistingSnapshot.docs.map((doc) => {
+        const surveyData = doc.data();
+        return {
+          id: doc.id,
+          title: surveyData.title || `Survey Pra Existing - ${surveyData.jenisLampu || "Untitled"}`,
+          type: "pra-existing",
+          status: surveyData.status || "tervalidasi",
+          surveyorName: surveyData.surveyorName || "-",
+          validatedBy: surveyData.validatedBy || surveyData.editedBy || "Admin",
+          latitude: surveyData.finalLatitude || surveyData.adminLatitude || surveyData.latitude || 0,
+          longitude: surveyData.finalLongitude || surveyData.adminLongitude || surveyData.longitude || 0,
+          createdAt: surveyData.createdAt,
+          validatedAt: surveyData.validatedAt || surveyData.createdAt,
+          namaJalan: surveyData.lokasiLengkap || surveyData.title || "-",
+          zona: "Pra Existing",
+          kategori: "Survey Pra Existing",
+          statusIdTitik: "-",
+          idTitik: "N/A",
+          dayaLampu: surveyData.dayaLampu || "-",
+          dataTiang: surveyData.jenisTiang || "-",
+          dataRuas: "-",
+          subRuas: "-",
+          jarakAntarTiang: "-",
+          keterangan: surveyData.keterangan || surveyData.kondisi || "N/A",
+          kabupaten: surveyData.kabupatenName || surveyData.kabupaten || "-",
+          kecamatan: surveyData.kecamatan || "-",
+          desa: surveyData.desa || "-",
+          banjar: surveyData.banjar || "-",
+          kepemilikanDisplay: surveyData.kepemilikanDisplay || surveyData.keteranganTiang || surveyData.kepemilikanTiang || "-",
+          tipeTiangPLN: surveyData.tipeTiangPLN || "-",
+          jenisLampu: surveyData.jenisLampu || "-",
+          jumlahLampu: surveyData.jumlahLampu || "-",
+          fungsiLampu: surveyData.fungsiLampu || "-",
+          garduStatus: surveyData.garduStatus || "-",
+          kodeGardu: surveyData.kodeGardu || "-",
+          finalLatitude: surveyData.finalLatitude || surveyData.adminLatitude || surveyData.latitude || 0,
+          finalLongitude: surveyData.finalLongitude || surveyData.adminLongitude || surveyData.longitude || 0,
+        };
+      }) as Survey[];
       
-      const allSurveys = [...existingData, ...proposeData];
+      const allSurveys = [...existingData, ...proposeData, ...praExistingData];
       
       setSurveys(allSurveys);
       setStats({
@@ -135,13 +204,18 @@ export default function MapsValidasi() {
         visible: allSurveys.length,
         existing: existingData.length,
         propose: proposeData.length,
+        praExisting: praExistingData.length,
       });
     } catch (error) {
       console.error("Error fetching surveys:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeKabupaten]);
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchSurveys);
+  }, [fetchSurveys]);
 
   const handleResetView = () => {
     // Reset map view to default center
@@ -177,7 +251,7 @@ export default function MapsValidasi() {
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="bg-white rounded-xl p-5 shadow-md border border-gray-200">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -232,6 +306,20 @@ export default function MapsValidasi() {
             <div className="flex-1">
               <p className="text-xs text-gray-600 font-medium">Survey APJ Propose</p>
               <h3 className="text-3xl font-bold text-gray-900">{stats.propose}</h3>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl p-5 shadow-md border border-gray-200">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-xs text-gray-600 font-medium">Survey Pra Existing</p>
+              <h3 className="text-3xl font-bold text-gray-900">{stats.praExisting}</h3>
             </div>
           </div>
         </div>

@@ -6,9 +6,11 @@ import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, where } from "firebase/firestore";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
+import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
+import { KABUPATEN_OPTIONS } from "@/utils/constants";
 
 interface GPSCoordinates {
   latitude: number;
@@ -60,6 +62,11 @@ const DynamicSurveyMap = dynamic(
 function SurveyAPJProposeContent() {
   const router = useRouter();
   const { user } = useAuth();
+
+  const [activeKabupaten, setActiveKabupaten] = useState<string | null>(null);
+  const [pendingKabupaten, setPendingKabupaten] = useState<string | null>(null);
+  const [showKabupatenPicker, setShowKabupatenPicker] = useState(false);
+  const [showKabupatenConfirm, setShowKabupatenConfirm] = useState(false);
 
   const [gpsCoords, setGpsCoords] = useState<GPSCoordinates | null>(null);
   const [isGPSActive, setIsGPSActive] = useState(false);
@@ -177,6 +184,45 @@ function SurveyAPJProposeContent() {
     setShowMedianModal(false);
   };
 
+  useEffect(() => {
+    const stored = getActiveKabupatenFromStorage(user?.uid || "");
+    if (stored) {
+      setActiveKabupaten(stored);
+      setShowKabupatenPicker(false);
+    } else {
+      setActiveKabupaten(null);
+      setShowKabupatenPicker(true);
+    }
+  }, [user?.uid]);
+
+  const activeKabupatenName =
+    KABUPATEN_OPTIONS.find((k) => k.id === activeKabupaten)?.name || "-";
+  const pendingKabupatenName =
+    KABUPATEN_OPTIONS.find((k) => k.id === pendingKabupaten)?.name || "-";
+
+  const handleKabupatenPick = (kabupatenId: string) => {
+    if (kabupatenId === activeKabupaten) {
+      setShowKabupatenPicker(false);
+      return;
+    }
+    setPendingKabupaten(kabupatenId);
+    setShowKabupatenConfirm(true);
+  };
+
+  const handleKabupatenConfirm = () => {
+    if (!pendingKabupaten) return;
+    setActiveKabupaten(pendingKabupaten);
+    setActiveKabupatenToStorage(user?.uid || "", pendingKabupaten);
+    setPendingKabupaten(null);
+    setShowKabupatenConfirm(false);
+    setShowKabupatenPicker(false);
+  };
+
+  const handleKabupatenCancel = () => {
+    setPendingKabupaten(null);
+    setShowKabupatenConfirm(false);
+  };
+
   // Load KMZ file URL from active task
   useEffect(() => {
     const activeTaskStr = localStorage.getItem("activeTask");
@@ -205,9 +251,14 @@ function SurveyAPJProposeContent() {
   useEffect(() => {
     const loadSurveyData = async () => {
       try {
+        if (!activeKabupaten) {
+          setSurveyData([]);
+          return;
+        }
         setLoadingSurveys(true);
         const surveysQuery = query(
           collection(db, "survey-apj-propose"),
+          where("kabupaten", "==", activeKabupaten),
           orderBy("createdAt", "desc")
         );
         const querySnapshot = await getDocs(surveysQuery);
@@ -225,7 +276,7 @@ function SurveyAPJProposeContent() {
     };
 
     loadSurveyData();
-  }, []);
+  }, [activeKabupaten]);
   
   // Handle completing a task point
   const handleCompletePoint = useCallback((pointId: string, pointName: string, lat: number, lng: number) => {
@@ -694,6 +745,11 @@ function SurveyAPJProposeContent() {
       }
 
       // Save to Firestore
+      const kabupaten = getActiveKabupatenFromStorage(user?.uid || "");
+      if (!kabupaten) {
+        alert("Kabupaten belum dipilih. Silakan pilih kabupaten terlebih dahulu.");
+        return;
+      }
       const surveyData = {
         // Form data
         statusIDTitik: formData.statusIDTitik,
@@ -728,6 +784,7 @@ function SurveyAPJProposeContent() {
         surveyorName: user?.displayName || user?.email || "Unknown",
         surveyorEmail: user?.email,
         surveyorUid: user?.uid,
+        kabupaten,
         createdAt: serverTimestamp(),
         title: `Survey APJ Propose - ${formData.namaJalan}`,
         
@@ -744,6 +801,7 @@ function SurveyAPJProposeContent() {
       // Reload survey data to show on map
       const surveysQuery = query(
         collection(db, "survey-apj-propose"),
+        where("kabupaten", "==", kabupaten),
         orderBy("createdAt", "desc")
       );
       const querySnapshot = await getDocs(surveysQuery);
@@ -806,6 +864,17 @@ function SurveyAPJProposeContent() {
               <div>
                 <h1 className="text-lg sm:text-xl font-bold text-gray-900">Survey APJ Propose</h1>
                 <p className="text-xs text-gray-600">Form survey tiang APJ propose</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                    Kabupaten aktif: {activeKabupatenName}
+                  </span>
+                  <button
+                    onClick={() => setShowKabupatenPicker(true)}
+                    className="text-[11px] font-semibold text-gray-700 hover:text-blue-700 border border-gray-200 hover:border-blue-200 bg-white px-2 py-0.5 rounded-full transition-all"
+                  >
+                    Ganti kabupaten
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1552,6 +1621,72 @@ function SurveyAPJProposeContent() {
           Simpan
         </button>
       </main>
+
+      {showKabupatenPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="p-5 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-900">Pilih Kabupaten</h3>
+              <p className="text-sm text-gray-600">Pilih lokasi kerja agar data terfokus dan tidak tercampur.</p>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {KABUPATEN_OPTIONS.map((k) => (
+                  <button
+                    key={k.id}
+                    onClick={() => handleKabupatenPick(k.id)}
+                    className={`text-left p-4 rounded-xl border-2 transition-all ${
+                      activeKabupaten === k.id
+                        ? "border-blue-400 bg-blue-50 shadow-sm"
+                        : "border-gray-200 hover:border-blue-300 hover:bg-blue-50/40"
+                    }`}
+                  >
+                    <div className="text-base font-bold text-gray-900">{k.name}</div>
+                    <div className="text-xs text-gray-600 mt-1">{k.description}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex items-center justify-end">
+              {activeKabupaten && (
+                <button
+                  onClick={() => setShowKabupatenPicker(false)}
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50"
+                >
+                  Batal
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showKabupatenConfirm && pendingKabupaten && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="p-5 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-900">Konfirmasi Kabupaten</h3>
+              <p className="text-sm text-gray-600">
+                Kamu akan bekerja di: <span className="font-semibold text-gray-900">{pendingKabupatenName}</span>
+              </p>
+            </div>
+            <div className="p-5 flex items-center justify-end gap-2">
+              <button
+                onClick={handleKabupatenCancel}
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleKabupatenConfirm}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold"
+              >
+                Mulai
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

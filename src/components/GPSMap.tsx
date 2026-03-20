@@ -1,45 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import dynamic from "next/dynamic";
 
-// Dynamic import for KMZTaskOverlay
 const KMZTaskOverlay = dynamic(() => import("./KMZTaskOverlay"), { ssr: false });
 
-// ========================================
-// FIX: Leaflet Icon Issue in Next.js
-// ========================================
-// IMPORTANT: Only execute in browser (not during SSR)
-let DefaultIcon: L.Icon<L.IconOptions> | undefined;
+type LeafletDefaultProto = L.Icon.Default & { _getIconUrl?: unknown };
 
 if (typeof window !== "undefined") {
-  // Delete the default _getIconUrl to prevent errors
-  delete (L.Icon.Default.prototype as any)._getIconUrl;
-  
-  // Set icon URLs to CDN
+  delete (L.Icon.Default.prototype as LeafletDefaultProto)._getIconUrl;
+
   L.Icon.Default.mergeOptions({
     iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
     iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
     shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
   });
-  
-  DefaultIcon = L.icon({
-    iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-    iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-    shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
-  });
 }
 
-// ========================================
-// Component: MapUpdater (Auto center & zoom)
-// ========================================
 interface MapUpdaterProps {
   center: [number, number];
   zoom: number;
@@ -57,9 +37,6 @@ function MapUpdater({ center, zoom }: MapUpdaterProps) {
   return null;
 }
 
-// ========================================
-// Component: MapWithKMZ (handles map instance)
-// ========================================
 interface MapWithKMZProps {
   kmzFileUrl?: string;
   currentPosition?: { lat: number; lng: number } | null;
@@ -68,21 +45,11 @@ interface MapWithKMZProps {
 }
 
 function MapWithKMZ({ kmzFileUrl, currentPosition, completedPoints, onPointComplete }: MapWithKMZProps) {
-  const [map, setMap] = useState<L.Map | null>(null);
-  const mapInstance = useMap();
-
-  useEffect(() => {
-    if (mapInstance) {
-      setMap(mapInstance);
-    }
-  }, [mapInstance]);
+  const map = useMap();
 
   return <>{kmzFileUrl && <KMZTaskOverlay map={map} kmzFileUrl={kmzFileUrl} currentPosition={currentPosition} completedPoints={completedPoints} onPointComplete={onPointComplete} />}</>;
 }
 
-// ========================================
-// Component: GPSMap (Main Map Component)
-// ========================================
 export interface GPSMapProps {
   latitude: number | null;
   longitude: number | null;
@@ -90,38 +57,26 @@ export interface GPSMapProps {
   hasGPS: boolean;
   kmzFileUrl?: string;
   completedPoints?: string[];
+  trackingPath?: Array<{ lat: number; lng: number }>;
   onPointComplete?: (pointId: string, pointName: string, lat: number, lng: number) => void;
 }
 
-function GPSMap({ latitude, longitude, accuracy, hasGPS, kmzFileUrl, completedPoints, onPointComplete }: GPSMapProps) {
-  const [isMounted, setIsMounted] = useState(false);
+function GPSMap({ latitude, longitude, accuracy, hasGPS, kmzFileUrl, completedPoints, trackingPath = [], onPointComplete }: GPSMapProps) {
   const [isReady, setIsReady] = useState(false);
 
-  // Default location (Bali, Indonesia)
-  const defaultPosition: [number, number] = [-8.4095, 115.1889];
-  
-  // Use GPS coordinates if available, otherwise use default
-  const position: [number, number] = 
-    latitude !== null && longitude !== null 
-      ? [latitude, longitude] 
-      : defaultPosition;
-
-  const zoom = hasGPS ? 18 : 12;
-
-  // Client-side mounting with double check
   useEffect(() => {
-    if (typeof window !== "undefined" && typeof document !== "undefined") {
-      const timer = setTimeout(() => {
-        setIsMounted(true);
-        // Add extra delay to ensure DOM is ready
-        setTimeout(() => setIsReady(true), 100);
-      }, 200);
-      return () => clearTimeout(timer);
-    }
+    const timer = setTimeout(() => {
+      setIsReady(true);
+    }, 120);
+
+    return () => clearTimeout(timer);
   }, []);
 
-  // Loading state
-  if (!isMounted || !isReady) {
+  const defaultPosition: [number, number] = [-8.4095, 115.1889];
+  const position: [number, number] = latitude !== null && longitude !== null ? [latitude, longitude] : defaultPosition;
+  const zoom = hasGPS ? 18 : 12;
+
+  if (!isReady) {
     return (
       <div className="rounded-xl overflow-hidden border-2 border-blue-200 shadow-lg flex items-center justify-center bg-gray-100" style={{ height: "500px" }}>
         <div className="text-center">
@@ -132,7 +87,6 @@ function GPSMap({ latitude, longitude, accuracy, hasGPS, kmzFileUrl, completedPo
     );
   }
 
-  // Accuracy color
   const getAccuracyColor = (acc: number): string => {
     if (acc < 10) return "#10b981";
     if (acc < 20) return "#3b82f6";
@@ -140,86 +94,71 @@ function GPSMap({ latitude, longitude, accuracy, hasGPS, kmzFileUrl, completedPo
     return "#ef4444";
   };
 
-  // GPS status text
   const getGPSStatusText = (): string => {
-    if (!hasGPS) return "❌ GPS Tidak Aktif";
-    if (accuracy < 10) return "🟢 GPS Presisi Tinggi";
-    if (accuracy < 20) return "🔵 GPS Akurat";
-    if (accuracy < 50) return "🟠 GPS Cukup Baik";
-    return "🔴 GPS Kurang Presisi";
+    if (!hasGPS) return "GPS Tidak Aktif";
+    if (accuracy < 10) return "GPS Presisi Tinggi";
+    if (accuracy < 20) return "GPS Akurat";
+    if (accuracy < 50) return "GPS Cukup Baik";
+    return "GPS Kurang Presisi";
   };
 
   return (
     <div className="rounded-xl overflow-hidden border-2 border-blue-200 shadow-lg" style={{ height: "500px", width: "100%", position: "relative" }}>
-      {typeof window !== "undefined" && (
-        <MapContainer
-          center={position}
-          zoom={zoom}
-          style={{ height: "100%", width: "100%", zIndex: 0 }}
-          zoomControl={true}
-          scrollWheelZoom={true}
-          attributionControl={true}
-          preferCanvas={true}
-          whenReady={() => {
-            console.log("GPSMap ready");
-          }}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            maxZoom={20}
-          />
+      <MapContainer
+        center={position}
+        zoom={zoom}
+        style={{ height: "100%", width: "100%", zIndex: 0 }}
+        zoomControl={true}
+        scrollWheelZoom={true}
+        attributionControl={true}
+        preferCanvas={false}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxZoom={20}
+        />
 
-          {/* KMZ Overlay */}
-          <MapWithKMZ 
-            kmzFileUrl={kmzFileUrl} 
-            currentPosition={latitude !== null && longitude !== null ? { lat: latitude, lng: longitude } : null}
-            completedPoints={completedPoints}
-            onPointComplete={onPointComplete}
-          />
+        <MapWithKMZ
+          kmzFileUrl={kmzFileUrl}
+          currentPosition={latitude !== null && longitude !== null ? { lat: latitude, lng: longitude } : null}
+          completedPoints={completedPoints}
+          onPointComplete={onPointComplete}
+        />
 
-        {/* Show marker & accuracy circle only if GPS is active */}
+        {trackingPath.length > 1 && (
+          <Polyline
+            positions={trackingPath.map((point) => [point.lat, point.lng] as [number, number])}
+            pathOptions={{ color: "#2563EB", weight: 4, opacity: 0.8 }}
+          />
+        )}
+
         {hasGPS && latitude !== null && longitude !== null && (
           <>
-            {/* Accuracy Circle */}
-            {accuracy > 0 && (
-              <Circle
-                center={position}
-                radius={accuracy}
-                pathOptions={{
-                  color: getAccuracyColor(accuracy),
-                  fillColor: getAccuracyColor(accuracy),
-                  fillOpacity: 0.15,
-                  weight: 2,
-                }}
-              />
-            )}
-
-            {/* User Position Marker */}
-            <Marker position={position} icon={DefaultIcon}>
+            <Circle
+              center={[latitude, longitude]}
+              radius={Math.max(accuracy, 5)}
+              pathOptions={{
+                color: getAccuracyColor(accuracy),
+                fillColor: getAccuracyColor(accuracy),
+                fillOpacity: 0.12,
+                weight: 1,
+              }}
+            />
+            <Marker position={[latitude, longitude]}>
               <Popup>
-                <div className="text-sm min-w-[200px]">
-                  <p className="font-bold mb-2 text-base">📍 Posisi Anda</p>
-                  
-                  <div className="space-y-1">
-                    <div>
-                      <p className="text-xs text-gray-500">Latitude:</p>
-                      <p className="font-mono text-xs font-bold">{latitude.toFixed(7)}</p>
-                    </div>
-                    
-                    <div>
-                      <p className="text-xs text-gray-500">Longitude:</p>
-                      <p className="font-mono text-xs font-bold">{longitude.toFixed(7)}</p>
-                    </div>
-                    
-                    <div>
-                      <p className="text-xs text-gray-500">Akurasi:</p>
-                      <p className="font-bold text-xs">±{accuracy.toFixed(1)} meter</p>
-                    </div>
-                    
-                    <div className="pt-2 border-t mt-2">
-                      <p className="text-xs font-semibold">{getGPSStatusText()}</p>
-                    </div>
+                <div style={{ padding: "8px", minWidth: "170px" }}>
+                  <div style={{ fontWeight: "bold", marginBottom: "4px" }}>Lokasi GPS Anda</div>
+                  <div style={{ fontSize: "12px", color: "#666" }}>
+                    Lat: {latitude.toFixed(6)}<br />
+                    Lng: {longitude.toFixed(6)}<br />
+                    Akurasi: +/-{accuracy.toFixed(1)}m
+                  </div>
+                  <div style={{ paddingTop: "8px", borderTop: "1px solid #ddd", marginTop: "8px" }}>
+                    <p style={{ fontSize: "12px", fontWeight: "600", margin: "0" }}>{getGPSStatusText()}</p>
+                    {trackingPath.length > 1 && (
+                      <p style={{ fontSize: "11px", margin: "6px 0 0", color: "#2563EB" }}>Tracking tersimpan: {trackingPath.length} titik</p>
+                    )}
                   </div>
                 </div>
               </Popup>
@@ -228,31 +167,24 @@ function GPSMap({ latitude, longitude, accuracy, hasGPS, kmzFileUrl, completedPo
         )}
 
         <MapUpdater center={position} zoom={zoom} />
-        </MapContainer>
-      )}
+      </MapContainer>
 
-      {/* Accuracy Indicator Overlay */}
       {hasGPS && (
-        <div className="absolute top-2 left-2 bg-white/95 backdrop-blur px-3 py-1.5 rounded-lg shadow-md text-xs font-bold z-[1000]">
-          <span
-            className={`inline-block w-2 h-2 rounded-full mr-1.5 ${
-              accuracy < 10
-                ? "bg-green-500"
-                : accuracy < 20
-                ? "bg-blue-500"
-                : accuracy < 50
-                ? "bg-orange-500"
-                : "bg-red-500"
-            }`}
-          ></span>
-          ±{accuracy.toFixed(1)}m
+        <div className="absolute top-2 left-2 bg-white bg-opacity-95 backdrop-blur px-3 py-1.5 rounded-lg shadow-md text-xs font-bold z-50">
+          <span className="inline-block w-2 h-2 rounded-full mr-1.5 bg-green-500"></span>
+          +/-{accuracy.toFixed(1)}m
         </div>
       )}
 
-      {/* No GPS Indicator */}
+      {trackingPath.length > 1 && (
+        <div className="absolute top-2 right-2 rounded-lg bg-blue-600/95 px-3 py-1.5 text-xs font-semibold text-white shadow-md z-50">
+          Tracking {trackingPath.length} titik
+        </div>
+      )}
+
       {!hasGPS && (
-        <div className="absolute top-2 left-2 right-2 bg-yellow-100 border border-yellow-400 px-3 py-2 rounded-lg shadow-md text-xs font-semibold z-[1000] text-center">
-          ⚠️ GPS Belum Aktif - Aktifkan GPS untuk melihat posisi Anda
+        <div className="absolute top-2 left-2 right-2 bg-yellow-100 border border-yellow-400 px-3 py-2 rounded-lg shadow-md text-xs font-semibold z-50 text-center">
+          GPS belum aktif. Aktifkan GPS untuk melihat posisi Anda.
         </div>
       )}
     </div>

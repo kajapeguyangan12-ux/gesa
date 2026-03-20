@@ -69,9 +69,10 @@ interface Survey {
 interface SurveyExistingDetailProps {
   onBack: () => void;
   statusFilter?: string;
+  activeKabupaten?: string | null;
 }
 
-export default function SurveyExistingDetail({ onBack, statusFilter = "tervalidasi" }: SurveyExistingDetailProps) {
+export default function SurveyExistingDetail({ onBack, statusFilter = "tervalidasi", activeKabupaten }: SurveyExistingDetailProps) {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
@@ -81,13 +82,15 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "tervalida
 
   useEffect(() => {
     fetchSurveys();
-  }, [statusFilter]);
+  }, [statusFilter, activeKabupaten]);
 
   const fetchSurveys = async () => {
     try {
       setLoading(true);
       const surveysRef = collection(db, "survey-existing");
-      const q = query(surveysRef, where("status", "==", statusFilter));
+      const q = activeKabupaten
+        ? query(surveysRef, where("kabupaten", "==", activeKabupaten), where("status", "==", statusFilter))
+        : query(surveysRef, where("status", "==", statusFilter));
       const snapshot = await getDocs(q);
       
       const data = snapshot.docs.map((doc) => ({

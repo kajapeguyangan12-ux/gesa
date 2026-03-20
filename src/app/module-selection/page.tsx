@@ -100,6 +100,7 @@ function ModuleSelectionContent() {
       
       case "petugas-existing":
       case "petugas-apj-propose":
+      case "petugas-pra-existing":
         // Hanya tampilkan Gesa Survey
         return modules.filter(m => m.id === "gesa-survey");
       
@@ -130,6 +131,8 @@ function ModuleSelectionContent() {
       } else {
         router.push("/dashboard-pengukuran");
       }
+    } else if (moduleId === "gesa-survey" && user?.role === "petugas-pra-existing") {
+      router.push("/pra-existing-panel");
     } else {
       router.push(route);
     }

@@ -265,6 +265,11 @@ function ReportEditContent() {
     report?.user,
     report?.reporter
   );
+  const kabupaten = pickFirstString(
+    report?.kabupaten,
+    report?.kabupaten_id,
+    report?.kabupatenId
+  );
   const watt = formatWatt(
     report?.watt ??
       report?.power ??
@@ -504,6 +509,13 @@ function ReportEditContent() {
 
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden p-4 space-y-4">
               <h3 className="text-base font-bold text-gray-900">Info Laporan</h3>
+              {kabupaten && kabupaten !== "-" && (
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-full">
+                  <span className="text-xs font-semibold text-blue-700">
+                    Kabupaten: {kabupaten}
+                  </span>
+                </div>
+              )}
               <div>
                 <label className="text-xs font-semibold text-gray-500 uppercase">Nama Lampu</label>
                 <p className="text-sm font-semibold text-gray-900 mt-1">{title}</p>

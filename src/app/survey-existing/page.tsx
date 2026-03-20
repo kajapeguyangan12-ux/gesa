@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, where, onSnapshot } from "firebase/firestore";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 
@@ -414,22 +414,29 @@ function SurveyExistingContent() {
     };
   }, [handleCompletePoint]);
 
-  // Fetch all survey data
+  // Fetch all survey data with real-time listener and user filtering
   useEffect(() => {
+    if (!user?.uid) return;
+    
     const fetchSurveyData = async () => {
       try {
         setLoadingSurveys(true);
         const surveysRef = collection(db, "survey-existing");
-        const q = query(surveysRef, orderBy("createdAt", "desc"));
+        const q = query(
+          surveysRef, 
+          where("surveyorUid", "==", user.uid), // Filter by current user
+          orderBy("createdAt", "desc")
+        );
         const querySnapshot = await getDocs(q);
         
-        const surveys = querySnapshot.docs.map((doc) => ({
+        const surveys = querySnapshot.docs.map((doc: any) => ({
           id: doc.id,
           ...doc.data(),
         }));
         
         setSurveyData(surveys);
-      } catch (error) {
+        console.log(`[Survey-Existing] Fetched ${surveys.length} survey data points for user ${user.uid}`);
+      } catch (error: any) {
         console.error("Error fetching surveys:", error);
       } finally {
         setLoadingSurveys(false);
@@ -437,7 +444,7 @@ function SurveyExistingContent() {
     };
 
     fetchSurveyData();
-  }, []);
+  }, [user?.uid]);
 
   // Start GPS tracking with continuous updates
   useEffect(() => {

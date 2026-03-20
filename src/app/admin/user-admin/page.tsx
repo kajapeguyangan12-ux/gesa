@@ -20,7 +20,7 @@ interface User {
   createdAt: any;
 }
 
-type UserRole = "super-admin" | "admin" | "petugas-existing" | "petugas-apj-propose" | "petugas-survey-cahaya" | "petugas-kontruksi" | "petugas-om" | "petugas-bmd-gudang";
+type UserRole = "super-admin" | "admin" | "petugas-existing" | "petugas-apj-propose" | "petugas-pra-existing" | "petugas-survey-cahaya" | "petugas-kontruksi" | "petugas-om" | "petugas-bmd-gudang";
 
 // Memoized UserCard component for better performance
 const UserCard = memo(({ user, classes, onViewDetail, onDelete, isSuperAdmin }: { user: User; classes: any; onViewDetail: (user: User) => void; onDelete: (user: User) => void; isSuperAdmin: boolean }) => (
@@ -96,6 +96,7 @@ function UserAdminContent() {
   const [administrators, setAdministrators] = useState<User[]>([]);
   const [surveyExisting, setSurveyExisting] = useState<User[]>([]);
   const [surveyAPJ, setSurveyAPJ] = useState<User[]>([]);
+  const [surveyPraExisting, setSurveyPraExisting] = useState<User[]>([]);
   const [surveyCahaya, setSurveyCahaya] = useState<User[]>([]);
   const [kontruksi, setKontruksi] = useState<User[]>([]);
   const [om, setOm] = useState<User[]>([]);
@@ -172,6 +173,18 @@ function UserAdminContent() {
       );
       const apjSnapshot = await getDocs(apjQuery);
       setSurveyAPJ(apjSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as User[]);
+
+      // Fetch Survey Pra Existing
+      const praExistingQuery = query(
+        collection(db, "User-Admin"),
+        where("role", "==", "petugas-pra-existing"),
+        orderBy("createdAt", "desc")
+      );
+      const praExistingSnapshot = await getDocs(praExistingQuery);
+      setSurveyPraExisting(praExistingSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       })) as User[]);
@@ -314,6 +327,7 @@ function UserAdminContent() {
     "admin": "Admin (Halaman Admin)",
     "petugas-existing": "Petugas Survey Existing",
     "petugas-apj-propose": "Petugas APJ Propose",
+    "petugas-pra-existing": "Petugas Survey Pra Existing",
     "petugas-survey-cahaya": "Petugas Survey Cahaya",
     "petugas-kontruksi": "Petugas Kontruksi",
     "petugas-om": "Petugas O&M",
@@ -362,6 +376,15 @@ function UserAdminContent() {
         icon: "bg-gradient-to-br from-green-600 to-green-700",
         hover: "hover:bg-green-200",
         empty: "bg-green-50 border-green-300 text-green-400",
+      },
+      emerald: {
+        gradient: "from-emerald-500 to-emerald-600",
+        cardBg: "from-emerald-50 to-emerald-100",
+        border: "border-emerald-200 hover:border-emerald-400",
+        badge: "from-emerald-600 to-emerald-700",
+        icon: "bg-gradient-to-br from-emerald-600 to-emerald-700",
+        hover: "hover:bg-emerald-200",
+        empty: "bg-emerald-50 border-emerald-300 text-emerald-400",
       },
       orange: {
         gradient: "from-orange-500 to-orange-600",
@@ -510,6 +533,7 @@ function UserAdminContent() {
             {renderUserSection("Administrator", administrators, "purple", "Admin Survey")}
             {renderUserSection("Petugas Survey Existing", surveyExisting, "blue", "Survey Existing")}
             {renderUserSection("Petugas Survey APJ Propose", surveyAPJ, "green", "Survey APJ")}
+            {renderUserSection("Petugas Survey Pra Existing", surveyPraExisting, "emerald", "Pra Existing")}
             {renderUserSection("Petugas Survey Cahaya", surveyCahaya, "orange", "Survey Cahaya")}
             {renderUserSection("Petugas Kontruksi", kontruksi, "teal", "Kontruksi")}
             {renderUserSection("Petugas O&M", om, "indigo", "O&M")}

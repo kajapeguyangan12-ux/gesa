@@ -79,3 +79,25 @@ export function getStatusColor(status: string): {
       return { bg: "bg-yellow-100", text: "text-yellow-800" };
   }
 }
+
+/**
+ * Get active kabupaten from localStorage (per user if available)
+ */
+export function getActiveKabupatenFromStorage(userId?: string): string | null {
+  if (typeof window === "undefined") return null;
+  const perUserKey = userId ? `gesa_kabupaten_active_${userId}` : "";
+  const value =
+    (perUserKey ? localStorage.getItem(perUserKey) : null) ||
+    localStorage.getItem("gesa_kabupaten_active");
+  return value ? value.trim() : null;
+}
+
+export function setActiveKabupatenToStorage(userId: string | undefined, kabupaten: string): void {
+  if (typeof window === "undefined") return;
+  const perUserKey = userId ? `gesa_kabupaten_active_${userId}` : "";
+  if (perUserKey) {
+    localStorage.setItem(perUserKey, kabupaten);
+  } else {
+    localStorage.setItem("gesa_kabupaten_active", kabupaten);
+  }
+}

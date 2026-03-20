@@ -6,7 +6,7 @@ import { db } from "@/lib/firebase";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
-import { FIREBASE_COLLECTIONS } from "@/utils/constants";
+import { FIREBASE_COLLECTIONS, KABUPATEN_OPTIONS } from "@/utils/constants";
 
 interface SurveyData {
   id: string;
@@ -20,6 +20,7 @@ interface SurveyData {
   watt: string;
   meter: string;
   voltage: string;
+  kabupaten?: string;
   modifiedBy?: string;
   status?: string;
   createdAt?: any;
@@ -30,6 +31,7 @@ interface FilterState {
   petugas: string;
   tanggal: string;
   status: string;
+  kabupaten: string;
 }
 
 
@@ -45,6 +47,7 @@ function AdminPanelContent() {
     petugas: "",
     tanggal: "",
     status: "Semua",
+    kabupaten: "Semua",
   });
 
   // Check if user is admin (allow super-admin)
@@ -201,6 +204,12 @@ function AdminPanelContent() {
         data?.reporter,
         "-"
       ),
+      kabupaten: pickFirstString(
+        data?.kabupaten,
+        data?.kabupaten_id,
+        data?.kabupatenId,
+        meta?.kabupaten
+      ),
       watt: formatWatt(
         data?.watt ??
           data?.power ??
@@ -301,6 +310,12 @@ function AdminPanelContent() {
       filtered = filtered.filter((survey) => survey.status === filters.status);
     }
 
+    // Filter by kabupaten
+    if (filters.kabupaten !== "Semua" && filters.kabupaten !== "semua") {
+      const target = filters.kabupaten.toLowerCase();
+      filtered = filtered.filter((survey) => (survey.kabupaten || "").toLowerCase() === target);
+    }
+
     setFilteredSurveys(filtered);
   };
 
@@ -314,6 +329,7 @@ function AdminPanelContent() {
       petugas: "",
       tanggal: "",
       status: "Semua",
+      kabupaten: "Semua",
     });
   };
 
@@ -404,7 +420,7 @@ function AdminPanelContent() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-6">{/* Filters Section */}
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 border border-gray-200">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">{/* Judul / Lokasi */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">{/* Judul / Lokasi */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Judul / Lokasi
@@ -461,6 +477,23 @@ function AdminPanelContent() {
                 <option value="pending">Pending</option>
                 <option value="approved">Approved</option>
                 <option value="rejected">Rejected</option>
+              </select>
+            </div>
+
+            {/* Kabupaten */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Kabupaten
+              </label>
+              <select
+                value={filters.kabupaten}
+                onChange={(e) => handleFilterChange("kabupaten", e.target.value)}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900 bg-white cursor-pointer"
+              >
+                <option value="Semua">Semua</option>
+                {KABUPATEN_OPTIONS.map((k) => (
+                  <option key={k.id} value={k.id}>{k.name}</option>
+                ))}
               </select>
             </div>
 
@@ -565,6 +598,13 @@ function AdminPanelContent() {
 
                     {/* Card Body */}
                     <div className="p-5 space-y-3.5">
+                      {survey.kabupaten && (
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-full">
+                          <span className="text-xs font-semibold text-blue-700">
+                            Kabupaten: {survey.kabupaten}
+                          </span>
+                        </div>
+                      )}
                       {/* Location */}
                       <div className="flex items-start gap-3">
                         <div className="w-5 h-5 flex-shrink-0 mt-0.5">

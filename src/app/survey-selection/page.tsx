@@ -12,13 +12,12 @@ function SurveySelectionContent() {
   const [activeTask, setActiveTask] = useState<any>(null);
 
   useEffect(() => {
-    // Get active task from localStorage
     const activeTaskStr = localStorage.getItem("activeTask");
     if (activeTaskStr) {
       try {
         const task = JSON.parse(activeTaskStr);
         setActiveTask(task);
-        
+
         // Determine available surveys based on task type
         if (task.type === "propose-existing") {
           setAvailableSurveys(["existing", "apj-propose"]);
@@ -26,16 +25,21 @@ function SurveySelectionContent() {
           setAvailableSurveys(["apj-propose"]);
         } else if (task.type === "existing") {
           setAvailableSurveys(["existing"]);
+        } else if (task.type === "pra-existing") {
+          setAvailableSurveys(["pra-existing"]);
+        } else if (task.type === "all-surveys") {
+          setAvailableSurveys(["existing", "apj-propose", "pra-existing"]);
         } else {
-          // Default: show all if type is unknown
+          // Default for unknown task types: show primary surveys
           setAvailableSurveys(["existing", "apj-propose"]);
         }
       } catch (error) {
         console.error("Error parsing activeTask:", error);
+        // Fallback for parsing errors
         setAvailableSurveys(["existing", "apj-propose"]);
       }
     } else {
-      // No active task, show all surveys
+      // No active task, show default surveys for general users
       setAvailableSurveys(["existing", "apj-propose"]);
     }
   }, []);
@@ -61,9 +65,18 @@ function SurveySelectionContent() {
       borderColor: "border-yellow-200",
       hoverColor: "hover:border-yellow-400",
     },
+    {
+      id: "pra-existing",
+      title: "Survey Pra Existing",
+      icon: "📝",
+      description: "Survey sederhana untuk pendataan awal",
+      route: "/survey-pra-existing",
+      color: "from-green-50 to-teal-100",
+      borderColor: "border-green-200",
+      hoverColor: "hover:border-green-400",
+    },
   ];
 
-  // Filter survey types based on available surveys
   const surveyTypes = allSurveyTypes.filter(survey => availableSurveys.includes(survey.id));
 
   return (

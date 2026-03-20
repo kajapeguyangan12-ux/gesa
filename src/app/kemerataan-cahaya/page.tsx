@@ -1,24 +1,62 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, limit, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
+import { KABUPATEN_OPTIONS } from "@/utils/constants";
 
 interface GridCell {
   value: string;
 }
 
 type JenisJalan = "arterial" | "kolektor" | "lokal" | "lingkungan" | "";
+type KabupatenOption = { id: string; name: string; description: string };
+
+const normalizeKabupatenList = (value: any): string[] => {
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v).trim().toLowerCase()).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((v) => String(v).trim().toLowerCase())
+      .filter(Boolean);
+  }
+  return [];
+};
 
 export function KemeratanCahayaContent() {
   const router = useRouter();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super-admin";
-  
+  const kabupatenOptions: KabupatenOption[] = [...KABUPATEN_OPTIONS];
+
+  const allowedKabupatenIds = useMemo(() => {
+    if (!user) return kabupatenOptions.map((k) => k.id);
+    if (isAdmin) return kabupatenOptions.map((k) => k.id);
+    const raw =
+      (user as any)?.kabupaten_allowed ??
+      (user as any)?.kabupatenAllowed ??
+      (user as any)?.kabupaten ??
+      (user as any)?.kabupaten_id;
+    const normalized = normalizeKabupatenList(raw);
+    return normalized.length > 0 ? normalized : kabupatenOptions.map((k) => k.id);
+  }, [user, isAdmin, kabupatenOptions]);
+
+  const availableKabupaten = useMemo(
+    () => kabupatenOptions.filter((k) => allowedKabupatenIds.includes(k.id)),
+    [kabupatenOptions, allowedKabupatenIds]
+  );
+
+  const [activeKabupaten, setActiveKabupaten] = useState<string | null>(null);
+  const [pendingKabupaten, setPendingKabupaten] = useState<string | null>(null);
+  const [showKabupatenPicker, setShowKabupatenPicker] = useState(false);
+  const [showKabupatenConfirm, setShowKabupatenConfirm] = useState(false);
+
   const [jenisJalan, setJenisJalan] = useState<JenisJalan>("");
   const [jarakTiang, setJarakTiang] = useState("");
   const [lebarJalan, setLebarJalan] = useState("");
@@ -55,6 +93,56 @@ export function KemeratanCahayaContent() {
   const [selectedReportBottomData, setSelectedReportBottomData] = useState<any | null>(null);
   const [selectedReportBottomLabel, setSelectedReportBottomLabel] = useState<string | null>(null);
   const [lastLoadedBottomId, setLastLoadedBottomId] = useState<string | null>(null);
+
+  const getKabupatenStorageKey = useCallback(() => {
+    if (!user?.uid) return "gesa_kabupaten_active";
+    return `gesa_kabupaten_active_${user.uid}`;
+  }, [user?.uid]);
+
+  const applyKabupatenSelection = useCallback((kabupatenId: string) => {
+    setActiveKabupaten(kabupatenId);
+    const key = getKabupatenStorageKey();
+    if (key) localStorage.setItem(key, kabupatenId);
+  }, [getKabupatenStorageKey]);
+
+  useEffect(() => {
+    if (!user) return;
+    const key = getKabupatenStorageKey();
+    const stored = key ? localStorage.getItem(key) : null;
+    const allowedIds = availableKabupaten.map((k) => k.id);
+    if (stored && allowedIds.includes(stored)) {
+      setActiveKabupaten(stored);
+      setShowKabupatenPicker(false);
+      return;
+    }
+    if (availableKabupaten.length === 1) {
+      applyKabupatenSelection(availableKabupaten[0].id);
+      setShowKabupatenPicker(false);
+      return;
+    }
+    setActiveKabupaten(null);
+    setShowKabupatenPicker(true);
+  }, [user, availableKabupaten, getKabupatenStorageKey, applyKabupatenSelection]);
+
+  useEffect(() => {
+    if (!activeKabupaten) return;
+    setReportsList([]);
+    setSelectedReportTopId(null);
+    setSelectedReportTopData(null);
+    setSelectedReportTopLabel(null);
+    setSelectedReportMiddleId(null);
+    setSelectedReportMiddleData(null);
+    setSelectedReportMiddleLabel(null);
+    setSelectedReportBottomId(null);
+    setSelectedReportBottomData(null);
+    setSelectedReportBottomLabel(null);
+    setLastLoadedTopId(null);
+    setLastLoadedMiddleId(null);
+    setLastLoadedBottomId(null);
+    setShowTopList(false);
+    setShowMiddleList(false);
+    setShowBottomList(false);
+  }, [activeKabupaten]);
 
   // Jenis jalan options
   const jenisJalanOptions = [
@@ -173,12 +261,16 @@ export function KemeratanCahayaContent() {
     setIsGridReady(true);
     // Autoload reports list so petugas can pick immediately
     try {
-      fetchReportsList();
+      if (!activeKabupaten) {
+        setShowKabupatenPicker(true);
+      } else {
+        fetchReportsList();
+      }
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn("Autofetch reports failed:", e);
     }
-  }, [jenisJalan, jarakTiang, lebarJalan, loadMode, middleUpRows, middleDownRows]);
+  }, [jenisJalan, jarakTiang, lebarJalan, loadMode, middleUpRows, middleDownRows, activeKabupaten]);
 
   const getCellKey = (row: number, col: number) => `${row}-${col}`;
 
@@ -197,6 +289,11 @@ export function KemeratanCahayaContent() {
 
   const handleLoadDataFromTop = useCallback(() => {
     (async () => {
+      if (!activeKabupaten) {
+        alert("Pilih kabupaten terlebih dahulu!");
+        setShowKabupatenPicker(true);
+        return;
+      }
       // Prioritize selected report for Load Data Pertama
       if (selectedReportTopData) {
         if (selectedReportTopId && lastLoadedTopId === selectedReportTopId) return;
@@ -206,7 +303,12 @@ export function KemeratanCahayaContent() {
 
       // Fallback: fetch latest report
       try {
-        const q = query(collection(db, "reports"), orderBy("createdAt", "desc"), limit(1));
+        const q = query(
+          collection(db, "reports"),
+          where("kabupaten", "==", activeKabupaten),
+          orderBy("createdAt", "desc"),
+          limit(1)
+        );
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
           const data = snapshot.docs[0].data();
@@ -218,10 +320,15 @@ export function KemeratanCahayaContent() {
       }
       alert("Tidak ada data untuk di-load!");
     })();
-  }, [rows, cols, selectedReportTopData, selectedReportTopId, lastLoadedTopId]);
+  }, [rows, cols, selectedReportTopData, selectedReportTopId, lastLoadedTopId, activeKabupaten]);
 
   const handleLoadDataFromBottom = useCallback(() => {
     (async () => {
+      if (!activeKabupaten) {
+        alert("Pilih kabupaten terlebih dahulu!");
+        setShowKabupatenPicker(true);
+        return;
+      }
       // Prioritize selected report for Load Data Kedua
       if (selectedReportBottomData) {
         if (selectedReportBottomId && lastLoadedBottomId === selectedReportBottomId) return;
@@ -231,7 +338,12 @@ export function KemeratanCahayaContent() {
 
       // Fallback: fetch oldest report
       try {
-        const q = query(collection(db, "reports"), orderBy("createdAt", "asc"), limit(1));
+        const q = query(
+          collection(db, "reports"),
+          where("kabupaten", "==", activeKabupaten),
+          orderBy("createdAt", "asc"),
+          limit(1)
+        );
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
           const data = snapshot.docs[0].data();
@@ -243,10 +355,15 @@ export function KemeratanCahayaContent() {
       }
       alert("Tidak ada data untuk di-load!");
     })();
-  }, [rows, cols, selectedReportBottomData, selectedReportBottomId, lastLoadedBottomId]);
+  }, [rows, cols, selectedReportBottomData, selectedReportBottomId, lastLoadedBottomId, activeKabupaten]);
 
   const handleLoadDataFromMiddle = useCallback(() => {
     (async () => {
+      if (!activeKabupaten) {
+        alert("Pilih kabupaten terlebih dahulu!");
+        setShowKabupatenPicker(true);
+        return;
+      }
       if (selectedReportMiddleData) {
         if (selectedReportMiddleId && lastLoadedMiddleId === selectedReportMiddleId) return;
         const ok = applyReportToGrid(selectedReportMiddleData, "middle", selectedReportMiddleId || undefined);
@@ -254,7 +371,12 @@ export function KemeratanCahayaContent() {
       }
 
       try {
-        const q = query(collection(db, "reports"), orderBy("createdAt", "desc"), limit(1));
+        const q = query(
+          collection(db, "reports"),
+          where("kabupaten", "==", activeKabupaten),
+          orderBy("createdAt", "desc"),
+          limit(1)
+        );
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
           const data = snapshot.docs[0].data();
@@ -266,7 +388,7 @@ export function KemeratanCahayaContent() {
       }
       alert("Tidak ada data untuk di-load!");
     })();
-  }, [rows, cols, selectedReportMiddleData, selectedReportMiddleId, lastLoadedMiddleId]);
+  }, [rows, cols, selectedReportMiddleData, selectedReportMiddleId, lastLoadedMiddleId, activeKabupaten]);
 
   const deriveReportLabel = (data: any) => {
     if (!data) return "(untitled)";
@@ -541,8 +663,17 @@ export function KemeratanCahayaContent() {
 
   const fetchReportsList = async () => {
     try {
+      if (!activeKabupaten) {
+        setReportsList([]);
+        return;
+      }
       setReportsLoading(true);
-      const q = query(collection(db, "reports"), orderBy("createdAt", "desc"), limit(100));
+      const q = query(
+        collection(db, "reports"),
+        where("kabupaten", "==", activeKabupaten),
+        orderBy("createdAt", "desc"),
+        limit(100)
+      );
       const snapshot = await getDocs(q);
       const list = snapshot.docs.map((d) => ({ id: d.id, label: deriveReportLabel(d.data()), data: d.data() }));
       setReportsList(list);
@@ -709,6 +840,39 @@ export function KemeratanCahayaContent() {
     return null;
   }, [rows, loadMode, middleUpRows, middleDownRows, topGridData, middleGridData, bottomGridData]);
 
+  const activeKabupatenName = useMemo(
+    () => kabupatenOptions.find((k) => k.id === activeKabupaten)?.name ?? "-",
+    [kabupatenOptions, activeKabupaten]
+  );
+  const isKabupatenReady = Boolean(activeKabupaten);
+
+  const pendingKabupatenName = useMemo(
+    () => kabupatenOptions.find((k) => k.id === pendingKabupaten)?.name ?? "-",
+    [kabupatenOptions, pendingKabupaten]
+  );
+
+  const handleKabupatenPick = useCallback((kabupatenId: string) => {
+    if (kabupatenId === activeKabupaten) {
+      setShowKabupatenPicker(false);
+      return;
+    }
+    setPendingKabupaten(kabupatenId);
+    setShowKabupatenConfirm(true);
+  }, [activeKabupaten]);
+
+  const handleKabupatenConfirm = useCallback(() => {
+    if (!pendingKabupaten) return;
+    applyKabupatenSelection(pendingKabupaten);
+    setShowKabupatenConfirm(false);
+    setShowKabupatenPicker(false);
+    setPendingKabupaten(null);
+  }, [pendingKabupaten, applyKabupatenSelection]);
+
+  const handleKabupatenCancel = useCallback(() => {
+    setShowKabupatenConfirm(false);
+    setPendingKabupaten(null);
+  }, []);
+
   return (
     <>
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-red-50 to-red-100" style={{ contain: 'layout style' }}>
@@ -744,6 +908,22 @@ export function KemeratanCahayaContent() {
                   <p className="text-xs sm:text-sm text-gray-600 font-medium">
                     Perhitungan Uniformity Ratio
                   </p>
+                  {user && (
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
+                        Kabupaten aktif: {activeKabupatenName}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setPendingKabupaten(null);
+                          setShowKabupatenPicker(true);
+                        }}
+                        className="text-[11px] font-semibold text-gray-700 hover:text-red-700 border border-gray-200 hover:border-red-200 bg-white px-2 py-0.5 rounded-full transition-all"
+                      >
+                        Ganti kabupaten
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1022,11 +1202,17 @@ export function KemeratanCahayaContent() {
               </svg>
               Load Data
             </label>
+            {!isKabupatenReady && (
+              <div className="mb-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                Pilih kabupaten terlebih dahulu agar data tidak tercampur.
+              </div>
+            )}
             <div className="space-y-2">
               <div className="border-2 border-red-200 rounded-lg overflow-hidden">
                 <button
                   onClick={() => setShowTopList((v) => !v)}
-                  className="w-full px-3 py-2.5 bg-white hover:bg-red-50 text-gray-700 text-sm font-medium transition-all flex items-center justify-between"
+                  disabled={!isKabupatenReady}
+                  className="w-full px-3 py-2.5 bg-white hover:bg-red-50 text-gray-700 text-sm font-medium transition-all flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center gap-2">
                     <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1059,14 +1245,15 @@ export function KemeratanCahayaContent() {
                     <div className="p-3 border-t border-gray-100 flex gap-2">
                       <button
                         onClick={handleLoadDataFromTop}
-                        className="flex-1 px-3 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all"
+                        disabled={!isKabupatenReady}
+                        className="flex-1 px-3 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Terapkan
                       </button>
                       <button
                         onClick={fetchReportsList}
-                        disabled={reportsLoading}
-                        className="px-3 py-2 text-sm font-semibold bg-white border border-red-200 text-red-700 rounded-lg hover:bg-red-50 transition-all"
+                        disabled={reportsLoading || !isKabupatenReady}
+                        className="px-3 py-2 text-sm font-semibold bg-white border border-red-200 text-red-700 rounded-lg hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Muat Ulang
                       </button>
@@ -1078,7 +1265,8 @@ export function KemeratanCahayaContent() {
                 <div className="border-2 border-green-200 rounded-lg overflow-hidden">
                   <button
                     onClick={() => setShowMiddleList((v) => !v)}
-                    className="w-full px-3 py-2.5 bg-white hover:bg-green-50 text-gray-700 text-sm font-medium transition-all flex items-center justify-between"
+                    disabled={!isKabupatenReady}
+                    className="w-full px-3 py-2.5 bg-white hover:bg-green-50 text-gray-700 text-sm font-medium transition-all flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="flex items-center gap-2">
                       <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1111,14 +1299,15 @@ export function KemeratanCahayaContent() {
                       <div className="p-3 border-t border-gray-100 flex gap-2">
                         <button
                           onClick={handleLoadDataFromMiddle}
-                          className="flex-1 px-3 py-2 text-sm font-semibold bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all"
+                          disabled={!isKabupatenReady}
+                          className="flex-1 px-3 py-2 text-sm font-semibold bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Terapkan
                         </button>
                         <button
                           onClick={fetchReportsList}
-                          disabled={reportsLoading}
-                          className="px-3 py-2 text-sm font-semibold bg-white border border-green-200 text-green-700 rounded-lg hover:bg-green-50 transition-all"
+                          disabled={reportsLoading || !isKabupatenReady}
+                          className="px-3 py-2 text-sm font-semibold bg-white border border-green-200 text-green-700 rounded-lg hover:bg-green-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Muat Ulang
                         </button>
@@ -1130,7 +1319,8 @@ export function KemeratanCahayaContent() {
               <div className="border-2 border-green-200 rounded-lg overflow-hidden">
                 <button
                   onClick={() => setShowBottomList((v) => !v)}
-                  className="w-full px-3 py-2.5 bg-white hover:bg-green-50 text-gray-700 text-sm font-medium transition-all flex items-center justify-between"
+                  disabled={!isKabupatenReady}
+                  className="w-full px-3 py-2.5 bg-white hover:bg-green-50 text-gray-700 text-sm font-medium transition-all flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center gap-2">
                     <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1163,14 +1353,15 @@ export function KemeratanCahayaContent() {
                     <div className="p-3 border-t border-gray-100 flex gap-2">
                       <button
                         onClick={handleLoadDataFromBottom}
-                        className="flex-1 px-3 py-2 text-sm font-semibold bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all"
+                        disabled={!isKabupatenReady}
+                        className="flex-1 px-3 py-2 text-sm font-semibold bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Terapkan
                       </button>
                       <button
                         onClick={fetchReportsList}
-                        disabled={reportsLoading}
-                        className="px-3 py-2 text-sm font-semibold bg-white border border-green-200 text-green-700 rounded-lg hover:bg-green-50 transition-all"
+                        disabled={reportsLoading || !isKabupatenReady}
+                        className="px-3 py-2 text-sm font-semibold bg-white border border-green-200 text-green-700 rounded-lg hover:bg-green-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Muat Ulang
                       </button>
@@ -1182,8 +1373,8 @@ export function KemeratanCahayaContent() {
               <div className="mt-2">
                 <button
                   onClick={fetchReportsList}
-                  disabled={!isGridReady || reportsLoading}
-                  className="w-full px-3 py-2.5 bg-white hover:bg-green-50 text-gray-700 text-sm font-medium rounded-lg border-2 border-gray-200 hover:border-green-300 transition-all flex items-center justify-center gap-2"
+                  disabled={!isGridReady || reportsLoading || !isKabupatenReady}
+                  className="w-full px-3 py-2.5 bg-white hover:bg-green-50 text-gray-700 text-sm font-medium rounded-lg border-2 border-gray-200 hover:border-green-300 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h4v11H3zM10 3h4v18h-4zM17 7h4v14h-4z" />
@@ -1429,6 +1620,76 @@ export function KemeratanCahayaContent() {
         </div>
       </main>
     </div>
+    {showKabupatenPicker && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+          <div className="p-5 border-b border-gray-200">
+            <h3 className="text-xl font-bold text-gray-900">Pilih Kabupaten</h3>
+            <p className="text-sm text-gray-600">Pilih lokasi kerja agar data terfokus dan tidak tercampur.</p>
+          </div>
+          <div className="p-5">
+            {availableKabupaten.length === 0 ? (
+              <div className="text-sm text-gray-600 bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+                Tidak ada kabupaten yang bisa diakses. Hubungi admin untuk membuka akses.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {availableKabupaten.map((k) => (
+                  <button
+                    key={k.id}
+                    onClick={() => handleKabupatenPick(k.id)}
+                    className={`text-left p-4 rounded-xl border-2 transition-all ${
+                      activeKabupaten === k.id
+                        ? "border-red-400 bg-red-50 shadow-sm"
+                        : "border-gray-200 hover:border-red-300 hover:bg-red-50/40"
+                    }`}
+                  >
+                    <div className="text-base font-bold text-gray-900">{k.name}</div>
+                    <div className="text-xs text-gray-600 mt-1">{k.description}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="p-4 border-t border-gray-200 flex items-center justify-end gap-2">
+            {activeKabupaten && (
+              <button
+                onClick={() => setShowKabupatenPicker(false)}
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50"
+              >
+                Batal
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    {showKabupatenConfirm && pendingKabupaten && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+          <div className="p-5 border-b border-gray-200">
+            <h3 className="text-lg font-bold text-gray-900">Konfirmasi Kabupaten</h3>
+            <p className="text-sm text-gray-600">
+              Kamu akan bekerja di: <span className="font-semibold text-gray-900">{pendingKabupatenName}</span>
+            </p>
+          </div>
+          <div className="p-5 flex items-center justify-end gap-2">
+            <button
+              onClick={handleKabupatenCancel}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50"
+            >
+              Batal
+            </button>
+            <button
+              onClick={handleKabupatenConfirm}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold"
+            >
+              Mulai
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     {showAnalysis && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">

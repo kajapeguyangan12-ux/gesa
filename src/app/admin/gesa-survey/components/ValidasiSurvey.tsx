@@ -36,10 +36,15 @@ interface Survey {
   status: string;
   surveyorName: string;
   surveyorEmail?: string;
-  createdAt: any;
+  createdAt: { toDate?: () => Date; seconds?: number } | Date | string | number | null;
   latitude: number;
   longitude: number;
   accuracy?: number;
+  originalLatitude?: number;
+  originalLongitude?: number;
+  adminLatitude?: number;
+  adminLongitude?: number;
+  hasAdminCoordinateOverride?: boolean;
   
   // Survey Existing fields
   lokasiJalan?: string;
@@ -78,7 +83,25 @@ interface Survey {
   median?: string;
   lebarJalan?: string;
   jarakAntarTiang?: string;
+
+  // Pra Existing fields
+  jenisLampu?: string;
+  jumlahLampu?: string;
+  kondisi?: string;
+  jenisTiang?: string;
+  fotoAktual?: string;
   fotoKemerataan?: string;
+  kabupaten?: string;
+  kabupatenName?: string;
+  kecamatan?: string;
+  desa?: string;
+  banjar?: string;
+  kepemilikanTiang?: string;
+  kepemilikanDisplay?: string;
+  tipeTiangPLN?: string;
+  fungsiLampu?: string;
+  garduStatus?: string;
+  kodeGardu?: string;
   
   // Photos
   fotoTiangAPM?: string;
@@ -92,8 +115,8 @@ interface Survey {
   editedBy?: string;
 }
 
-export default function ValidasiSurvey() {
-  const [activeTab, setActiveTab] = useState<"existing" | "propose">("existing");
+export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: string | null }) {
+  const [activeTab, setActiveTab] = useState<"existing" | "propose" | "pra-existing">("existing");
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
@@ -113,19 +136,30 @@ export default function ValidasiSurvey() {
   // Fetch surveys from Firebase
   useEffect(() => {
     fetchSurveys();
-  }, [activeTab]);
+  }, [activeTab, activeKabupaten]);
 
   const fetchSurveys = async () => {
     try {
       setLoading(true);
       
-      // Fetch data dari kedua collection untuk statistik
+      // Fetch data dari collection untuk statistik
       const existingRef = collection(db, "survey-existing");
       const proposeRef = collection(db, "survey-apj-propose");
+      const praExistingRef = collection(db, "survey-pra-existing");
+      const existingQuery = activeKabupaten
+        ? query(existingRef, where("kabupaten", "==", activeKabupaten))
+        : existingRef;
+      const proposeQuery = activeKabupaten
+        ? query(proposeRef, where("kabupaten", "==", activeKabupaten))
+        : proposeRef;
+      const praExistingQuery = activeKabupaten
+        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten))
+        : praExistingRef;
       
-      const [existingSnapshot, proposeSnapshot] = await Promise.all([
-        getDocs(existingRef),
-        getDocs(proposeRef)
+      const [existingSnapshot, proposeSnapshot, praExistingSnapshot] = await Promise.all([
+        getDocs(existingQuery),
+        getDocs(proposeQuery),
+        getDocs(praExistingQuery),
       ]);
       
       const existingData = existingSnapshot.docs
@@ -155,12 +189,25 @@ export default function ValidasiSurvey() {
           jenis: doc.data().jenis || doc.data().jenisTitik || "N/A",
           tinggiArm: doc.data().tinggiArm || doc.data().tinggiARM || "N/A",
         })) as Survey[];
+
+      const praExistingData = praExistingSnapshot.docs
+        .filter((doc) => doc.data().status === "menunggu")
+        .map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          title: doc.data().title || `Survey pra existing - ${doc.data().jenisLampu || "Untitled"}`,
+          type: "pra-existing",
+          status: doc.data().status || "menunggu",
+          surveyorName: doc.data().surveyorName || "Unknown",
+        })) as Survey[];
       
       // Simpan semua surveys untuk statistik
-      setAllSurveys([...existingData, ...proposeData]);
+      setAllSurveys([...existingData, ...proposeData, ...praExistingData]);
       
       // Set surveys berdasarkan activeTab untuk list
-      setSurveys(activeTab === "existing" ? existingData : proposeData);
+      if (activeTab === "existing") setSurveys(existingData);
+      else if (activeTab === "propose") setSurveys(proposeData);
+      else setSurveys(praExistingData);
     } catch (error) {
       console.error("Error fetching surveys:", error);
     } finally {
@@ -183,18 +230,16 @@ export default function ValidasiSurvey() {
     
     return true;
   }).sort((a, b) => {
-    // Sort by date
-    if (filterSort === "Terbaru") {
-      return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
-    } else {
-      return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
-    }
+    const aTime = getTimestampValue(a.createdAt);
+    const bTime = getTimestampValue(b.createdAt);
+    return filterSort === "Terbaru" ? bTime - aTime : aTime - bTime;
   });
   
   // Calculate statistics dari semua surveys yang diverifikasi
   const totalSurveys = allSurveys.length;
   const totalExisting = allSurveys.filter(s => s.type === "existing").length;
   const totalPropose = allSurveys.filter(s => s.type === "propose").length;
+  const totalPraExisting = allSurveys.filter(s => s.type === "pra-existing").length;
   const diverifikasiCount = allSurveys.length; // semua yang tampil adalah diverifikasi
 
   const handleViewDetail = (survey: Survey) => {
@@ -203,7 +248,14 @@ export default function ValidasiSurvey() {
   };
 
   const handleEdit = (survey: Survey) => {
-    setEditFormData(survey);
+    setEditFormData({
+      ...survey,
+      originalLatitude: Number.isFinite(survey.originalLatitude) ? survey.originalLatitude : survey.latitude,
+      originalLongitude: Number.isFinite(survey.originalLongitude) ? survey.originalLongitude : survey.longitude,
+      adminLatitude: Number.isFinite(survey.adminLatitude) ? survey.adminLatitude : survey.latitude,
+      adminLongitude: Number.isFinite(survey.adminLongitude) ? survey.adminLongitude : survey.longitude,
+      hasAdminCoordinateOverride: survey.hasAdminCoordinateOverride || false,
+    });
     setShowEditModal(true);
   };
 
@@ -212,9 +264,23 @@ export default function ValidasiSurvey() {
     
     try {
       setIsSaving(true);
-      const collectionName = activeTab === "existing" ? "survey-existing" : "survey-apj-propose";
-      const surveyRef = collection(db, collectionName);
+      const collectionName =
+        activeTab === "existing"
+          ? "survey-existing"
+          : activeTab === "propose"
+          ? "survey-apj-propose"
+          : "survey-pra-existing";
       const surveyDoc = doc(db, collectionName, editFormData.id);
+      const normalizedAdminLatitude = Number(editFormData.adminLatitude);
+      const normalizedAdminLongitude = Number(editFormData.adminLongitude);
+      const hasValidAdminCoords =
+        Number.isFinite(normalizedAdminLatitude) && Number.isFinite(normalizedAdminLongitude);
+      const originalLatitude =
+        Number.isFinite(editFormData.originalLatitude) ? editFormData.originalLatitude : editFormData.latitude;
+      const originalLongitude =
+        Number.isFinite(editFormData.originalLongitude) ? editFormData.originalLongitude : editFormData.longitude;
+      const normalizedOriginalLatitude = Number(originalLatitude);
+      const normalizedOriginalLongitude = Number(originalLongitude);
       
       // Get current user from localStorage
       const storedUser = localStorage.getItem('gesa_user');
@@ -223,6 +289,15 @@ export default function ValidasiSurvey() {
       // Update document
       await updateDoc(surveyDoc, {
         ...editFormData,
+        originalLatitude,
+        originalLongitude,
+        adminLatitude: hasValidAdminCoords ? normalizedAdminLatitude : null,
+        adminLongitude: hasValidAdminCoords ? normalizedAdminLongitude : null,
+        hasAdminCoordinateOverride:
+          editFormData.type === "pra-existing" &&
+          hasValidAdminCoords &&
+          (Math.abs(normalizedAdminLatitude - normalizedOriginalLatitude) > 0.0000001 ||
+            Math.abs(normalizedAdminLongitude - normalizedOriginalLongitude) > 0.0000001),
         editedBy: currentUser?.name || currentUser?.email || 'Admin',
         updatedAt: new Date()
       });
@@ -245,16 +320,45 @@ export default function ValidasiSurvey() {
     if (!confirm('Apakah Anda yakin ingin memverifikasi survey ini? Survey akan dipindahkan ke Data Survey Validasi.')) return;
     
     try {
-      const collectionName = survey.type === "existing" ? "survey-existing" : "survey-apj-propose";
+      const collectionName =
+        survey.type === "existing"
+          ? "survey-existing"
+          : survey.type === "propose"
+          ? "survey-apj-propose"
+          : "survey-pra-existing";
       const surveyDoc = doc(db, collectionName, survey.id);
       
       // Get current user from localStorage
       const storedUser = localStorage.getItem('gesa_user');
       const currentUser = storedUser ? JSON.parse(storedUser) : null;
+      const normalizedAdminLatitude = Number(survey.adminLatitude);
+      const normalizedAdminLongitude = Number(survey.adminLongitude);
+      const shouldUseAdminCoordinate =
+        survey.type === "pra-existing" &&
+        Number.isFinite(normalizedAdminLatitude) &&
+        Number.isFinite(normalizedAdminLongitude);
       
       // Update status to diverifikasi (first stage verification)
       await updateDoc(surveyDoc, {
         status: "diverifikasi",
+        ...(shouldUseAdminCoordinate
+          ? {
+              originalLatitude: Number.isFinite(survey.originalLatitude) ? survey.originalLatitude : survey.latitude,
+              originalLongitude: Number.isFinite(survey.originalLongitude) ? survey.originalLongitude : survey.longitude,
+              latitude: normalizedAdminLatitude,
+              longitude: normalizedAdminLongitude,
+              finalLatitude: normalizedAdminLatitude,
+              finalLongitude: normalizedAdminLongitude,
+              coordinateSource: "admin",
+              coordinateValidatedAt: new Date(),
+            }
+          : survey.type === "pra-existing"
+            ? {
+                finalLatitude: survey.latitude,
+                finalLongitude: survey.longitude,
+                coordinateSource: "petugas",
+              }
+            : {}),
         verifiedBy: currentUser?.name || currentUser?.email || 'Admin',
         verifiedAt: new Date()
       });
@@ -276,7 +380,12 @@ export default function ValidasiSurvey() {
     if (!alasan) return;
     
     try {
-      const collectionName = survey.type === "existing" ? "survey-existing" : "survey-apj-propose";
+      const collectionName =
+        survey.type === "existing"
+          ? "survey-existing"
+          : survey.type === "propose"
+          ? "survey-apj-propose"
+          : "survey-pra-existing";
       const surveyDoc = doc(db, collectionName, survey.id);
       
       // Get current user from localStorage
@@ -303,10 +412,18 @@ export default function ValidasiSurvey() {
     }
   };
 
-  const formatDate = (timestamp: any) => {
+  const formatDate = (timestamp: Survey["createdAt"]) => {
     if (!timestamp) return "N/A";
     try {
-      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      const date =
+        typeof timestamp === "object" && timestamp !== null && "toDate" in timestamp && typeof timestamp.toDate === "function"
+          ? timestamp.toDate()
+          : timestamp instanceof Date
+          ? timestamp
+          : typeof timestamp === "string" || typeof timestamp === "number"
+          ? new Date(timestamp)
+          : null;
+      if (!date || Number.isNaN(date.getTime())) return "N/A";
       return date.toLocaleString('id-ID', {
         day: '2-digit',
         month: '2-digit',
@@ -318,6 +435,21 @@ export default function ValidasiSurvey() {
       return "N/A";
     }
   };
+
+  function getTimestampValue(timestamp: Survey["createdAt"]) {
+    if (!timestamp) return 0;
+    if (typeof timestamp === "object" && timestamp !== null && "seconds" in timestamp && typeof timestamp.seconds === "number") {
+      return timestamp.seconds;
+    }
+    if (typeof timestamp === "object" && timestamp !== null && "toDate" in timestamp && typeof timestamp.toDate === "function") {
+      return timestamp.toDate().getTime() / 1000;
+    }
+    if (typeof timestamp !== "string" && typeof timestamp !== "number" && !(timestamp instanceof Date)) {
+      return 0;
+    }
+    const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime() / 1000;
+  }
 
   return (
     <>
@@ -335,7 +467,7 @@ export default function ValidasiSurvey() {
         </div>
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
             <p className="text-sm font-medium text-blue-900 mb-1">Total Survey</p>
             <h3 className="text-4xl font-bold text-blue-600">{totalSurveys}</h3>
@@ -349,6 +481,11 @@ export default function ValidasiSurvey() {
           <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
             <p className="text-sm font-medium text-purple-900 mb-1">Total Survey APJ Propose</p>
             <h3 className="text-4xl font-bold text-purple-600">{totalPropose}</h3>
+          </div>
+
+          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
+            <p className="text-sm font-medium text-emerald-900 mb-1">Total Survey Pra Existing</p>
+            <h3 className="text-4xl font-bold text-emerald-600">{totalPraExisting}</h3>
           </div>
 
           <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
@@ -383,6 +520,17 @@ export default function ValidasiSurvey() {
             <span className="text-xl">💡</span>
             Survey APJ Propose
           </button>
+          <button 
+            onClick={() => setActiveTab("pra-existing")}
+            className={`flex items-center gap-2 px-6 py-4 font-semibold transition-all ${
+              activeTab === "pra-existing"
+                ? "text-blue-600 border-b-2 border-blue-600"
+                : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+            }`}
+          >
+            <span className="text-xl">🧾</span>
+            Survey Pra Existing
+          </button>
         </div>
 
         {/* Filters */}
@@ -415,8 +563,7 @@ export default function ValidasiSurvey() {
                   <option>Murni</option>
                   <option>Tidak Murni</option>
                 </select>
-              )}
-              <select 
+              )}<select 
                 value={filterSort}
                 onChange={(e) => setFilterSort(e.target.value)}
                 className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -444,25 +591,31 @@ export default function ValidasiSurvey() {
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200">
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                activeTab === "existing" ? "bg-blue-100" : "bg-yellow-100"
+                activeTab === "existing" ? "bg-blue-100" : activeTab === "propose" ? "bg-yellow-100" : "bg-emerald-100"
               }`}>
-                <span className="text-xl">{activeTab === "existing" ? "📁" : "💡"}</span>
+                <span className="text-xl">
+                  {activeTab === "existing" ? "📁" : activeTab === "propose" ? "💡" : "🧾"}
+                </span>
               </div>
               <div>
                 <h3 className="font-bold text-gray-900">
-                  {activeTab === "existing" ? "Survey Existing" : "Survey APJ Propose"}
+                  {activeTab === "existing" ? "Survey Existing" : activeTab === "propose" ? "Survey APJ Propose" : "Survey Pra Existing"}
                 </h3>
                 <p className="text-xs text-gray-600">
                   {activeTab === "existing" 
                     ? "Survey Existing dan infrastruktur pendukung" 
-                    : "Survey area baru untuk pengembangan"}
+                    : activeTab === "propose"
+                    ? "Survey area baru untuk pengembangan"
+                    : "Survey pra existing sederhana"}
                 </p>
               </div>
             </div>
             <span className={`px-3 py-1 text-sm font-medium rounded-full ${
               activeTab === "existing" 
                 ? "bg-blue-100 text-blue-700" 
-                : "bg-yellow-100 text-yellow-700"
+                : activeTab === "propose"
+                ? "bg-yellow-100 text-yellow-700"
+                : "bg-emerald-100 text-emerald-700"
             }`}>
               {filteredSurveys.length} Survey (Hal 1)
             </span>
@@ -478,11 +631,11 @@ export default function ValidasiSurvey() {
             /* Empty State */
             <div className="flex flex-col items-center justify-center py-16">
               <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                <span className="text-4xl">{activeTab === "existing" ? "📁" : "💡"}</span>
+                <span className="text-4xl">{activeTab === "existing" ? "📁" : activeTab === "propose" ? "💡" : "🧾"}</span>
               </div>
               <h4 className="text-lg font-semibold text-gray-900 mb-2">Belum Ada Survey</h4>
               <p className="text-sm text-gray-600 text-center max-w-md">
-                Belum ada data survey {activeTab === "existing" ? "existing" : "APJ propose"} yang perlu divalidasi.
+                Belum ada data survey {activeTab === "existing" ? "existing" : activeTab === "propose" ? "APJ propose" : "pra existing"} yang perlu divalidasi.
               </p>
             </div>
           ) : (
@@ -493,9 +646,9 @@ export default function ValidasiSurvey() {
                   <div className="flex flex-col lg:flex-row gap-4">
                     {/* Photo */}
                     <div className="w-20 h-20 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
-                      {(survey.fotoTiangAPM || survey.fotoTitikActual || survey.photoUrl) ? (
+                      {(survey.fotoTiangAPM || survey.fotoTitikActual || survey.photoUrl || survey.fotoAktual) ? (
                         <img 
-                          src={survey.fotoTiangAPM || survey.fotoTitikActual || survey.photoUrl} 
+                          src={survey.fotoTiangAPM || survey.fotoTitikActual || survey.photoUrl || survey.fotoAktual} 
                           alt={survey.title} 
                           className="w-full h-full object-cover rounded-lg"
                           onError={(e) => {
@@ -555,6 +708,12 @@ export default function ValidasiSurvey() {
                           <span>{survey.latitude.toFixed(7)}, {survey.longitude.toFixed(7)}</span>
                         </div>
                       </div>
+
+                      {survey.type === "pra-existing" && survey.hasAdminCoordinateOverride && Number.isFinite(survey.adminLatitude) && Number.isFinite(survey.adminLongitude) && (
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                          Koordinat final admin: {survey.adminLatitude?.toFixed(7)}, {survey.adminLongitude?.toFixed(7)}
+                        </div>
+                      )}
 
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-xs text-gray-600">
@@ -705,11 +864,19 @@ export default function ValidasiSurvey() {
                     <p className="text-gray-600 mb-1">Longitude</p>
                     <p className="font-mono font-bold text-gray-900">{selectedSurvey.longitude.toFixed(7)}</p>
                   </div>
+                  {selectedSurvey.type === "pra-existing" && Number.isFinite(selectedSurvey.adminLatitude) && Number.isFinite(selectedSurvey.adminLongitude) && (
+                    <div className="bg-emerald-50 px-3 lg:px-4 py-2 lg:py-3 rounded-lg border border-emerald-200 sm:col-span-2">
+                      <p className="text-emerald-700 mb-1">Koordinat Final Admin</p>
+                      <p className="font-mono font-bold text-emerald-900">
+                        {selectedSurvey.adminLatitude?.toFixed(7)}, {selectedSurvey.adminLongitude?.toFixed(7)}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Photos Section */}
-              {(selectedSurvey.fotoTiangAPM || selectedSurvey.fotoTitikActual || selectedSurvey.photoUrl) && (
+              {(selectedSurvey.fotoTiangAPM || selectedSurvey.fotoTitikActual || selectedSurvey.photoUrl || selectedSurvey.fotoAktual) && (
                 <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl lg:rounded-2xl p-4 lg:p-6 border border-purple-200">
                   <h3 className="text-base lg:text-lg font-bold text-gray-900 mb-3 lg:mb-4 flex items-center gap-2">
                     <svg className="w-5 h-5 lg:w-6 lg:h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -748,6 +915,17 @@ export default function ValidasiSurvey() {
                           alt="Kemerataan" 
                           className="w-full h-48 lg:h-64 object-cover rounded-lg border-2 border-white shadow-lg hover:scale-105 transition-transform cursor-pointer"
                           onClick={() => window.open(selectedSurvey.fotoKemerataan, '_blank')}
+                        />
+                      </div>
+                    )}
+                    {selectedSurvey.fotoAktual && (
+                      <div className="space-y-2">
+                        <p className="text-xs lg:text-sm font-semibold text-gray-700">Foto Aktual</p>
+                        <img 
+                          src={selectedSurvey.fotoAktual} 
+                          alt="Foto Aktual" 
+                          className="w-full h-48 lg:h-64 object-cover rounded-lg border-2 border-white shadow-lg hover:scale-105 transition-transform cursor-pointer"
+                          onClick={() => window.open(selectedSurvey.fotoAktual, '_blank')}
                         />
                       </div>
                     )}
@@ -836,6 +1014,111 @@ export default function ValidasiSurvey() {
                     <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
                       <p className="text-xs text-gray-600 mb-1">Data Tiang</p>
                       <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.dataTiang}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && selectedSurvey.jenisLampu && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Jenis Lampu</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.jenisLampu}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && selectedSurvey.jumlahLampu && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Jumlah Lampu</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.jumlahLampu}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && selectedSurvey.lebarJalan && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Lebar Jalan</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.lebarJalan}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && selectedSurvey.kondisi && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Kondisi</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.kondisi}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && selectedSurvey.jenisTiang && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Jenis Tiang</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.jenisTiang}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && selectedSurvey.kabupaten && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Kabupaten</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.kabupatenName || selectedSurvey.kabupaten}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && selectedSurvey.kecamatan && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Kecamatan</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.kecamatan}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && selectedSurvey.desa && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Desa</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.desa}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && selectedSurvey.banjar && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Banjar</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.banjar}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && (selectedSurvey.kepemilikanDisplay || selectedSurvey.kepemilikanTiang || selectedSurvey.keteranganTiang) && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Kepemilikan Tiang</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.kepemilikanDisplay || selectedSurvey.kepemilikanTiang || selectedSurvey.keteranganTiang}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && selectedSurvey.tipeTiangPLN && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Tipe Tiang PLN</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.tipeTiangPLN}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && selectedSurvey.dayaLampu && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Daya Lampu</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.dayaLampu}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && selectedSurvey.fungsiLampu && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Fungsi Lampu</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.fungsiLampu}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && selectedSurvey.garduStatus && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Gardu</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.garduStatus}</p>
+                    </div>
+                  )}
+
+                  {selectedSurvey.type === "pra-existing" && selectedSurvey.kodeGardu && (
+                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-600 mb-1">Kode Gardu</p>
+                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.kodeGardu}</p>
                     </div>
                   )}
 
@@ -1112,6 +1395,8 @@ export default function ValidasiSurvey() {
                 </div>
               </div>
 
+              {editFormData.type !== "pra-existing" && (
+                <>
               {/* Informasi Lokasi */}
               <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl lg:rounded-2xl p-4 lg:p-6 border border-blue-200">
                 <h3 className="text-base lg:text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -1355,9 +1640,251 @@ export default function ValidasiSurvey() {
                   placeholder="Tambahkan catatan atau keterangan tambahan..."
                 />
               </div>
+                </>
+              )}
+
+              {editFormData.type === "pra-existing" && (
+                <>
+                  <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl lg:rounded-2xl p-4 lg:p-6 border border-emerald-200">
+                    <h3 className="text-base lg:text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <svg className="w-5 h-5 lg:w-6 lg:h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Informasi Pra Existing
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 lg:gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Kabupaten</label>
+                        <input
+                          type="text"
+                          value={editFormData.kabupatenName || editFormData.kabupaten || ''}
+                          onChange={(e) => setEditFormData({...editFormData, kabupatenName: e.target.value, kabupaten: e.target.value.toLowerCase()})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="Tabanan"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Kecamatan</label>
+                        <input
+                          type="text"
+                          value={editFormData.kecamatan || ''}
+                          onChange={(e) => setEditFormData({...editFormData, kecamatan: e.target.value})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="Kecamatan"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Desa</label>
+                        <input
+                          type="text"
+                          value={editFormData.desa || ''}
+                          onChange={(e) => setEditFormData({...editFormData, desa: e.target.value})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="Desa"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Banjar</label>
+                        <input
+                          type="text"
+                          value={editFormData.banjar || ''}
+                          onChange={(e) => setEditFormData({...editFormData, banjar: e.target.value})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="Banjar"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Kepemilikan Tiang</label>
+                        <input
+                          type="text"
+                          value={editFormData.kepemilikanDisplay || editFormData.kepemilikanTiang || editFormData.keteranganTiang || ''}
+                          onChange={(e) => setEditFormData({...editFormData, kepemilikanDisplay: e.target.value, kepemilikanTiang: e.target.value, keteranganTiang: e.target.value})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="PLN / Pemkab / Swadaya"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Tipe Tiang PLN</label>
+                        <input
+                          type="text"
+                          value={editFormData.tipeTiangPLN || ''}
+                          onChange={(e) => setEditFormData({...editFormData, tipeTiangPLN: e.target.value})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="Tiang TM / Tiang TR"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Jenis Lampu</label>
+                        <input
+                          type="text"
+                          value={editFormData.jenisLampu || ''}
+                          onChange={(e) => setEditFormData({...editFormData, jenisLampu: e.target.value})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="Contoh: LED 60W"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Jumlah Lampu</label>
+                        <input
+                          type="number"
+                          value={editFormData.jumlahLampu || ''}
+                          onChange={(e) => setEditFormData({...editFormData, jumlahLampu: e.target.value})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="0"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Daya Lampu</label>
+                        <input
+                          type="text"
+                          value={editFormData.dayaLampu || ''}
+                          onChange={(e) => setEditFormData({...editFormData, dayaLampu: e.target.value})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="30 / 60 / 80"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Fungsi Lampu</label>
+                        <input
+                          type="text"
+                          value={editFormData.fungsiLampu || ''}
+                          onChange={(e) => setEditFormData({...editFormData, fungsiLampu: e.target.value})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="APJ"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Lebar Jalan</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={editFormData.lebarJalan || ''}
+                          onChange={(e) => setEditFormData({...editFormData, lebarJalan: e.target.value})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="0.0"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Kondisi</label>
+                        <input
+                          type="text"
+                          value={editFormData.kondisi || ''}
+                          onChange={(e) => setEditFormData({...editFormData, kondisi: e.target.value})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="Baik/Rusak"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Jenis Tiang</label>
+                        <input
+                          type="text"
+                          value={editFormData.jenisTiang || ''}
+                          onChange={(e) => setEditFormData({...editFormData, jenisTiang: e.target.value})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="Besi/Beton/Kayu"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Gardu</label>
+                        <input
+                          type="text"
+                          value={editFormData.garduStatus || ''}
+                          onChange={(e) => setEditFormData({...editFormData, garduStatus: e.target.value})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="Ada / Tidak Ada"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Kode Gardu</label>
+                        <input
+                          type="text"
+                          value={editFormData.kodeGardu || ''}
+                          onChange={(e) => setEditFormData({...editFormData, kodeGardu: e.target.value})}
+                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                          placeholder="Kode Gardu"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-900 mb-2">Koordinat GPS</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            step="0.0000001"
+                            value={editFormData.latitude || ''}
+                            onChange={(e) => setEditFormData({...editFormData, latitude: parseFloat(e.target.value)})}
+                            className="w-1/2 px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                            placeholder="Latitude"
+                          />
+                          <input
+                            type="number"
+                            step="0.0000001"
+                            value={editFormData.longitude || ''}
+                            onChange={(e) => setEditFormData({...editFormData, longitude: parseFloat(e.target.value)})}
+                            className="w-1/2 px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                            placeholder="Longitude"
+                          />
+                        </div>
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-semibold text-emerald-900 mb-2">Koordinat Final Admin</label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <input
+                            type="number"
+                            step="0.0000001"
+                            value={editFormData.adminLatitude ?? ""}
+                            onChange={(e) =>
+                              setEditFormData({
+                                ...editFormData,
+                                adminLatitude: e.target.value === "" ? undefined : parseFloat(e.target.value),
+                              })
+                            }
+                            className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                            placeholder="Latitude final admin"
+                          />
+                          <input
+                            type="number"
+                            step="0.0000001"
+                            value={editFormData.adminLongitude ?? ""}
+                            onChange={(e) =>
+                              setEditFormData({
+                                ...editFormData,
+                                adminLongitude: e.target.value === "" ? undefined : parseFloat(e.target.value),
+                              })
+                            }
+                            className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
+                            placeholder="Longitude final admin"
+                          />
+                        </div>
+                        <p className="mt-2 text-xs text-emerald-700">
+                          Koordinat ini menjadi acuan map setelah tombol validasi dijalankan admin.
+                        </p>
+                        <p className="mt-1 text-xs text-gray-600">
+                          Koordinat petugas awal: {(editFormData.originalLatitude ?? editFormData.latitude).toFixed(7)}, {(editFormData.originalLongitude ?? editFormData.longitude).toFixed(7)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl lg:rounded-2xl p-4 lg:p-6 border border-purple-200">
+                    <h3 className="text-base lg:text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <svg className="w-5 h-5 lg:w-6 lg:h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                      </svg>
+                      Keterangan Tambahan
+                    </h3>
+                    <textarea
+                      value={editFormData.keterangan || ''}
+                      onChange={(e) => setEditFormData({...editFormData, keterangan: e.target.value})}
+                      rows={4}
+                      className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900 resize-none"
+                      placeholder="Tambahkan catatan atau keterangan tambahan..."
+                    />
+                  </div>
+                </>
+              )}
 
               {/* URL Foto (Read Only) */}
-              {(editFormData.fotoTiangAPM || editFormData.fotoTitikActual) && (
+              {(editFormData.fotoTiangAPM || editFormData.fotoTitikActual || editFormData.fotoAktual) && (
                 <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-xl lg:rounded-2xl p-4 lg:p-6 border border-gray-200">
                   <h3 className="text-base lg:text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                     <svg className="w-5 h-5 lg:w-6 lg:h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1382,6 +1909,16 @@ export default function ValidasiSurvey() {
                         <img 
                           src={editFormData.fotoTitikActual} 
                           alt="Titik Actual" 
+                          className="w-full h-48 object-cover rounded-lg border-2 border-gray-200"
+                        />
+                      </div>
+                    )}
+                    {editFormData.fotoAktual && (
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700 mb-2">Foto Aktual Pra Existing</p>
+                        <img 
+                          src={editFormData.fotoAktual} 
+                          alt="Foto Aktual Pra Existing" 
                           className="w-full h-48 object-cover rounded-lg border-2 border-gray-200"
                         />
                       </div>
@@ -1428,3 +1965,4 @@ export default function ValidasiSurvey() {
     </>
   );
 }
+

@@ -53,6 +53,7 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
   const [showProposeModal, setShowProposeModal] = useState(false);
   const [showExistingModal, setShowExistingModal] = useState(false);
   const [showProposeExistingModal, setShowProposeExistingModal] = useState(false);
+  const [showPraExistingModal, setShowPraExistingModal] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
   const [selectedSurveyor, setSelectedSurveyor] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
@@ -125,14 +126,14 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
 
   // Fetch petugas when modal opens
   useEffect(() => {
-    if (showProposeModal || showExistingModal || showProposeExistingModal) {
+    if (showProposeModal || showExistingModal || showProposeExistingModal || showPraExistingModal) {
       fetchPetugas();
     }
-  }, [showProposeModal, showExistingModal, showProposeExistingModal]);
+  }, [showProposeModal, showExistingModal, showProposeExistingModal, showPraExistingModal]);
 
   // Prevent body scrolling when modal is open
   useEffect(() => {
-    if (showProposeModal || showExistingModal || showProposeExistingModal) {
+    if (showProposeModal || showExistingModal || showProposeExistingModal || showPraExistingModal) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -140,7 +141,7 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [showProposeModal, showExistingModal, showProposeExistingModal]);
+  }, [showProposeModal, showExistingModal, showProposeExistingModal, showPraExistingModal]);
 
   const fetchPetugas = async () => {
     try {
@@ -172,6 +173,13 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
     }
   };
 
+  const getPetugasOptions = (taskType: "propose" | "existing" | "propose-existing" | "pra-existing") => {
+    if (taskType === "propose") return petugasList.filter((p) => p.role === "petugas-apj-propose");
+    if (taskType === "existing") return petugasList.filter((p) => p.role === "petugas-existing");
+    if (taskType === "pra-existing") return petugasList.filter((p) => p.role === "petugas-pra-existing");
+    return petugasList;
+  };
+
   const uploadFileToStorage = async (file: File, folder: string): Promise<string> => {
     const timestamp = Date.now();
     const fileName = `${timestamp}_${file.name}`;
@@ -182,7 +190,7 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
     return downloadURL;
   };
 
-  const handleSubmitTask = async (taskType: "propose" | "existing" | "propose-existing") => {
+  const handleSubmitTask = async (taskType: "propose" | "existing" | "propose-existing" | "pra-existing") => {
     // Validation
     if (!taskTitle.trim()) {
       alert("Judul tugas harus diisi!");
@@ -204,6 +212,10 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
     }
     if (taskType === "existing" && !kmzFile2) {
       alert("File KMZ harus di-upload untuk tugas Existing!");
+      return;
+    }
+    if (taskType === "pra-existing" && !kmzFile2) {
+      alert("File KMZ harus di-upload untuk tugas Pra Existing!");
       return;
     }
     if (taskType === "propose-existing" && (!kmzFile || !kmzFile2)) {
@@ -284,6 +296,7 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
       setShowProposeModal(false);
       setShowExistingModal(false);
       setShowProposeExistingModal(false);
+      setShowPraExistingModal(false);
     } catch (error) {
       console.error("Error creating task:", error);
       alert("Gagal membuat tugas. Silakan coba lagi.");
@@ -575,6 +588,16 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
                       </div>
                     </button>
                     <button
+                      onClick={() => { setShowPraExistingModal(true); setShowTaskDropdown(false); }}
+                      className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-all flex items-center gap-3 text-sm"
+                    >
+                      <span className="text-2xl">🧾</span>
+                      <div>
+                        <p className="font-semibold text-gray-900">Survey Pra Existing</p>
+                        <p className="text-xs text-gray-500">Survey pra existing sederhana</p>
+                      </div>
+                    </button>
+                    <button
                       onClick={() => { setShowProposeExistingModal(true); setShowTaskDropdown(false); }}
                       className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-all flex items-center gap-3 text-sm"
                     >
@@ -773,13 +796,13 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
                     <option value="">
                       {loadingPetugas 
                         ? "Memuat data..." 
-                        : petugasList.length === 0 
+                        : getPetugasOptions("propose").length === 0 
                         ? "Tidak ada petugas tersedia" 
                         : "Pilih Surveyor"}
                     </option>
-                    {!loadingPetugas && petugasList.map((petugas) => (
+                    {!loadingPetugas && getPetugasOptions("propose").map((petugas) => (
                       <option key={petugas.id} value={petugas.id} className="text-gray-900">
-                        {petugas.name} - {petugas.email} ({petugas.role === "petugas apj propose" ? "APJ Propose" : petugas.role === "petugas existing" ? "Existing" : "Petugas"})
+                        {petugas.name} - {petugas.email}
                       </option>
                     ))}
                   </select>
@@ -1019,10 +1042,10 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
                     <option value="">Pilih Surveyor</option>
                     {loadingPetugas ? (
                       <option value="" disabled>Memuat data...</option>
-                    ) : petugasList.length === 0 ? (
+                    ) : getPetugasOptions("existing").length === 0 ? (
                       <option value="" disabled>Tidak ada petugas tersedia</option>
                     ) : (
-                      petugasList.map((petugas) => (
+                      getPetugasOptions("existing").map((petugas) => (
                         <option key={petugas.id} value={petugas.id} className="text-gray-900">
                           {petugas.name} - {petugas.email}
                         </option>
@@ -1153,6 +1176,192 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
                   onClick={() => handleSubmitTask("existing")}
                   disabled={submitting}
                   className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Membuat...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Buat Tugas</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tugas Pra Existing */}
+      {showPraExistingModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto my-8 relative">
+            <div className="sticky top-0 bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-5 rounded-t-2xl flex items-center justify-between z-[100] shadow-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Buat Tugas Pra Existing</h3>
+                  <p className="text-sm text-emerald-100">Survey pra existing sederhana</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPraExistingModal(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white hover:bg-opacity-20 transition-all"
+              >
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                  <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
+                  Judul Tugas
+                  <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={taskTitle}
+                  onChange={(e) => setTaskTitle(e.target.value)}
+                  placeholder="Masukkan judul tugas yang jelas dan deskriptif"
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-gray-400"
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                  <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  Surveyor
+                  <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedSurveyor}
+                    onChange={(e) => setSelectedSurveyor(e.target.value)}
+                    disabled={loadingPetugas}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="">Pilih Surveyor</option>
+                    {loadingPetugas ? (
+                      <option value="" disabled>Memuat data...</option>
+                    ) : getPetugasOptions("pra-existing").length === 0 ? (
+                      <option value="" disabled>Tidak ada petugas tersedia</option>
+                    ) : (
+                      getPetugasOptions("pra-existing").map((petugas) => (
+                        <option key={petugas.id} value={petugas.id} className="text-gray-900">
+                          {petugas.name} - {petugas.email}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  <svg className="absolute right-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                  <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                  </svg>
+                  Deskripsi
+                  <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={taskDescription}
+                  onChange={(e) => setTaskDescription(e.target.value)}
+                  placeholder="Jelaskan detail tugas, lokasi, dan instruksi khusus untuk surveyor"
+                  rows={4}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all resize-none placeholder:text-gray-400"
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                  <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
+                  Upload File KMZ/KML
+                </label>
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-emerald-400 transition-all cursor-pointer bg-gray-50">
+                  <input
+                    type="file"
+                    accept=".kmz,.kml"
+                    onChange={(e) => setKmzFile2(e.target.files?.[0] || null)}
+                    className="hidden"
+                    id="kmz-upload-pra-existing"
+                  />
+                  <label htmlFor="kmz-upload-pra-existing" className="cursor-pointer">
+                    <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                      </svg>
+                    </div>
+                    {kmzFile2 ? (
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-gray-900">{kmzFile2.name}</p>
+                        <p className="text-xs text-gray-500">{(kmzFile2.size / 1024).toFixed(2)} KB</p>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-medium text-gray-900 mb-1">Klik untuk memilih file KMZ/KML</p>
+                        <p className="text-xs text-gray-500">Format: .kmz, .kml (Maks. 20MB)</p>
+                      </>
+                    )}
+                  </label>
+                </div>
+
+                {kmzFile2 && (
+                  <div className="mt-4">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                      <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                      </svg>
+                      Preview Peta
+                    </label>
+                    <DynamicKMZMapPreview file={kmzFile2} height="300px" />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-50 px-6 py-4 rounded-b-2xl border-t border-gray-200 flex items-center justify-between gap-3">
+              <div className="text-xs text-gray-500">
+                <span className="text-red-500">*</span> Field wajib diisi
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setShowPraExistingModal(false);
+                    setTaskTitle("");
+                    setSelectedSurveyor("");
+                    setTaskDescription("");
+                    setKmzFile2(null);
+                  }}
+                  className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={() => handleSubmitTask("pra-existing")}
+                  disabled={submitting}
+                  className="px-6 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-all shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? (
                     <>

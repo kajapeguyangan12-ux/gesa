@@ -33,3 +33,9 @@ export const ROUTES = {
   ADMIN: "/admin",
   LOGIN: "/",
 } as const;
+
+// Kabupaten options (static)
+export const KABUPATEN_OPTIONS = [
+  { id: "tabanan", name: "Tabanan", description: "Fokus wilayah Kabupaten Tabanan" },
+  { id: "denpasar", name: "Denpasar", description: "Fokus wilayah Kota Denpasar" },
+] as const;
