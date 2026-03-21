@@ -9,6 +9,7 @@ import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
 import { db, storage } from "@/lib/firebase";
+import type { TaskNavigationInfo } from "@/utils/taskNavigation";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
 import { PRA_EXISTING_TABANAN_DATA } from "./location-data";
@@ -22,6 +23,7 @@ type DynamicMapProps = {
   completedPoints?: string[];
   trackingPath?: Array<{ lat: number; lng: number }>;
   onPointComplete?: (pointId: string, pointName: string, lat: number, lng: number) => void;
+  onTaskNavigationInfoChange?: (info: TaskNavigationInfo | null) => void;
 };
 
 const DynamicTrackingMap = dynamic<DynamicMapProps>(() => import("@/components/GPSMap"), {
@@ -133,6 +135,7 @@ function SurveyPraExistingContent() {
   const [submittedSurveys, setSubmittedSurveys] = useState<SubmittedSurveyItem[]>([]);
   const [loadingSubmittedSurveys, setLoadingSubmittedSurveys] = useState(false);
   const [formData, setFormData] = useState<FormState>(initialFormState);
+  const [taskNavigationInfo, setTaskNavigationInfo] = useState<TaskNavigationInfo | null>(null);
   const [fotoAktual, setFotoAktual] = useState<File | null>(null);
   const [fotoPreview, setFotoPreview] = useState("");
   const [saving, setSaving] = useState(false);
@@ -360,7 +363,30 @@ function SurveyPraExistingContent() {
   const districtOptions = useMemo(() => (formData.kabupaten === "tabanan" ? Object.keys(PRA_EXISTING_TABANAN_DATA) : []), [formData.kabupaten]);
   const desaOptions = useMemo(() => (formData.kecamatan ? Object.keys(PRA_EXISTING_TABANAN_DATA[formData.kecamatan] || {}) : []), [formData.kecamatan]);
   const banjarOptions = useMemo(() => (formData.kecamatan && formData.desa ? PRA_EXISTING_TABANAN_DATA[formData.kecamatan]?.[formData.desa] || [] : []), [formData.kecamatan, formData.desa]);
+  const isOutsideAssignedPolygon = taskNavigationInfo?.geometryType === "polygon" && taskNavigationInfo.isInsidePolygon === false;
+  const nearestTaskCoordinateLabel = taskNavigationInfo?.nearestCoordinate
+    ? `${taskNavigationInfo.nearestCoordinate.lat.toFixed(6)}, ${taskNavigationInfo.nearestCoordinate.lng.toFixed(6)}`
+    : "-";
+  const distanceToTaskLabel =
+    taskNavigationInfo?.distanceToTargetMeters !== null && taskNavigationInfo?.distanceToTargetMeters !== undefined
+      ? taskNavigationInfo.distanceToTargetMeters < 1000
+        ? `${Math.round(taskNavigationInfo.distanceToTargetMeters)} m`
+        : `${(taskNavigationInfo.distanceToTargetMeters / 1000).toFixed(2)} km`
+      : "-";
+  const googleMapsUrl = useMemo(() => {
+    if (!taskNavigationInfo?.nearestCoordinate) {
+      return "";
+    }
 
+    const destination = `${taskNavigationInfo.nearestCoordinate.lat},${taskNavigationInfo.nearestCoordinate.lng}`;
+    const origin = gpsCoords ? `${gpsCoords.latitude},${gpsCoords.longitude}` : "";
+
+    if (origin) {
+      return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+    }
+
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
+  }, [gpsCoords, taskNavigationInfo]);
   const gpsStatusLabel = !isGPSActive ? "GPS belum aktif" : gpsCoords ? `Akurasi +/-${gpsCoords.accuracy.toFixed(1)} m` : "Mencari posisi GPS";
   const currentGeoStamp = gpsCoords ? `Lat ${gpsCoords.latitude.toFixed(6)} | Lng ${gpsCoords.longitude.toFixed(6)} | ${new Date(gpsCoords.timestamp).toLocaleString("id-ID")}` : "Geostamp akan muncul setelah GPS terbaca";
 
@@ -376,6 +402,13 @@ function SurveyPraExistingContent() {
     if (formData.kepemilikanTiang === "PLN" && !formData.tipeTiangPLN) return alert("Tipe Tiang PLN wajib dipilih jika kepemilikan PLN.");
     if (formData.garduStatus === "Ada" && !formData.kodeGardu.trim()) return alert("Kode Gardu wajib diisi jika gardu tersedia.");
     if (!fotoAktual) return alert("Foto titik aktual wajib diunggah.");
+    if (isOutsideAssignedPolygon) {
+      const warningMessage = `Posisi GPS saat ini masih di luar polygon tugas.\nJarak ke tepi area sekitar ${distanceToTaskLabel}.\nKoordinat tepi terdekat: ${nearestTaskCoordinateLabel}.\n\nAkurasi GPS saat ini ${gpsCoords.accuracy.toFixed(1)} meter, jadi tetap cek kondisi lapangan.\n\nLanjut simpan survey?`;
+      const confirmed = window.confirm(warningMessage);
+      if (!confirmed) {
+        return;
+      }
+    }
 
     setSaving(true);
 
@@ -500,7 +533,59 @@ function SurveyPraExistingContent() {
                   </button>
                 </div>
               </div>
-              <DynamicTrackingMap latitude={gpsCoords?.latitude ?? null} longitude={gpsCoords?.longitude ?? null} accuracy={gpsCoords?.accuracy ?? 0} hasGPS={isGPSActive} kmzFileUrl={taskPolygonUrl} completedPoints={completedPoints} trackingPath={trackingPath} onPointComplete={handleCompletePoint} />
+              <DynamicTrackingMap latitude={gpsCoords?.latitude ?? null} longitude={gpsCoords?.longitude ?? null} accuracy={gpsCoords?.accuracy ?? 0} hasGPS={isGPSActive} kmzFileUrl={taskPolygonUrl} completedPoints={completedPoints} trackingPath={trackingPath} onPointComplete={handleCompletePoint} onTaskNavigationInfoChange={setTaskNavigationInfo} />
+              <div className={`mt-4 rounded-2xl border p-4 text-sm ${isOutsideAssignedPolygon ? "border-amber-300 bg-amber-50 text-amber-900" : taskNavigationInfo?.geometryType === "polygon" && taskNavigationInfo.isInsidePolygon ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status Area Tugas</p>
+                      <p className={`mt-1 text-base font-semibold ${isOutsideAssignedPolygon ? "text-amber-900" : taskNavigationInfo?.geometryType === "polygon" && taskNavigationInfo.isInsidePolygon ? "text-emerald-800" : "text-slate-900"}`}>
+                        {!taskPolygonUrl
+                          ? "Belum ada polygon atau titik tugas dari admin."
+                          : !gpsCoords
+                            ? "Menunggu posisi GPS untuk membaca status area tugas."
+                            : !taskNavigationInfo?.hasTaskGeometry
+                              ? "Data KMZ belum terbaca sebagai polygon atau titik tugas."
+                              : taskNavigationInfo.geometryType === "polygon"
+                                ? taskNavigationInfo.isInsidePolygon
+                                  ? "Anda sudah berada di dalam polygon tugas."
+                                  : "Anda masih di luar polygon tugas."
+                                : taskNavigationInfo.geometryType === "polyline"
+                                  ? "Tugas terbaca sebagai rute atau garis. Sistem mengarahkan ke titik terdekat pada garis."
+                                  : "Tugas terbaca sebagai titik. Sistem mengarahkan ke titik tugas terdekat."}
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      <InfoMiniCard label="Target" value={taskNavigationInfo?.taskName || "-"} />
+                      <InfoMiniCard label="Jarak ke target" value={distanceToTaskLabel} />
+                      <InfoMiniCard label="Koordinat target" value={nearestTaskCoordinateLabel} monospace />
+                    </div>
+                    {gpsCoords && taskNavigationInfo?.hasTaskGeometry && (
+                      <p className="text-xs text-slate-500">
+                        Status area dihitung dari posisi GPS saat ini. Akurasi perangkat sekitar +/-{gpsCoords.accuracy.toFixed(1)} meter.
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex w-full flex-col gap-2 lg:max-w-[220px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!googleMapsUrl) {
+                          return;
+                        }
+                        window.open(googleMapsUrl, "_blank", "noopener,noreferrer");
+                      }}
+                      disabled={!googleMapsUrl}
+                      className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      Arahkan ke Google Maps
+                    </button>
+                    <p className="text-xs text-slate-500">
+                      Tujuan diarahkan ke titik tepi terdekat dari polygon atau ke titik tugas terdekat dari admin.
+                    </p>
+                  </div>
+                </div>
+              </div>
               <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-slate-700">
                 <div className="flex items-center justify-between gap-4"><span className="font-semibold text-emerald-800">Pelacakan real time {trackingEnabled ? "aktif" : "siap"}</span><span className="text-emerald-700">{gpsCoords ? "Terverifikasi" : "Menunggu GPS"}</span></div>
                 <p className="mt-3 rounded-xl bg-white px-4 py-3 font-mono text-base text-slate-900">{gpsCoords ? `${gpsCoords.latitude.toFixed(6)}, ${gpsCoords.longitude.toFixed(6)}` : "Koordinat belum tersedia"}</p>
@@ -665,6 +750,15 @@ function StatCard({ label, value }: { label: string; value: string }) {
   return <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 font-medium text-slate-800">{value}</p></div>;
 }
 
+function InfoMiniCard({ label, value, monospace = false }: { label: string; value: string; monospace?: boolean }) {
+  return (
+    <div className="rounded-xl bg-white/90 p-3 shadow-sm ring-1 ring-black/5">
+      <p className="text-xs uppercase tracking-wide text-slate-400">{label}</p>
+      <p className={`mt-1 text-sm font-medium text-slate-800 ${monospace ? "font-mono" : ""}`}>{value}</p>
+    </div>
+  );
+}
+
 interface BaseFieldProps {
   label: string;
   value: string;
@@ -711,6 +805,8 @@ function TextAreaField({ label, value, onChange, required }: BaseFieldProps) {
 export default function SurveyPraExistingPage() {
   return <SurveyPraExistingContent />;
 }
+
+
 
 
 

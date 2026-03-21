@@ -42,6 +42,10 @@ function PraExistingPanelContent() {
   const [stats, setStats] = useState<PanelStats>(initialStats);
   const [loading, setLoading] = useState(true);
 
+  const handleBack = () => {
+    router.push("/module-selection");
+  };
+
   useEffect(() => {
     const fetchStats = async () => {
       if (!user?.uid) {
@@ -111,7 +115,20 @@ function PraExistingPanelContent() {
     <div className="flex min-h-screen flex-col bg-gray-50">
       <header className="border-b border-gray-200 bg-white p-4 shadow-sm">
         <div className="container mx-auto flex items-center justify-between">
-          <h1 className="text-xl font-bold text-gray-800">Dashboard Pra Existing</h1>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label="Kembali"
+              className="flex items-center gap-2 rounded-xl bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-200"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+              </svg>
+              <span className="hidden sm:inline">Kembali</span>
+            </button>
+            <h1 className="text-xl font-bold text-gray-800">Dashboard Pra Existing</h1>
+          </div>
           <p className="text-sm text-gray-600">
             Selamat Pagi, <span className="font-semibold">{user?.displayName || user?.email}</span>
           </p>
@@ -180,3 +197,4 @@ export default function PraExistingPanelPage() {
     </ProtectedRoute>
   );
 }
+

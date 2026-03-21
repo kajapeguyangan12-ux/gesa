@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import dynamic from "next/dynamic";
+import type { TaskNavigationInfo } from "@/utils/taskNavigation";
 
 const KMZTaskOverlay = dynamic(() => import("./KMZTaskOverlay"), { ssr: false });
+const DEFAULT_POSITION: [number, number] = [-8.4095, 115.1889];
 
 type LeafletDefaultProto = L.Icon.Default & { _getIconUrl?: unknown };
 
@@ -22,17 +24,46 @@ if (typeof window !== "undefined") {
 
 interface MapUpdaterProps {
   center: [number, number];
-  zoom: number;
+  hasGPS: boolean;
+  initialZoom: number;
 }
 
-function MapUpdater({ center, zoom }: MapUpdaterProps) {
+function MapUpdater({ center, hasGPS, initialZoom }: MapUpdaterProps) {
   const map = useMap();
+  const previousCenterRef = useRef<[number, number] | null>(null);
+  const hasAutoFocusedGPSRef = useRef(false);
 
   useEffect(() => {
-    if (map && center) {
-      map.setView(center, zoom, { animate: true, duration: 1 });
+    if (!map || !center) {
+      return;
     }
-  }, [center, zoom, map]);
+
+    if (!previousCenterRef.current) {
+      map.setView(center, initialZoom, { animate: false });
+      previousCenterRef.current = center;
+      hasAutoFocusedGPSRef.current = hasGPS;
+      return;
+    }
+
+    const [previousLat, previousLng] = previousCenterRef.current;
+    const movedEnough = Math.abs(previousLat - center[0]) > 0.00003 || Math.abs(previousLng - center[1]) > 0.00003;
+
+    if (hasGPS && !hasAutoFocusedGPSRef.current) {
+      map.setView(center, 18, { animate: true, duration: 1 });
+      hasAutoFocusedGPSRef.current = true;
+      previousCenterRef.current = center;
+      return;
+    }
+
+    if (movedEnough) {
+      map.panTo(center, { animate: true, duration: 1 });
+      previousCenterRef.current = center;
+    }
+
+    if (!hasGPS) {
+      hasAutoFocusedGPSRef.current = false;
+    }
+  }, [center, hasGPS, initialZoom, map]);
 
   return null;
 }
@@ -42,12 +73,26 @@ interface MapWithKMZProps {
   currentPosition?: { lat: number; lng: number } | null;
   completedPoints?: string[];
   onPointComplete?: (pointId: string, pointName: string, lat: number, lng: number) => void;
+  onTaskNavigationInfoChange?: (info: TaskNavigationInfo | null) => void;
 }
 
-function MapWithKMZ({ kmzFileUrl, currentPosition, completedPoints, onPointComplete }: MapWithKMZProps) {
+function MapWithKMZ({ kmzFileUrl, currentPosition, completedPoints, onPointComplete, onTaskNavigationInfoChange }: MapWithKMZProps) {
   const map = useMap();
 
-  return <>{kmzFileUrl && <KMZTaskOverlay map={map} kmzFileUrl={kmzFileUrl} currentPosition={currentPosition} completedPoints={completedPoints} onPointComplete={onPointComplete} />}</>;
+  return (
+    <>
+      {kmzFileUrl && (
+        <KMZTaskOverlay
+          map={map}
+          kmzFileUrl={kmzFileUrl}
+          currentPosition={currentPosition}
+          completedPoints={completedPoints}
+          onPointComplete={onPointComplete}
+          onTaskNavigationInfoChange={onTaskNavigationInfoChange}
+        />
+      )}
+    </>
+  );
 }
 
 export interface GPSMapProps {
@@ -59,9 +104,10 @@ export interface GPSMapProps {
   completedPoints?: string[];
   trackingPath?: Array<{ lat: number; lng: number }>;
   onPointComplete?: (pointId: string, pointName: string, lat: number, lng: number) => void;
+  onTaskNavigationInfoChange?: (info: TaskNavigationInfo | null) => void;
 }
 
-function GPSMap({ latitude, longitude, accuracy, hasGPS, kmzFileUrl, completedPoints, trackingPath = [], onPointComplete }: GPSMapProps) {
+function GPSMap({ latitude, longitude, accuracy, hasGPS, kmzFileUrl, completedPoints, trackingPath = [], onPointComplete, onTaskNavigationInfoChange }: GPSMapProps) {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
@@ -72,9 +118,9 @@ function GPSMap({ latitude, longitude, accuracy, hasGPS, kmzFileUrl, completedPo
     return () => clearTimeout(timer);
   }, []);
 
-  const defaultPosition: [number, number] = [-8.4095, 115.1889];
-  const position: [number, number] = latitude !== null && longitude !== null ? [latitude, longitude] : defaultPosition;
-  const zoom = hasGPS ? 18 : 12;
+  const position = useMemo<[number, number]>(() => (latitude !== null && longitude !== null ? [latitude, longitude] : DEFAULT_POSITION), [latitude, longitude]);
+  const currentPosition = useMemo(() => (latitude !== null && longitude !== null ? { lat: latitude, lng: longitude } : null), [latitude, longitude]);
+  const initialZoom = hasGPS ? 18 : 12;
 
   if (!isReady) {
     return (
@@ -106,7 +152,7 @@ function GPSMap({ latitude, longitude, accuracy, hasGPS, kmzFileUrl, completedPo
     <div className="rounded-xl overflow-hidden border-2 border-blue-200 shadow-lg" style={{ height: "500px", width: "100%", position: "relative" }}>
       <MapContainer
         center={position}
-        zoom={zoom}
+        zoom={initialZoom}
         style={{ height: "100%", width: "100%", zIndex: 0 }}
         zoomControl={true}
         scrollWheelZoom={true}
@@ -121,9 +167,10 @@ function GPSMap({ latitude, longitude, accuracy, hasGPS, kmzFileUrl, completedPo
 
         <MapWithKMZ
           kmzFileUrl={kmzFileUrl}
-          currentPosition={latitude !== null && longitude !== null ? { lat: latitude, lng: longitude } : null}
+          currentPosition={currentPosition}
           completedPoints={completedPoints}
           onPointComplete={onPointComplete}
+          onTaskNavigationInfoChange={onTaskNavigationInfoChange}
         />
 
         {trackingPath.length > 1 && (
@@ -166,7 +213,7 @@ function GPSMap({ latitude, longitude, accuracy, hasGPS, kmzFileUrl, completedPo
           </>
         )}
 
-        <MapUpdater center={position} zoom={zoom} />
+        <MapUpdater center={position} hasGPS={hasGPS} initialZoom={initialZoom} />
       </MapContainer>
 
       {hasGPS && (
