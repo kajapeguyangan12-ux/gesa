@@ -244,14 +244,17 @@ function TugasSurveyPraExistingContent() {
         </main>
 
         {showModal && selectedTask && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={() => setShowModal(false)}>
-            <div className="w-full max-w-4xl overflow-hidden rounded-[28px] bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
-              <div className="border-b border-slate-200 px-6 py-5">
+          <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setShowModal(false)}>
+            <div
+              className="flex max-h-[100dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-[28px]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="shrink-0 border-b border-slate-200 px-4 py-4 sm:px-6 sm:py-5">
                 <div className="flex items-start justify-between gap-4">
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-lg font-bold text-slate-900">Detail Tugas</p>
                     <div className="mt-4 flex flex-wrap items-center gap-3">
-                      <h2 className="text-3xl font-bold text-slate-900">{selectedTask.title}</h2>
+                      <h2 className="text-2xl font-bold text-slate-900 sm:text-3xl">{selectedTask.title}</h2>
                       <span className={`rounded-full border px-3 py-1 text-xs font-bold ${getStatusBadge(selectedTask.status).class}`}>
                         {getStatusBadge(selectedTask.status).text}
                       </span>
@@ -264,7 +267,7 @@ function TugasSurveyPraExistingContent() {
                 </div>
               </div>
 
-              <div className="max-h-[75vh] overflow-y-auto px-6 py-5">
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
                 <div className="grid gap-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-700 md:grid-cols-2">
                   <div className="space-y-3">
                     <InfoRow label="Jenis Survey" value="Survey Pra Existing" />
@@ -279,28 +282,33 @@ function TugasSurveyPraExistingContent() {
                 </div>
 
                 <div className="mt-5 rounded-2xl border border-slate-200 p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div>
+                  <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
                       <h3 className="text-base font-bold text-slate-900">Preview Peta Lokasi</h3>
                       <p className="text-sm text-slate-500">Polygon atau titik dari admin ditampilkan sebagai alat bantu sebelum survey dimulai.</p>
                     </div>
                     {selectedTaskKmz && (
-                      <a href={selectedTaskKmz} target="_blank" rel="noreferrer" className="text-sm font-semibold text-blue-600 hover:underline">
+                      <a
+                        href={selectedTaskKmz}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="max-w-full text-sm font-semibold text-blue-600 hover:underline"
+                      >
                         Buka file KMZ
                       </a>
                     )}
                   </div>
-                  <RemoteKMZMapPreview kmzUrl={selectedTaskKmz} height="340px" tone="blue" />
+                  <RemoteKMZMapPreview kmzUrl={selectedTaskKmz} height="clamp(220px, 38vh, 340px)" tone="blue" />
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row">
+              <div className="shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex sm:flex-row sm:gap-3 sm:px-6 sm:pb-4">
                 <button onClick={() => setShowModal(false)} className="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 border border-slate-200 transition hover:bg-slate-100">
                   Tutup
                 </button>
                 <button
                   onClick={() => handleStartTask(selectedTask)}
-                  className="flex-1 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+                  className="mt-3 flex-1 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 sm:mt-0"
                 >
                   {selectedTask.status === "pending" ? "Mulai Tugas" : "Lanjutkan Survey"}
                 </button>
@@ -315,9 +323,9 @@ function TugasSurveyPraExistingContent() {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-4 border-b border-slate-200 pb-2 last:border-b-0 last:pb-0">
-      <span className="text-slate-500">{label}</span>
-      <span className="text-right font-semibold text-slate-800">{value}</span>
+    <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-2 last:border-b-0 last:pb-0">
+      <span className="shrink-0 text-slate-500">{label}</span>
+      <span className="break-words text-right font-semibold text-slate-800">{value}</span>
     </div>
   );
 }
