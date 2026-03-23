@@ -1,0 +1,81 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // DEVELOPMENT MODE - Allow all access
+    // ⚠️ CHANGE THIS IN PRODUCTION!
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+
+// PRODUCTION RULES (uncomment when using Firebase Auth):
+/*
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/User-Admin/$(request.auth.uid));
+    }
+
+    function userData() {
+      return userDoc().data;
+    }
+
+    function isAdmin() {
+      return userData().role == "admin" || userData().role == "super-admin";
+    }
+
+    function hasKabupatenAccess(kab) {
+      return isAdmin() ||
+        (userData().kabupaten_allowed is list && kab in userData().kabupaten_allowed);
+    }
+
+    // Users can read their own profile (or admins read all)
+    match /User-Admin/{userId} {
+      allow read: if isSignedIn() && (isAdmin() || request.auth.uid == userId);
+      allow write: if isSignedIn() && isAdmin();
+    }
+
+    // Reports collection (survey cahaya reports)
+    match /reports/{reportId} {
+      allow read: if isSignedIn() && hasKabupatenAccess(resource.data.kabupaten);
+      allow create: if isSignedIn() && hasKabupatenAccess(request.resource.data.kabupaten);
+      allow update: if isSignedIn()
+        && hasKabupatenAccess(resource.data.kabupaten)
+        && hasKabupatenAccess(request.resource.data.kabupaten);
+      allow delete: if isSignedIn() && hasKabupatenAccess(resource.data.kabupaten);
+    }
+
+    // Survey Existing collection
+    match /survey-existing/{surveyId} {
+      allow read: if isSignedIn() && hasKabupatenAccess(resource.data.kabupaten);
+      allow create: if isSignedIn() && hasKabupatenAccess(request.resource.data.kabupaten);
+      allow update: if isSignedIn()
+        && hasKabupatenAccess(resource.data.kabupaten)
+        && hasKabupatenAccess(request.resource.data.kabupaten);
+      allow delete: if isSignedIn() && hasKabupatenAccess(resource.data.kabupaten);
+    }
+
+    // Survey APJ Propose collection
+    match /survey-apj-propose/{surveyId} {
+      allow read: if isSignedIn() && hasKabupatenAccess(resource.data.kabupaten);
+      allow create: if isSignedIn() && hasKabupatenAccess(request.resource.data.kabupaten);
+      allow update: if isSignedIn()
+        && hasKabupatenAccess(resource.data.kabupaten)
+        && hasKabupatenAccess(request.resource.data.kabupaten);
+      allow delete: if isSignedIn() && hasKabupatenAccess(resource.data.kabupaten);
+    }
+
+    match /tasks/{taskId} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}
+*/
