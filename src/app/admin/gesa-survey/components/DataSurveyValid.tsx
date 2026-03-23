@@ -38,14 +38,15 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
       const praExistingRef = collection(db, "survey-pra-existing");
       
       const qExisting = activeKabupaten
-        ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "tervalidasi"))
-        : query(existingRef, where("status", "==", "tervalidasi"));
+        ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"))
+        : query(existingRef, where("status", "==", "diverifikasi"));
       const qPropose = activeKabupaten
-        ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "tervalidasi"))
-        : query(proposeRef, where("status", "==", "tervalidasi"));
-      const qPraExisting = activeKabupaten
-        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "tervalidasi"))
-        : query(praExistingRef, where("status", "==", "tervalidasi"));
+        ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"))
+        : query(proposeRef, where("status", "==", "diverifikasi"));
+      const qPraExisting = query(praExistingRef, where("status", "==", "diverifikasi"));
+      
+      console.log("🔍 Debug - Active Kabupaten:", activeKabupaten);
+      console.log("🔍 Debug - Query Pra Existing:", qPraExisting);
       
       const [existingSnapshot, proposeSnapshot, praExistingSnapshot] = await Promise.all([
         getDocs(qExisting),
@@ -53,9 +54,22 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
         getDocs(qPraExisting),
       ]);
       
+      console.log("🔍 Debug - Pra Existing Snapshot Size:", praExistingSnapshot.size);
+      console.log("🔍 Debug - Pra Existing ALL Status Check:", praExistingSnapshot.docs.map(doc => ({
+        id: doc.id,
+        status: doc.data().status,
+        kabupaten: doc.data().kabupaten,
+        kabupatenName: doc.data().kabupatenName,
+        title: doc.data().title,
+        jenisLampu: doc.data().jenisLampu,
+        createdAt: doc.data().createdAt
+      })));
+      
       const existingCount = existingSnapshot.size;
       const proposeCount = proposeSnapshot.size;
       const praExistingCount = praExistingSnapshot.size;
+      
+      console.log("🔍 Debug - Counts:", { existingCount, proposeCount, praExistingCount });
       
       setStats({
         total: existingCount + proposeCount + praExistingCount,

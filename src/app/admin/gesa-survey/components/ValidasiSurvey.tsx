@@ -339,7 +339,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
         Number.isFinite(normalizedAdminLatitude) &&
         Number.isFinite(normalizedAdminLongitude);
       
-      // Update status to diverifikasi (first stage verification)
+      // Update status to diverifikasi
       await updateDoc(surveyDoc, {
         status: "diverifikasi",
         ...(shouldUseAdminCoordinate
@@ -369,7 +369,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
       setShowDetailModal(false);
       setSelectedSurvey(null);
       
-      alert('Survey berhasil diverifikasi! Survey dipindahkan ke Data Survey Validasi.');
+      alert('Survey berhasil diverifikasi! Survey dipindahkan ke Data Survey Valid.');
     } catch (error) {
       console.error('Error verifying survey:', error);
       alert('Gagal memverifikasi survey: ' + error);

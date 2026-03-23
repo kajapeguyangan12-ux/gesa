@@ -83,22 +83,22 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
       // Fetch dari survey-existing
       const existingRef = collection(db, "survey-existing");
       const existingQuery = activeKabupaten
-        ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "tervalidasi"))
-        : query(existingRef, where("status", "==", "tervalidasi"));
+        ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"))
+        : query(existingRef, where("status", "==", "diverifikasi"));
       const existingSnapshot = await getDocs(existingQuery);
       
       // Fetch dari survey-apj-propose
       const proposeRef = collection(db, "survey-apj-propose");
       const proposeQuery = activeKabupaten
-        ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "tervalidasi"))
-        : query(proposeRef, where("status", "==", "tervalidasi"));
+        ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"))
+        : query(proposeRef, where("status", "==", "diverifikasi"));
       const proposeSnapshot = await getDocs(proposeQuery);
       
       // Fetch dari survey-pra-existing
       const praExistingRef = collection(db, "survey-pra-existing");
       const praExistingQuery = activeKabupaten
-        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "tervalidasi"))
-        : query(praExistingRef, where("status", "==", "tervalidasi"));
+        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"))
+        : query(praExistingRef, where("status", "==", "diverifikasi"));
       const praExistingSnapshot = await getDocs(praExistingQuery);
 
       // Combine data dari collection

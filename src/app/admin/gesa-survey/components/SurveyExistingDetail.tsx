@@ -72,7 +72,7 @@ interface SurveyExistingDetailProps {
   activeKabupaten?: string | null;
 }
 
-export default function SurveyExistingDetail({ onBack, statusFilter = "tervalidasi", activeKabupaten }: SurveyExistingDetailProps) {
+export default function SurveyExistingDetail({ onBack, statusFilter = "diverifikasi", activeKabupaten }: SurveyExistingDetailProps) {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);

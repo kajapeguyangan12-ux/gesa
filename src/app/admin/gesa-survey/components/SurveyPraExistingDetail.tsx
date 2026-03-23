@@ -71,7 +71,7 @@ interface SurveyPraExistingDetailProps {
 
 export default function SurveyPraExistingDetail({
   onBack,
-  statusFilter = "tervalidasi",
+  statusFilter = "diverifikasi",
   activeKabupaten,
 }: SurveyPraExistingDetailProps) {
   const [surveys, setSurveys] = useState<Survey[]>([]);
@@ -84,16 +84,27 @@ export default function SurveyPraExistingDetail({
     try {
       setLoading(true);
       const surveysRef = collection(db, "survey-pra-existing");
-      const q = activeKabupaten
-        ? query(surveysRef, where("kabupaten", "==", activeKabupaten), where("status", "==", statusFilter))
-        : query(surveysRef, where("status", "==", statusFilter));
+      const q = query(surveysRef, where("status", "==", statusFilter));
+      
+      console.log("🔍 Debug Detail - Status Filter:", statusFilter);
+      console.log("🔍 Debug Detail - Query:", q);
+      
       const snapshot = await getDocs(q);
+      
+      console.log("🔍 Debug Detail - Snapshot Size:", snapshot.size);
+      console.log("🔍 Debug Detail - All Docs:", snapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        status: docSnap.data().status,
+        kabupaten: docSnap.data().kabupaten,
+        kabupatenName: docSnap.data().kabupatenName,
+        title: docSnap.data().title
+      })));
 
       const data = snapshot.docs.map((docSnap) => ({
         id: docSnap.id,
         title: docSnap.data().title || `Survey Pra Existing - ${docSnap.data().jenisLampu || "Untitled"}`,
         type: "pra-existing",
-        status: docSnap.data().status || statusFilter,
+        status: docSnap.data().status || "diverifikasi",
         surveyorName: docSnap.data().surveyorName || "Unknown",
         surveyorEmail: docSnap.data().surveyorEmail,
         createdAt: docSnap.data().createdAt,

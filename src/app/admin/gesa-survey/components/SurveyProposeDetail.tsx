@@ -63,7 +63,7 @@ interface SurveyProposeDetailProps {
   activeKabupaten?: string | null;
 }
 
-export default function SurveyProposeDetail({ onBack, statusFilter = "tervalidasi", activeKabupaten }: SurveyProposeDetailProps) {
+export default function SurveyProposeDetail({ onBack, statusFilter = "diverifikasi", activeKabupaten }: SurveyProposeDetailProps) {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
