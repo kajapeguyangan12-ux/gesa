@@ -113,8 +113,8 @@ export default function SurveyPraExistingSubmittedMap({ surveyData }: SurveyPraE
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-emerald-200 shadow-sm" style={{ height: "460px" }}>
-      <MapContainer center={center} zoom={zoom} style={{ height: "100%", width: "100%" }} scrollWheelZoom>
+    <div key={`submitted-map-${markerData.length}-${center[0]}-${center[1]}-${Date.now()}`} className="overflow-hidden rounded-2xl border border-emerald-200 shadow-sm" style={{ height: "460px" }}>
+      <MapContainer key={`submitted-container-${markerData.length}-${center[0]}-${center[1]}-${Date.now()}`} center={center} zoom={zoom} style={{ height: "100%", width: "100%" }} scrollWheelZoom>
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

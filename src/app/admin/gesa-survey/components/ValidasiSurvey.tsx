@@ -916,6 +916,61 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                 </div>
               </div>
 
+              {/* Koordinat Comparison */}
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl lg:rounded-2xl p-4 lg:p-6 border border-blue-200">
+                <h3 className="text-base lg:text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <svg className="w-5 h-5 lg:w-6 lg:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  </svg>
+                  Perbandingan Koordinat
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-white p-4 rounded-lg border border-gray-200">
+                    <h4 className="text-sm font-semibold text-gray-600 mb-2 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      Koordinat Petugas (Awal)
+                    </h4>
+                    <div className="space-y-1">
+                      <p className="font-mono text-sm text-gray-900">
+                        <span className="text-gray-600">Lat:</span> {(selectedSurvey.originalLatitude ?? selectedSurvey.latitude).toFixed(7)}
+                      </p>
+                      <p className="font-mono text-sm text-gray-900">
+                        <span className="text-gray-600">Lng:</span> {(selectedSurvey.originalLongitude ?? selectedSurvey.longitude).toFixed(7)}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-2">GPS saat survey pertama kali</p>
+                    </div>
+                  </div>
+                  <div className="bg-white p-4 rounded-lg border border-gray-200">
+                    <h4 className="text-sm font-semibold text-gray-600 mb-2 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      Koordinat Admin (Final)
+                    </h4>
+                    <div className="space-y-1">
+                      <p className="font-mono text-sm text-gray-900">
+                        <span className="text-gray-600">Lat:</span> {(selectedSurvey.adminLatitude ?? selectedSurvey.latitude).toFixed(7)}
+                      </p>
+                      <p className="font-mono text-sm text-gray-900">
+                        <span className="text-gray-600">Lng:</span> {(selectedSurvey.adminLongitude ?? selectedSurvey.longitude).toFixed(7)}
+                      </p>
+                      <p className="text-xs text-blue-600 mt-2 font-semibold">
+                        {selectedSurvey.hasAdminCoordinateOverride ? "⚠️ Digunakan di maps" : "Sama dengan petugas"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                {selectedSurvey.hasAdminCoordinateOverride && (
+                  <div className="mt-3 p-3 bg-blue-100 rounded-lg border border-blue-300">
+                    <p className="text-xs text-blue-800">
+                      <strong>Info:</strong> Koordinat admin yang digunakan di maps karena ada perbaikan posisi dari petugas.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {/* Photos Section */}
               {(selectedSurvey.fotoTiangAPM || selectedSurvey.fotoTitikActual || selectedSurvey.photoUrl || selectedSurvey.fotoAktual) && (
                 <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl lg:rounded-2xl p-4 lg:p-6 border border-purple-200">
@@ -1072,20 +1127,6 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                     </div>
                   )}
 
-                  {selectedSurvey.type === "pra-existing" && selectedSurvey.lebarJalan && (
-                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
-                      <p className="text-xs text-gray-600 mb-1">Lebar Jalan</p>
-                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.lebarJalan}</p>
-                    </div>
-                  )}
-
-                  {selectedSurvey.type === "pra-existing" && selectedSurvey.kondisi && (
-                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
-                      <p className="text-xs text-gray-600 mb-1">Kondisi</p>
-                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.kondisi}</p>
-                    </div>
-                  )}
-
                   {selectedSurvey.type === "pra-existing" && selectedSurvey.jenisTiang && (
                     <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
                       <p className="text-xs text-gray-600 mb-1">Jenis Tiang</p>
@@ -1210,14 +1251,6 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                     </div>
                   )}
 
-                  {/* 10. Lebar Jalan */}
-                  {selectedSurvey.lebarJalan && (
-                    <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
-                      <p className="text-xs text-gray-600 mb-1">Lebar Jalan</p>
-                      <p className="font-semibold text-sm lg:text-base text-gray-900">{selectedSurvey.lebarJalan}m</p>
-                    </div>
-                  )}
-
                   {/* Survey Existing - Lebar Jalan Display */}
                   {selectedSurvey.lebarJalanDisplay && selectedSurvey.type === "existing" && (
                     <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
@@ -1226,7 +1259,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                     </div>
                   )}
 
-                  {/* 11. Jarak Antar Tiang */}
+                  {/* 10. Jarak Antar Tiang */}
                   {selectedSurvey.jarakAntarTiang && (
                     <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200">
                       <p className="text-xs text-gray-600 mb-1">Jarak Antar Tiang</p>
@@ -1791,38 +1824,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                           value={editFormData.fungsiLampu || ''}
                           onChange={(e) => setEditFormData({...editFormData, fungsiLampu: e.target.value})}
                           className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
-                          placeholder="APJ"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">Lebar Jalan</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={editFormData.lebarJalan || ''}
-                          onChange={(e) => setEditFormData({...editFormData, lebarJalan: e.target.value})}
-                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
-                          placeholder="0.0"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">Kondisi</label>
-                        <input
-                          type="text"
-                          value={editFormData.kondisi || ''}
-                          onChange={(e) => setEditFormData({...editFormData, kondisi: e.target.value})}
-                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
-                          placeholder="Baik/Rusak"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">Jenis Tiang</label>
-                        <input
-                          type="text"
-                          value={editFormData.jenisTiang || ''}
-                          onChange={(e) => setEditFormData({...editFormData, jenisTiang: e.target.value})}
-                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
-                          placeholder="Besi/Beton/Kayu"
+                          placeholder="APJ / FASOS / FASUM"
                         />
                       </div>
                       <div>

@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { collection, getDocs, query, where, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
+import * as XLSX from 'xlsx';
 
 const DynamicDetailMap = dynamic(
   () => import("./SurveyDetailMap"),
@@ -32,6 +33,8 @@ interface Survey {
   validatedBy: string;
   latitude: number;
   longitude: number;
+  adminLatitude?: number;
+  adminLongitude?: number;
   accuracy?: number;
   kabupaten?: string;
   kabupatenName?: string;
@@ -53,6 +56,7 @@ interface Survey {
   kodeGardu?: string;
   keterangan?: string;
   fotoAktual?: string;
+  fotoKemerataan?: string;
 }
 
 type TimestampLike =
@@ -79,6 +83,8 @@ export default function SurveyPraExistingDetail({
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterKecamatan, setFilterKecamatan] = useState("Semua Kecamatan");
+  const [filterDesa, setFilterDesa] = useState("Semua Desa");
 
   const fetchSurveys = useCallback(async () => {
     try {
@@ -112,6 +118,8 @@ export default function SurveyPraExistingDetail({
         validatedBy: docSnap.data().validatedBy || docSnap.data().editedBy || "Admin",
         latitude: docSnap.data().latitude || 0,
         longitude: docSnap.data().longitude || 0,
+        adminLatitude: docSnap.data().adminLatitude,
+        adminLongitude: docSnap.data().adminLongitude,
         accuracy: docSnap.data().accuracy,
         kabupaten: docSnap.data().kabupaten,
         kabupatenName: docSnap.data().kabupatenName,
@@ -133,6 +141,7 @@ export default function SurveyPraExistingDetail({
         kodeGardu: docSnap.data().kodeGardu,
         keterangan: docSnap.data().keterangan,
         fotoAktual: docSnap.data().fotoAktual,
+        fotoKemerataan: docSnap.data().fotoKemerataan,
       })) as Survey[];
 
       setSurveys(data);
@@ -190,40 +199,112 @@ export default function SurveyPraExistingDetail({
   const handleExportExcel = () => {
     const headers = [
       "No",
+      "ID Survey",
       "Judul",
+      "Surveyor",
       "Kabupaten",
       "Kecamatan",
       "Desa",
       "Banjar",
+      "Kepemilikan Tiang",
+      "Tipe Tiang PLN",
       "Jenis Lampu",
       "Jumlah Lampu",
-      "Koordinat",
+      "Daya Lampu",
+      "Fungsi Lampu",
+      "Jenis Tiang",
+      "Gardu",
+      "Kode Gardu",
+      "Keterangan",
+      "Koordinat Petugas X",
+      "Koordinat Petugas Y",
+      "Koordinat Admin X",
+      "Koordinat Admin Y",
       "Status",
       "Divalidasi Oleh",
-      "Tanggal",
+      "Tanggal Validasi",
+      "Tanggal Survey",
+      "Link Foto Petugas",
     ];
-    const rows = filteredSurveys.map((survey, index) => [
-      index + 1,
-      survey.title,
-      survey.kabupatenName || survey.kabupaten || "-",
-      survey.kecamatan || "-",
-      survey.desa || "-",
-      survey.banjar || "-",
-      survey.jenisLampu || "-",
-      survey.jumlahLampu || "-",
-      `${survey.latitude}, ${survey.longitude}`,
-      survey.status,
-      survey.validatedBy,
-      formatDate(survey.validatedAt),
-    ]);
 
-    const csvContent = [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `survey-pra-existing-${new Date().toISOString().split("T")[0]}.csv`;
-    link.click();
+    const rows = filteredSurveys.map((survey, index) => {
+      // Collect photo URLs
+      const fotoUrls = [];
+      if (survey.fotoAktual) fotoUrls.push(survey.fotoAktual);
+      if (survey.fotoKemerataan) fotoUrls.push(survey.fotoKemerataan);
+      
+      const fotoLink = fotoUrls.length > 0 ? fotoUrls.join(" | ") : "";
+
+      return [
+        index + 1,
+        survey.id || "",
+        survey.title || "",
+        survey.surveyorName || "",
+        survey.kabupatenName || survey.kabupaten || "",
+        survey.kecamatan || "",
+        survey.desa || "",
+        survey.banjar || "",
+        survey.kepemilikanDisplay || survey.kepemilikanTiang || "",
+        survey.tipeTiangPLN || "",
+        survey.jenisLampu || "",
+        survey.jumlahLampu || "",
+        survey.dayaLampu || "",
+        survey.fungsiLampu || "",
+        survey.jenisTiang || "",
+        survey.garduStatus || "",
+        survey.kodeGardu || "",
+        survey.keterangan || "",
+        survey.longitude?.toFixed(7) || "",
+        survey.latitude?.toFixed(7) || "",
+        survey.adminLongitude?.toFixed(7) || "",
+        survey.adminLatitude?.toFixed(7) || "",
+        survey.status || "",
+        survey.validatedBy || "",
+        formatDate(survey.validatedAt) || "",
+        formatDate(survey.createdAt) || "",
+        fotoLink,
+      ];
+    });
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    
+    // Create worksheet
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    
+    // Auto-width columns
+    const colWidths = headers.map((header, i) => {
+      const maxLength = Math.max(
+        header.length,
+        ...rows.map(row => String(row[i] || "").length)
+      );
+      return { wch: Math.min(maxLength + 2, 50) };
+    });
+    ws['!cols'] = colWidths;
+
+    // Add hyperlinks for photo URLs
+    rows.forEach((row, rowIndex) => {
+      const fotoIndex = headers.length - 1; // Last column (Link Foto Petugas)
+      const fotoUrl = row[fotoIndex];
+      
+      if (fotoUrl && typeof fotoUrl === 'string' && fotoUrl.trim() !== "") {
+        const cellAddress = XLSX.utils.encode_cell({ r: rowIndex + 1, c: fotoIndex });
+        ws[cellAddress] = {
+          v: "Klik untuk lihat foto",
+          l: { Target: fotoUrl, Tooltip: "Buka foto di browser" },
+          s: { font: { color: { rgb: "FF0000FF" }, underline: true } }
+        };
+      }
+    });
+
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, "Survey Pra Existing");
+    
+    // Generate filename with date
+    const fileName = `survey-pra-existing-${new Date().toISOString().split("T")[0]}.xlsx`;
+    
+    // Download file
+    XLSX.writeFile(wb, fileName);
   };
 
   const handleDelete = async (id: string) => {
@@ -239,17 +320,55 @@ export default function SurveyPraExistingDetail({
   };
 
   const filteredSurveys = surveys.filter((survey) => {
-    if (!searchQuery) return true;
-    const needle = searchQuery.toLowerCase();
-    return (
-      survey.title.toLowerCase().includes(needle) ||
-      survey.surveyorName.toLowerCase().includes(needle) ||
-      (survey.jenisLampu || "").toLowerCase().includes(needle) ||
-      (survey.kecamatan || "").toLowerCase().includes(needle) ||
-      (survey.desa || "").toLowerCase().includes(needle) ||
-      (survey.banjar || "").toLowerCase().includes(needle)
-    );
+    // Search query filter
+    if (searchQuery) {
+      const needle = searchQuery.toLowerCase();
+      const searchableText = [
+        survey.title,
+        survey.surveyorName,
+        survey.kabupatenName || survey.kabupaten,
+        survey.kecamatan,
+        survey.desa,
+        survey.banjar,
+        survey.jenisLampu,
+        survey.fungsiLampu,
+        survey.garduStatus,
+        survey.kodeGardu,
+      ].join(" ").toLowerCase();
+      
+      if (!searchableText.includes(needle)) return false;
+    }
+
+    // Kecamatan filter
+    if (filterKecamatan !== "Semua Kecamatan" && survey.kecamatan !== filterKecamatan) {
+      return false;
+    }
+
+    // Desa filter
+    if (filterDesa !== "Semua Desa" && survey.desa !== filterDesa) {
+      return false;
+    }
+
+    return true;
   });
+
+  // Get unique kecamatans from surveys
+  const kecamatanOptions = useMemo(() => {
+    const uniqueKecamatans = [...new Set(surveys.map(s => s.kecamatan).filter(Boolean))];
+    return ["Semua Kecamatan", ...uniqueKecamatans.sort()];
+  }, [surveys]);
+
+  // Get unique desas based on selected kecamatan
+  const desaOptions = useMemo(() => {
+    if (filterKecamatan === "Semua Kecamatan") {
+      const uniqueDesas = [...new Set(surveys.map(s => s.desa).filter(Boolean))];
+      return ["Semua Desa", ...uniqueDesas.sort()];
+    } else {
+      const filtered = surveys.filter(s => s.kecamatan === filterKecamatan);
+      const uniqueDesas = [...new Set(filtered.map(s => s.desa).filter(Boolean))];
+      return ["Semua Desa", ...uniqueDesas.sort()];
+    }
+  }, [surveys, filterKecamatan]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -291,7 +410,7 @@ export default function SurveyPraExistingDetail({
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M5 20h14" />
             </svg>
-            Export CSV
+            Export Excel
           </button>
         </div>
       </div>
@@ -309,6 +428,34 @@ export default function SurveyPraExistingDetail({
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all text-gray-900 placeholder:text-gray-500"
             />
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={filterKecamatan}
+              onChange={(e) => {
+                setFilterKecamatan(e.target.value);
+                setFilterDesa("Semua Desa"); // Reset desa when kecamatan changes
+              }}
+              className="px-3 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all text-gray-900 bg-white"
+            >
+              {kecamatanOptions.map(option => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <select
+              value={filterDesa}
+              onChange={(e) => setFilterDesa(e.target.value)}
+              disabled={filterKecamatan === "Semua Kecamatan"}
+              className="px-3 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all text-gray-900 bg-white disabled:bg-gray-100 disabled:text-gray-500"
+            >
+              {desaOptions.map(option => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 rounded-xl border border-emerald-100">
             <span className="text-emerald-700 font-medium">{filteredSurveys.length}</span>
@@ -518,6 +665,37 @@ export default function SurveyPraExistingDetail({
                   </div>
                 </div>
 
+                {/* Koordinat Petugas Section */}
+                <div className="bg-blue-50 rounded-2xl p-5 border border-blue-100">
+                  <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    </svg>
+                    Koordinat Petugas
+                  </h3>
+                  <div className="bg-white rounded-lg p-4 border border-blue-200">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">Latitude</p>
+                        <p className="font-mono text-sm font-bold text-gray-900">
+                          {selectedSurvey.latitude.toFixed(7)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">Longitude</p>
+                        <p className="font-mono text-sm font-bold text-gray-900">
+                          {selectedSurvey.longitude.toFixed(7)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-blue-200">
+                      <p className="text-xs text-blue-700">
+                        <strong>Info:</strong> Koordinat GPS saat survey pertama kali oleh petugas di lapangan.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="bg-emerald-50 rounded-2xl p-5 border border-emerald-100">
                     <h3 className="text-lg font-bold text-emerald-900 mb-4 flex items-center gap-2">
@@ -551,8 +729,6 @@ export default function SurveyPraExistingDetail({
                       <InfoRow label="Jumlah Lampu" value={selectedSurvey.jumlahLampu || "N/A"} />
                       <InfoRow label="Daya Lampu" value={selectedSurvey.dayaLampu || "N/A"} />
                       <InfoRow label="Fungsi Lampu" value={selectedSurvey.fungsiLampu || "N/A"} />
-                      <InfoRow label="Lebar Jalan" value={selectedSurvey.lebarJalan || "N/A"} />
-                      <InfoRow label="Kondisi" value={selectedSurvey.kondisi || "N/A"} />
                       <InfoRow label="Jenis Tiang" value={selectedSurvey.jenisTiang || "N/A"} />
                       <InfoRow label="Gardu" value={selectedSurvey.garduStatus || "N/A"} />
                       <InfoRow label="Kode Gardu" value={selectedSurvey.kodeGardu || "N/A"} />

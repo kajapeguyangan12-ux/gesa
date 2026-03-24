@@ -277,8 +277,10 @@ export default function KMZTaskOverlay({
                 </div>
               `);
 
-              nextLayerGroup.addLayer(polygon);
-              nextGeometries.polygons.push({ name, coordinates });
+              if (nextLayerGroup && nextLayerGroup.addLayer && typeof nextLayerGroup.addLayer === 'function') {
+                nextLayerGroup.addLayer(polygon);
+                nextGeometries.polygons.push({ name, coordinates });
+              }
               continue;
             }
 

@@ -398,7 +398,7 @@ function SurveyPraExistingContent() {
     if (!gpsCoords) return alert("GPS belum siap. Tunggu sampai posisi terbaca.");
     if (!formData.kabupaten) return alert("Kabupaten wajib dipilih agar data masuk ke wilayah yang benar.");
     if (!formData.kecamatan || !formData.desa || !formData.banjar.trim()) return alert("Kecamatan, desa, dan banjar wajib diisi.");
-    if (!formData.kepemilikanTiang || !formData.jenisTiang || !formData.jenisLampu || !formData.jumlahLampu || !formData.garduStatus || !formData.keterangan.trim()) return alert("Lengkapi semua field wajib pada form pra-existing.");
+    if (!formData.kepemilikanTiang || !formData.jenisTiang || !formData.jenisLampu || !formData.jumlahLampu || !formData.keterangan.trim()) return alert("Lengkapi semua field wajib pada form pra-existing.");
     if (formData.kepemilikanTiang === "PLN" && !formData.tipeTiangPLN) return alert("Tipe Tiang PLN wajib dipilih jika kepemilikan PLN.");
     if (formData.garduStatus === "Ada" && !formData.kodeGardu.trim()) return alert("Kode Gardu wajib diisi jika gardu tersedia.");
     if (!fotoAktual) return alert("Foto titik aktual wajib diunggah.");
@@ -606,13 +606,13 @@ function SurveyPraExistingContent() {
                 <SelectField label="Desa" value={formData.desa} onChange={(value) => handleInputChange("desa", value)} options={desaOptions} required disabled={!formData.kecamatan} />
                 <SelectField label="Banjar" value={formData.banjar} onChange={(value) => handleInputChange("banjar", value)} options={banjarOptions} required disabled={!formData.desa} />
                 <SelectField label="Kepemilikan Tiang" value={formData.kepemilikanTiang} onChange={(value) => handleInputChange("kepemilikanTiang", value)} options={["PLN", "Pemkab", "Swadaya"]} required />
-                <SelectField label="Tipe Tiang PLN" value={formData.tipeTiangPLN} onChange={(value) => handleInputChange("tipeTiangPLN", value)} options={["Tiang TM", "Tiang TR"]} disabled={formData.kepemilikanTiang !== "PLN"} required={formData.kepemilikanTiang === "PLN"} />
+                <SelectField label="Tipe Tiang PLN" value={formData.tipeTiangPLN} onChange={(value) => handleInputChange("tipeTiangPLN", value)} options={["Tiang TM", "Tiang TR", "Tiang Trafo"]} disabled={formData.kepemilikanTiang !== "PLN"} required={formData.kepemilikanTiang === "PLN"} />
                 <SelectField label="Jenis Tiang" value={formData.jenisTiang} onChange={(value) => handleInputChange("jenisTiang", value)} options={["Beton", "Besi", "Kayu"]} required />
                 <SelectField label="Jenis Lampu" value={formData.jenisLampu} onChange={(value) => handleInputChange("jenisLampu", value)} options={["LED", "Konvensional", "Panel Surya", "Swadaya"]} required />
-                <SelectField label="Jumlah Lampu" value={formData.jumlahLampu} onChange={(value) => handleInputChange("jumlahLampu", value)} options={["1", "2", "3", "4"]} required />
-                <SelectField label="Daya Lampu" value={formData.dayaLampu} onChange={(value) => handleInputChange("dayaLampu", value)} options={["30", "60", "80", "90", "125", "150", "250"]} />
-                <Field label="Fungsi Lampu" value={formData.fungsiLampu} onChange={() => undefined} disabled required />
-                <SelectField label="Gardu" value={formData.garduStatus} onChange={(value) => handleInputChange("garduStatus", value)} options={["Ada", "Tidak Ada"]} required />
+                <SelectField label="Jumlah Lampu" value={formData.jumlahLampu} onChange={(value) => handleInputChange("jumlahLampu", value)} options={["0", "1", "2", "3", "4"]} required />
+                <SelectField label="Daya Lampu" value={formData.dayaLampu} onChange={() => undefined} options={["30", "60", "80", "90", "125", "150", "250"]} disabled />
+                <SelectField label="Fungsi Lampu" value={formData.fungsiLampu} onChange={(value) => handleInputChange("fungsiLampu", value)} options={["APJ", "FASOS", "FASUM"]} required />
+                <SelectField label="Gardu" value={formData.garduStatus} onChange={() => undefined} options={["Ada", "Tidak Ada"]} disabled />
                 {formData.garduStatus === "Ada" && <Field label="Kode Gardu" value={formData.kodeGardu} onChange={(value) => handleInputChange("kodeGardu", value)} required />}
               </div>
               {formData.kabupaten && formData.kabupaten !== "tabanan" && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Data kecamatan dan desa detail saat ini baru disiapkan untuk Kabupaten Tabanan.</div>}
@@ -805,10 +805,3 @@ function TextAreaField({ label, value, onChange, required }: BaseFieldProps) {
 export default function SurveyPraExistingPage() {
   return <SurveyPraExistingContent />;
 }
-
-
-
-
-
-
-
