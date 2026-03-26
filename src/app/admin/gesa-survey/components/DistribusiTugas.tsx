@@ -44,7 +44,11 @@ interface Task {
   createdAt: { toDate?: () => Date } | Date | string | number | null;
 }
 
-export default function DistribusiTugas() {
+interface DistribusiTugasProps {
+  setActiveMenu?: (menu: string) => void;
+}
+
+export default function DistribusiTugas(_props: DistribusiTugasProps) {
   const [showTaskDropdown, setShowTaskDropdown] = useState(false);
   const [showProposeModal, setShowProposeModal] = useState(false);
   const [showExistingModal, setShowExistingModal] = useState(false);
@@ -416,6 +420,25 @@ export default function DistribusiTugas() {
     }
   };
 
+  const formatCreatedAt = (value: Task["createdAt"], options?: Intl.DateTimeFormatOptions) => {
+    if (!value) return "N/A";
+
+    let date: Date | null = null;
+    if (typeof value === "object" && value !== null && "toDate" in value && typeof value.toDate === "function") {
+      date = value.toDate();
+    } else if (value instanceof Date) {
+      date = value;
+    } else if (typeof value === "string" || typeof value === "number") {
+      date = new Date(value);
+    }
+
+    if (!date || Number.isNaN(date.getTime())) {
+      return "N/A";
+    }
+
+    return date.toLocaleDateString("id-ID", options);
+  };
+
   const getTypeLabel = (type: string) => {
     switch(type) {
       case "propose": return { text: "Survey Propose", icon: "🆕", color: "text-green-600" };
@@ -700,7 +723,7 @@ export default function DistribusiTugas() {
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                               </svg>
-                              <span>{task.createdAt?.toDate?.()?.toLocaleDateString('id-ID') || "N/A"}</span>
+                              <span>{formatCreatedAt(task.createdAt)}</span>
                             </div>
                             {task.kmzFileUrl && (
                               <div className="flex items-center gap-2 text-purple-600">
@@ -1760,12 +1783,12 @@ export default function DistribusiTugas() {
                     <div>
                       <p className="text-xs text-purple-700 font-medium">Tanggal Dibuat</p>
                       <p className="text-sm font-bold text-purple-900">
-                        {selectedTaskDetail.createdAt?.toDate?.()?.toLocaleDateString('id-ID', {
+                        {formatCreatedAt(selectedTaskDetail.createdAt, {
                           weekday: 'long',
                           year: 'numeric',
                           month: 'long',
                           day: 'numeric'
-                        }) || "N/A"}
+                        })}
                       </p>
                     </div>
                   </div>
