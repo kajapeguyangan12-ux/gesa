@@ -90,6 +90,19 @@ function TugasSurveyPraExistingContent() {
         status: "completed",
         completedAt: new Date(),
       });
+
+      const storedTask = localStorage.getItem("activeTask");
+      if (storedTask) {
+        try {
+          const parsedTask = JSON.parse(storedTask) as { id?: string };
+          if (parsedTask.id === task.id) {
+            localStorage.removeItem("activeTask");
+          }
+        } catch (storageError) {
+          console.error("Error clearing active task cache:", storageError);
+          localStorage.removeItem("activeTask");
+        }
+      }
       
       // Refresh data
       await fetchTasks();

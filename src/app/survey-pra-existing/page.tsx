@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } fro
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, getDocs, serverTimestamp, where, query } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, serverTimestamp, where } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
@@ -26,25 +26,17 @@ type DynamicMapProps = {
   onTaskNavigationInfoChange?: (info: TaskNavigationInfo | null) => void;
 };
 
-const DynamicTrackingMap = dynamic<DynamicMapProps>(() => import("@/components/GPSMap"), {
+type UnifiedMapProps = DynamicMapProps & {
+  surveyData: SubmittedSurveyItem[];
+};
+
+const DynamicUnifiedMap = dynamic<UnifiedMapProps>(() => import("@/components/SurveyPraExistingUnifiedMap"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[500px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-100">
+    <div className="flex h-[280px] items-center justify-center rounded-2xl border border-blue-200 bg-slate-100 sm:h-[340px] lg:h-[420px]">
       <div className="text-center">
         <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
-        <p className="text-sm text-slate-500">Memuat peta tracking...</p>
-      </div>
-    </div>
-  ),
-});
-
-const DynamicSubmittedMap = dynamic(() => import("@/components/SurveyPraExistingSubmittedMap"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex h-[460px] items-center justify-center rounded-2xl border border-emerald-200 bg-slate-100">
-      <div className="text-center">
-        <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-b-2 border-emerald-600" />
-        <p className="text-sm text-slate-500">Memuat peta survey...</p>
+        <p className="text-sm text-slate-500">Memuat peta gabungan...</p>
       </div>
     </div>
   ),
@@ -63,6 +55,7 @@ interface ActiveTask {
   description?: string;
   type?: string;
   status?: string;
+  surveyorId?: string;
   kmzFileUrl?: string;
   kmzFileUrl2?: string;
 }
@@ -134,11 +127,16 @@ function SurveyPraExistingContent() {
   const [completedPoints, setCompletedPoints] = useState<string[]>([]);
   const [submittedSurveys, setSubmittedSurveys] = useState<SubmittedSurveyItem[]>([]);
   const [loadingSubmittedSurveys, setLoadingSubmittedSurveys] = useState(false);
+  const [showUnifiedMap, setShowUnifiedMap] = useState(false);
+  const [showTaskSummary, setShowTaskSummary] = useState(false);
   const [formData, setFormData] = useState<FormState>(initialFormState);
   const [taskNavigationInfo, setTaskNavigationInfo] = useState<TaskNavigationInfo | null>(null);
   const [fotoAktual, setFotoAktual] = useState<File | null>(null);
   const [fotoPreview, setFotoPreview] = useState("");
   const [saving, setSaving] = useState(false);
+  const [checkingTaskAccess, setCheckingTaskAccess] = useState(true);
+  const [isTaskEditable, setIsTaskEditable] = useState(false);
+  const [taskAccessMessage, setTaskAccessMessage] = useState("Form dikunci sampai ada tugas yang aktif.");
 
   useEffect(() => {
     const storedKabupaten = getActiveKabupatenFromStorage(user?.uid || "") || getActiveKabupatenFromStorage();
@@ -150,11 +148,17 @@ function SurveyPraExistingContent() {
 
   useEffect(() => {
     if (typeof window === "undefined") {
+      setCheckingTaskAccess(false);
       return;
     }
 
     const storedTask = window.localStorage.getItem("activeTask");
     if (!storedTask) {
+      setActiveTask(null);
+      setCompletedPoints([]);
+      setIsTaskEditable(false);
+      setTaskAccessMessage("Belum ada tugas yang dimulai. Mulai tugas dari daftar tugas agar form bisa diisi.");
+      setCheckingTaskAccess(false);
       return;
     }
 
@@ -169,8 +173,99 @@ function SurveyPraExistingContent() {
       }
     } catch (error) {
       console.error("Gagal membaca tugas aktif:", error);
+      window.localStorage.removeItem("activeTask");
+      setActiveTask(null);
+      setCompletedPoints([]);
+      setIsTaskEditable(false);
+      setTaskAccessMessage("Data tugas aktif tidak valid. Buka ulang tugas dari daftar tugas.");
+    } finally {
+      setCheckingTaskAccess(false);
     }
   }, []);
+
+  useEffect(() => {
+    const validateActiveTask = async () => {
+      if (!user?.uid) {
+        setIsTaskEditable(false);
+        setTaskAccessMessage("User tidak ditemukan. Silakan login ulang.");
+        return;
+      }
+
+      if (!activeTask?.id) {
+        setIsTaskEditable(false);
+        setTaskAccessMessage("Belum ada tugas yang dimulai. Mulai tugas dari daftar tugas agar form bisa diisi.");
+        return;
+      }
+
+      try {
+        setCheckingTaskAccess(true);
+        const taskSnap = await getDoc(doc(db, "tasks", activeTask.id));
+
+        if (!taskSnap.exists()) {
+          window.localStorage.removeItem("activeTask");
+          setActiveTask(null);
+          setCompletedPoints([]);
+          setIsTaskEditable(false);
+          setTaskAccessMessage("Tugas aktif tidak ditemukan. Minta admin membagikan atau aktifkan ulang tugas.");
+          return;
+        }
+
+        const taskData = taskSnap.data() as ActiveTask;
+        const belongsToUser = taskData.surveyorId === user.uid;
+        const canEdit = belongsToUser && taskData.type === "pra-existing" && taskData.status === "in-progress";
+
+        setActiveTask((previous) =>
+          previous
+            ? {
+                ...previous,
+                title: typeof taskData.title === "string" ? taskData.title : previous.title,
+                description: typeof taskData.description === "string" ? taskData.description : previous.description,
+                type: typeof taskData.type === "string" ? taskData.type : previous.type,
+                status: typeof taskData.status === "string" ? taskData.status : previous.status,
+                surveyorId: typeof taskData.surveyorId === "string" ? taskData.surveyorId : previous.surveyorId,
+                kmzFileUrl: typeof taskData.kmzFileUrl === "string" ? taskData.kmzFileUrl : previous.kmzFileUrl,
+                kmzFileUrl2: typeof taskData.kmzFileUrl2 === "string" ? taskData.kmzFileUrl2 : previous.kmzFileUrl2,
+              }
+            : previous
+        );
+
+        if (canEdit) {
+          setIsTaskEditable(true);
+          setTaskAccessMessage("Tugas aktif ditemukan. Form bisa diisi dan dikirim.");
+          return;
+        }
+
+        if (!belongsToUser) {
+          window.localStorage.removeItem("activeTask");
+          setActiveTask(null);
+          setCompletedPoints([]);
+          setIsTaskEditable(false);
+          setTaskAccessMessage("Tugas aktif ini bukan milik akun Anda.");
+          return;
+        }
+
+        if (taskData.status === "completed") {
+          window.localStorage.removeItem("activeTask");
+          setActiveTask(null);
+          setCompletedPoints([]);
+          setIsTaskEditable(false);
+          setTaskAccessMessage("Tugas ini sudah selesai. Admin harus mengaktifkan ulang tugas jika survey perlu dilanjutkan.");
+          return;
+        }
+
+        setIsTaskEditable(false);
+        setTaskAccessMessage("Tugas belum aktif. Mulai tugas dari daftar tugas agar form bisa diisi.");
+      } catch (error) {
+        console.error("Gagal memvalidasi tugas aktif:", error);
+        setIsTaskEditable(false);
+        setTaskAccessMessage("Gagal memeriksa status tugas. Coba buka ulang tugas dari daftar tugas.");
+      } finally {
+        setCheckingTaskAccess(false);
+      }
+    };
+
+    void validateActiveTask();
+  }, [activeTask?.id, user?.uid]);
 
   useEffect(() => {
     if (!("geolocation" in navigator)) {
@@ -373,6 +468,19 @@ function SurveyPraExistingContent() {
         ? `${Math.round(taskNavigationInfo.distanceToTargetMeters)} m`
         : `${(taskNavigationInfo.distanceToTargetMeters / 1000).toFixed(2)} km`
       : "-";
+  const taskStatusMessage = !taskPolygonUrl
+    ? "Belum ada polygon atau titik tugas dari admin."
+    : !gpsCoords
+      ? "Menunggu posisi GPS untuk membaca status area tugas."
+      : !taskNavigationInfo?.hasTaskGeometry
+        ? "Data KMZ belum terbaca sebagai polygon atau titik tugas."
+        : taskNavigationInfo.geometryType === "polygon"
+          ? taskNavigationInfo.isInsidePolygon
+            ? "Anda sudah berada di dalam polygon tugas."
+            : "Anda masih di luar polygon tugas."
+          : taskNavigationInfo.geometryType === "polyline"
+            ? "Tugas terbaca sebagai rute atau garis. Sistem mengarahkan ke titik terdekat pada garis."
+            : "Tugas terbaca sebagai titik. Sistem mengarahkan ke titik tugas terdekat.";
   const googleMapsUrl = useMemo(() => {
     if (!taskNavigationInfo?.nearestCoordinate) {
       return "";
@@ -389,18 +497,19 @@ function SurveyPraExistingContent() {
   }, [gpsCoords, taskNavigationInfo]);
   const gpsStatusLabel = !isGPSActive ? "GPS belum aktif" : gpsCoords ? `Akurasi +/-${gpsCoords.accuracy.toFixed(1)} m` : "Mencari posisi GPS";
   const currentGeoStamp = gpsCoords ? `Lat ${gpsCoords.latitude.toFixed(6)} | Lng ${gpsCoords.longitude.toFixed(6)} | ${new Date(gpsCoords.timestamp).toLocaleString("id-ID")}` : "Geostamp akan muncul setelah GPS terbaca";
+  const isFormLocked = checkingTaskAccess || !isTaskEditable;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!user) return alert("User tidak ditemukan. Silakan login ulang.");
+    if (isFormLocked) return alert(taskAccessMessage);
     if (!activeTask?.id) return alert("Tugas aktif tidak ditemukan. Buka dari daftar tugas terlebih dahulu.");
     if (!gpsCoords) return alert("GPS belum siap. Tunggu sampai posisi terbaca.");
     if (!formData.kabupaten) return alert("Kabupaten wajib dipilih agar data masuk ke wilayah yang benar.");
     if (!formData.kecamatan || !formData.desa || !formData.banjar.trim()) return alert("Kecamatan, desa, dan banjar wajib diisi.");
-    if (!formData.kepemilikanTiang || !formData.jenisTiang || !formData.jenisLampu || !formData.jumlahLampu || !formData.keterangan.trim()) return alert("Lengkapi semua field wajib pada form pra-existing.");
+    if (!formData.kepemilikanTiang || !formData.jenisTiang || !formData.jenisLampu || !formData.jumlahLampu || !formData.fungsiLampu) return alert("Lengkapi semua field wajib pada form pra-existing.");
     if (formData.kepemilikanTiang === "PLN" && !formData.tipeTiangPLN) return alert("Tipe Tiang PLN wajib dipilih jika kepemilikan PLN.");
-    if (formData.garduStatus === "Ada" && !formData.kodeGardu.trim()) return alert("Kode Gardu wajib diisi jika gardu tersedia.");
     if (!fotoAktual) return alert("Foto titik aktual wajib diunggah.");
     if (isOutsideAssignedPolygon) {
       const warningMessage = `Posisi GPS saat ini masih di luar polygon tugas.\nJarak ke tepi area sekitar ${distanceToTaskLabel}.\nKoordinat tepi terdekat: ${nearestTaskCoordinateLabel}.\n\nAkurasi GPS saat ini ${gpsCoords.accuracy.toFixed(1)} meter, jadi tetap cek kondisi lapangan.\n\nLanjut simpan survey?`;
@@ -485,112 +594,127 @@ function SurveyPraExistingContent() {
 
         <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 xl:grid-cols-[1.08fr_0.92fr]">
           <section className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="mb-4 flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{activeTask?.title || "Belum ada tugas aktif"}</p>
-                  <p className="mt-1 text-sm text-slate-500">{activeTask?.description || "Buka dari daftar tugas pra-existing agar polygon atau titik dari admin tampil di sini."}</p>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900">Ringkasan Tugas</p>
+                  <p className="text-[11px] text-slate-500">Bisa dibuka jika perlu melihat judul dan detail tugas.</p>
                 </div>
-                <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">{activeTask?.status || "draft"}</div>
+                <button
+                  type="button"
+                  onClick={() => setShowTaskSummary((previous) => !previous)}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  {showTaskSummary ? "Sembunyikan" : "Lihat Tugas"}
+                </button>
               </div>
-              <div className="grid gap-3 text-sm text-slate-600 sm:grid-cols-4">
-                <StatCard label="Kabupaten" value={selectedKabupatenOption?.name || "-"} />
-                <StatCard label="Polygon KMZ" value={taskPolygonUrl ? "Tersedia" : "Belum ada"} />
-                <StatCard label="Titik Selesai" value={String(completedPoints.length)} />
-                <StatCard label="Tracking" value={`${trackingPath.length} titik`} />
-              </div>
+              {showTaskSummary ? (
+                <div className="mt-3">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{activeTask?.title || "Belum ada tugas aktif"}</p>
+                      <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">{activeTask?.description || "Buka dari daftar tugas agar area kerja tampil."}</p>
+                    </div>
+                    <div className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">{activeTask?.status || "draft"}</div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm text-slate-600 sm:grid-cols-4">
+                    <StatCard label="Kabupaten" value={selectedKabupatenOption?.name || "-"} />
+                    <StatCard label="Polygon KMZ" value={taskPolygonUrl ? "Tersedia" : "Belum ada"} />
+                    <StatCard label="Titik Selesai" value={String(completedPoints.length)} />
+                    <StatCard label="Tracking" value={`${trackingPath.length} titik`} />
+                  </div>
+                </div>
+              ) : null}
             </div>
 
-            <div className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm">
-              <div className="mb-4 flex items-center justify-between gap-4">
+            <div className="rounded-2xl border border-emerald-200 bg-white p-3.5 shadow-sm">
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900">Peta Survey Pra Existing</h2>
-                  <p className="text-sm text-slate-500">Lokasi survey yang sudah diinput. Data akan mengikuti kabupaten yang kamu pilih.</p>
+                  <h2 className="text-sm font-semibold text-slate-900">Peta Survey, Polygon, dan Tracking</h2>
+                  <p className="text-[11px] text-slate-500">Semua informasi peta digabung agar halaman lebih ringkas di HP.</p>
                 </div>
-                <div className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">{loadingSubmittedSurveys ? "Memuat..." : `${submittedSurveys.length} Titik`}</div>
-              </div>
-              <DynamicSubmittedMap surveyData={submittedSurveys} />
-              <div className="mt-4 rounded-xl bg-blue-50 p-4 text-sm text-blue-800">
-                <p className="font-semibold">Informasi Peta:</p>
-                <ul className="mt-1 list-disc pl-5">
-                  <li>Marker hijau menunjukkan lokasi survey yang sudah diinput.</li>
-                  <li>Klik marker untuk melihat detail survey.</li>
-                  <li>Data otomatis terfilter oleh kabupaten terpilih.</li>
-                </ul>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-900">Titik Koordinat & Tracking</h2>
-                  <p className="text-sm text-slate-500">Lihat posisi saat ini, jejak tracking, dan polygon atau titik tugas dari admin.</p>
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <div className={`rounded-xl px-4 py-3 text-sm font-semibold ${isGPSActive ? "bg-emerald-500 text-white" : "bg-amber-100 text-amber-800"}`}>{isGPSActive ? "GPS Aktif" : "GPS Belum Aktif"}</div>
-                  <button type="button" onClick={() => setTrackingEnabled((previous) => !previous)} className={`rounded-xl px-4 py-3 text-sm font-semibold text-white transition ${trackingEnabled ? "bg-red-500 hover:bg-red-600" : "bg-blue-600 hover:bg-blue-700"}`}>
-                    {trackingEnabled ? "Hentikan Tracking" : "Mulai Tracking"}
+                <div className="flex items-center gap-2">
+                  <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{loadingSubmittedSurveys ? "Memuat..." : `${submittedSurveys.length} Titik`}</div>
+                  <button
+                    type="button"
+                    onClick={() => setShowUnifiedMap((previous) => !previous)}
+                    className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+                  >
+                    {showUnifiedMap ? "Sembunyikan Peta" : "Tampilkan Peta"}
                   </button>
                 </div>
               </div>
-              <DynamicTrackingMap latitude={gpsCoords?.latitude ?? null} longitude={gpsCoords?.longitude ?? null} accuracy={gpsCoords?.accuracy ?? 0} hasGPS={isGPSActive} kmzFileUrl={taskPolygonUrl} completedPoints={completedPoints} trackingPath={trackingPath} onPointComplete={handleCompletePoint} onTaskNavigationInfoChange={setTaskNavigationInfo} />
-              <div className={`mt-4 rounded-2xl border p-4 text-sm ${isOutsideAssignedPolygon ? "border-amber-300 bg-amber-50 text-amber-900" : taskNavigationInfo?.geometryType === "polygon" && taskNavigationInfo.isInsidePolygon ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status Area Tugas</p>
-                      <p className={`mt-1 text-base font-semibold ${isOutsideAssignedPolygon ? "text-amber-900" : taskNavigationInfo?.geometryType === "polygon" && taskNavigationInfo.isInsidePolygon ? "text-emerald-800" : "text-slate-900"}`}>
-                        {!taskPolygonUrl
-                          ? "Belum ada polygon atau titik tugas dari admin."
-                          : !gpsCoords
-                            ? "Menunggu posisi GPS untuk membaca status area tugas."
-                            : !taskNavigationInfo?.hasTaskGeometry
-                              ? "Data KMZ belum terbaca sebagai polygon atau titik tugas."
-                              : taskNavigationInfo.geometryType === "polygon"
-                                ? taskNavigationInfo.isInsidePolygon
-                                  ? "Anda sudah berada di dalam polygon tugas."
-                                  : "Anda masih di luar polygon tugas."
-                                : taskNavigationInfo.geometryType === "polyline"
-                                  ? "Tugas terbaca sebagai rute atau garis. Sistem mengarahkan ke titik terdekat pada garis."
-                                  : "Tugas terbaca sebagai titik. Sistem mengarahkan ke titik tugas terdekat."}
-                      </p>
+              {showUnifiedMap ? (
+                <DynamicUnifiedMap
+                  latitude={gpsCoords?.latitude ?? null}
+                  longitude={gpsCoords?.longitude ?? null}
+                  accuracy={gpsCoords?.accuracy ?? 0}
+                  hasGPS={isGPSActive}
+                  kmzFileUrl={taskPolygonUrl}
+                  completedPoints={completedPoints}
+                  trackingPath={trackingPath}
+                  onPointComplete={handleCompletePoint}
+                  onTaskNavigationInfoChange={setTaskNavigationInfo}
+                  surveyData={submittedSurveys}
+                />
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-2.5">
+                  <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold text-slate-800">Peta disembunyikan untuk menghemat ruang layar.</p>
+                      <p className="mt-1 text-[11px] text-slate-600">Tekan tombol <span className="font-semibold">Tampilkan Peta</span> jika ingin melihat marker survey, polygon tugas, posisi GPS, dan tracking.</p>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      <InfoMiniCard label="Target" value={taskNavigationInfo?.taskName || "-"} />
-                      <InfoMiniCard label="Jarak ke target" value={distanceToTaskLabel} />
-                      <InfoMiniCard label="Koordinat target" value={nearestTaskCoordinateLabel} monospace />
+                    <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                      <div className={`rounded-xl px-3 py-1.5 text-center text-[11px] font-semibold ${isGPSActive ? "bg-emerald-500 text-white" : "bg-amber-100 text-amber-800"}`}>{isGPSActive ? "GPS Aktif" : "GPS Belum Aktif"}</div>
+                      <button type="button" onClick={() => setTrackingEnabled((previous) => !previous)} className={`rounded-xl px-3 py-1.5 text-[11px] font-semibold text-white transition ${trackingEnabled ? "bg-red-500 hover:bg-red-600" : "bg-blue-600 hover:bg-blue-700"}`}>
+                        {trackingEnabled ? "Hentikan Tracking" : "Mulai Tracking"}
+                      </button>
                     </div>
-                    {gpsCoords && taskNavigationInfo?.hasTaskGeometry && (
-                      <p className="text-xs text-slate-500">
-                        Status area dihitung dari posisi GPS saat ini. Akurasi perangkat sekitar +/-{gpsCoords.accuracy.toFixed(1)} meter.
-                      </p>
-                    )}
                   </div>
-                  <div className="flex w-full flex-col gap-2 lg:max-w-[220px]">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!googleMapsUrl) {
-                          return;
-                        }
-                        window.open(googleMapsUrl, "_blank", "noopener,noreferrer");
-                      }}
-                      disabled={!googleMapsUrl}
-                      className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                    >
-                      Arahkan ke Google Maps
-                    </button>
-                    <p className="text-xs text-slate-500">
-                      Tujuan diarahkan ke titik tepi terdekat dari polygon atau ke titik tugas terdekat dari admin.
-                    </p>
+                  <div className="mt-2">
+                    <CompactTaskStatusPanel
+                      isOutsideAssignedPolygon={isOutsideAssignedPolygon}
+                      isInsideAssignedPolygon={taskNavigationInfo?.geometryType === "polygon" && taskNavigationInfo.isInsidePolygon}
+                      statusMessage={taskStatusMessage}
+                      targetLabel={taskNavigationInfo?.taskName || "-"}
+                      distanceLabel={distanceToTaskLabel}
+                      coordinateLabel={nearestTaskCoordinateLabel}
+                      accuracyLabel={gpsCoords && taskNavigationInfo?.hasTaskGeometry ? `Status area dihitung dari posisi GPS saat ini. Akurasi perangkat sekitar +/-${gpsCoords.accuracy.toFixed(1)} meter.` : ""}
+                      googleMapsUrl={googleMapsUrl}
+                    />
+                  </div>
+                  <div className="mt-2">
+                    <CompactRealtimePanel
+                      trackingEnabled={trackingEnabled}
+                      hasGPS={Boolean(gpsCoords)}
+                      coordinatesLabel={gpsCoords ? `${gpsCoords.latitude.toFixed(6)}, ${gpsCoords.longitude.toFixed(6)}` : "Koordinat belum tersedia"}
+                      accuracyLabel={gpsCoords ? `+/-${gpsCoords.accuracy.toFixed(1)}m` : "-"}
+                      updatedAtLabel={gpsCoords ? new Date(gpsCoords.timestamp).toLocaleTimeString("id-ID") : "-"}
+                    />
                   </div>
                 </div>
-              </div>
-              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-slate-700">
-                <div className="flex items-center justify-between gap-4"><span className="font-semibold text-emerald-800">Pelacakan real time {trackingEnabled ? "aktif" : "siap"}</span><span className="text-emerald-700">{gpsCoords ? "Terverifikasi" : "Menunggu GPS"}</span></div>
-                <p className="mt-3 rounded-xl bg-white px-4 py-3 font-mono text-base text-slate-900">{gpsCoords ? `${gpsCoords.latitude.toFixed(6)}, ${gpsCoords.longitude.toFixed(6)}` : "Koordinat belum tersedia"}</p>
-                <div className="mt-3 flex items-center justify-between text-xs text-slate-500"><span>Akurasi: {gpsCoords ? `+/-${gpsCoords.accuracy.toFixed(1)}m` : "-"}</span><span>Terakhir diperbarui: {gpsCoords ? new Date(gpsCoords.timestamp).toLocaleTimeString("id-ID") : "-"}</span></div>
-              </div>
+              )}
+              {showUnifiedMap ? (
+                <div className="mt-2 space-y-2">
+                  <CompactTaskStatusPanel
+                    isOutsideAssignedPolygon={isOutsideAssignedPolygon}
+                    isInsideAssignedPolygon={taskNavigationInfo?.geometryType === "polygon" && taskNavigationInfo.isInsidePolygon}
+                    statusMessage={taskStatusMessage}
+                    targetLabel={taskNavigationInfo?.taskName || "-"}
+                    distanceLabel={distanceToTaskLabel}
+                    coordinateLabel={nearestTaskCoordinateLabel}
+                    accuracyLabel={gpsCoords && taskNavigationInfo?.hasTaskGeometry ? `Status area dihitung dari posisi GPS saat ini. Akurasi perangkat sekitar +/-${gpsCoords.accuracy.toFixed(1)} meter.` : ""}
+                    googleMapsUrl={googleMapsUrl}
+                  />
+                  <CompactRealtimePanel
+                    trackingEnabled={trackingEnabled}
+                    hasGPS={Boolean(gpsCoords)}
+                    coordinatesLabel={gpsCoords ? `${gpsCoords.latitude.toFixed(6)}, ${gpsCoords.longitude.toFixed(6)}` : "Koordinat belum tersedia"}
+                    accuracyLabel={gpsCoords ? `+/-${gpsCoords.accuracy.toFixed(1)}m` : "-"}
+                    updatedAtLabel={gpsCoords ? new Date(gpsCoords.timestamp).toLocaleTimeString("id-ID") : "-"}
+                  />
+                </div>
+              ) : null}
             </div>
           </section>
 
@@ -600,33 +724,44 @@ function SurveyPraExistingContent() {
                 <h2 className="text-lg font-semibold text-slate-900">Form Pra Existing</h2>
                 <p className="text-sm text-slate-500">Kabupaten wajib dipilih agar data tidak nyasar dan terbaca di panel wilayah yang benar.</p>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <SelectField label="Kabupaten" value={formData.kabupaten} onChange={(value) => handleInputChange("kabupaten", value)} options={KABUPATEN_OPTIONS.map((item) => item.id)} optionLabelMap={Object.fromEntries(KABUPATEN_OPTIONS.map((item) => [item.id, item.name]))} required />
-                <SelectField label="Kecamatan" value={formData.kecamatan} onChange={(value) => handleInputChange("kecamatan", value)} options={districtOptions} required disabled={formData.kabupaten !== "tabanan"} />
-                <SelectField label="Desa" value={formData.desa} onChange={(value) => handleInputChange("desa", value)} options={desaOptions} required disabled={!formData.kecamatan} />
-                <SelectField label="Banjar" value={formData.banjar} onChange={(value) => handleInputChange("banjar", value)} options={banjarOptions} required disabled={!formData.desa} />
-                <SelectField label="Kepemilikan Tiang" value={formData.kepemilikanTiang} onChange={(value) => handleInputChange("kepemilikanTiang", value)} options={["PLN", "Pemkab", "Swadaya"]} required />
-                <SelectField label="Tipe Tiang PLN" value={formData.tipeTiangPLN} onChange={(value) => handleInputChange("tipeTiangPLN", value)} options={["Tiang TM", "Tiang TR", "Tiang Trafo"]} disabled={formData.kepemilikanTiang !== "PLN"} required={formData.kepemilikanTiang === "PLN"} />
-                <SelectField label="Jenis Tiang" value={formData.jenisTiang} onChange={(value) => handleInputChange("jenisTiang", value)} options={["Beton", "Besi", "Kayu"]} required />
-                <SelectField label="Jenis Lampu" value={formData.jenisLampu} onChange={(value) => handleInputChange("jenisLampu", value)} options={["LED", "Konvensional", "Panel Surya", "Swadaya"]} required />
-                <SelectField label="Jumlah Lampu" value={formData.jumlahLampu} onChange={(value) => handleInputChange("jumlahLampu", value)} options={["0", "1", "2", "3", "4"]} required />
-                <SelectField label="Daya Lampu" value={formData.dayaLampu} onChange={() => undefined} options={["30", "60", "80", "90", "125", "150", "250"]} disabled />
-                <SelectField label="Fungsi Lampu" value={formData.fungsiLampu} onChange={(value) => handleInputChange("fungsiLampu", value)} options={["APJ", "FASOS", "FASUM"]} required />
-                <SelectField label="Gardu" value={formData.garduStatus} onChange={() => undefined} options={["Ada", "Tidak Ada"]} disabled />
-                {formData.garduStatus === "Ada" && <Field label="Kode Gardu" value={formData.kodeGardu} onChange={(value) => handleInputChange("kodeGardu", value)} required />}
+              <div className={`rounded-2xl border px-4 py-3 text-sm ${isFormLocked ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+                <p className="font-semibold">{checkingTaskAccess ? "Memeriksa akses tugas..." : isTaskEditable ? "Form aktif" : "Form terkunci"}</p>
+                <p className="mt-1">{taskAccessMessage}</p>
+                {!isTaskEditable && !checkingTaskAccess ? (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/tugas-survey-pra-existing")}
+                    className="mt-3 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-700"
+                  >
+                    Buka Daftar Tugas
+                  </button>
+                ) : null}
               </div>
-              {formData.kabupaten && formData.kabupaten !== "tabanan" && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Data kecamatan dan desa detail saat ini baru disiapkan untuk Kabupaten Tabanan.</div>}
-              <TextAreaField label="Keterangan" value={formData.keterangan} onChange={(value) => handleInputChange("keterangan", value)} required />
-              <div className="space-y-3 rounded-2xl border border-dashed border-slate-300 p-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Foto Titik Aktual <span className="ml-1 text-red-500">*</span></label>
-                  <input type="file" accept="image/*" capture="environment" onChange={(event) => void handlePhotoChange(event)} className="block w-full text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-slate-700" />
-                  <p className="mt-2 text-xs text-slate-500">Gunakan kamera perangkat. Saat upload, foto akan diberi geostamp koordinat dan waktu.</p>
+              <fieldset disabled={isFormLocked} className="space-y-5 disabled:opacity-60">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <SelectField label="Kabupaten" value={formData.kabupaten} onChange={(value) => handleInputChange("kabupaten", value)} options={KABUPATEN_OPTIONS.map((item) => item.id)} optionLabelMap={Object.fromEntries(KABUPATEN_OPTIONS.map((item) => [item.id, item.name]))} required />
+                  <SelectField label="Kecamatan" value={formData.kecamatan} onChange={(value) => handleInputChange("kecamatan", value)} options={districtOptions} required disabled={formData.kabupaten !== "tabanan"} />
+                  <SelectField label="Desa" value={formData.desa} onChange={(value) => handleInputChange("desa", value)} options={desaOptions} required disabled={!formData.kecamatan} />
+                  <SelectField label="Banjar" value={formData.banjar} onChange={(value) => handleInputChange("banjar", value)} options={banjarOptions} required disabled={!formData.desa} />
+                  <SelectField label="Kepemilikan Tiang" value={formData.kepemilikanTiang} onChange={(value) => handleInputChange("kepemilikanTiang", value)} options={["PLN", "Lainnya"]} required />
+                  <SelectField label="Tipe Tiang PLN" value={formData.tipeTiangPLN} onChange={(value) => handleInputChange("tipeTiangPLN", value)} options={["Tiang Tegangan Menengah (3 Kabel)", "Tiang Tegangan Rendah (Kabel 1)", "Tiang Trafo"]} disabled={formData.kepemilikanTiang !== "PLN"} required={formData.kepemilikanTiang === "PLN"} />
+                  <SelectField label="Jenis Tiang" value={formData.jenisTiang} onChange={(value) => handleInputChange("jenisTiang", value)} options={["Beton", "Besi", "Kayu"]} required />
+                  <SelectField label="Jenis Lampu" value={formData.jenisLampu} onChange={(value) => handleInputChange("jenisLampu", value)} options={["LED", "Mercury", "Panel Surya", "Kap"]} required />
+                  <SelectField label="Jumlah Lampu" value={formData.jumlahLampu} onChange={(value) => handleInputChange("jumlahLampu", value)} options={["0", "1", "2", "3", "4"]} required />
+                  <SelectField label="Fungsi Lampu" value={formData.fungsiLampu} onChange={(value) => handleInputChange("fungsiLampu", value)} options={["Alat Penerangan Jalan (APJ)", "Fasilitas Sosial (contoh : Rumah Ibadah, Bale Banjar,)", "Fasilitas Umum (contoh: Perumahan, Lapangan, Parkir)"]} required />
                 </div>
-                <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600"><span className="font-semibold text-slate-800">Geostamp:</span> {currentGeoStamp}</div>
-                {fotoPreview && <div className="space-y-2 overflow-hidden rounded-xl border border-slate-200 bg-white p-2"><p className="px-2 text-xs font-medium text-emerald-700">Preview hasil geostamp</p><Image src={fotoPreview} alt="Preview foto aktual" width={1200} height={800} className="h-56 w-full rounded-lg object-cover" unoptimized /></div>}
-              </div>
-              <button type="submit" disabled={saving} className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300">{saving ? "Menyimpan..." : "Simpan Survey Pra Existing"}</button>
+                {formData.kabupaten && formData.kabupaten !== "tabanan" && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Data kecamatan dan desa detail saat ini baru disiapkan untuk Kabupaten Tabanan.</div>}
+                <div className="space-y-3 rounded-2xl border border-dashed border-slate-300 p-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">Foto Titik Aktual <span className="ml-1 text-red-500">*</span></label>
+                    <input type="file" accept="image/*" capture="environment" onChange={(event) => void handlePhotoChange(event)} className="block w-full text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-slate-700" />
+                    <p className="mt-2 text-xs text-slate-500">Gunakan kamera perangkat. Saat upload, foto akan diberi geostamp koordinat dan waktu.</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600"><span className="font-semibold text-slate-800">Geostamp:</span> {currentGeoStamp}</div>
+                  {fotoPreview && <div className="space-y-2 overflow-hidden rounded-xl border border-slate-200 bg-white p-2"><p className="px-2 text-xs font-medium text-emerald-700">Preview hasil geostamp</p><Image src={fotoPreview} alt="Preview foto aktual" width={1200} height={800} className="h-56 w-full rounded-lg object-cover" unoptimized /></div>}
+                </div>
+                <button type="submit" disabled={saving || isFormLocked} className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300">{saving ? "Menyimpan..." : "Simpan Survey Pra Existing"}</button>
+              </fieldset>
             </form>
           </section>
         </main>
@@ -747,14 +882,109 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 function StatCard({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 font-medium text-slate-800">{value}</p></div>;
+  return <div className="rounded-xl bg-slate-50 p-2"><p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p><p className="mt-0.5 text-sm font-medium text-slate-800">{value}</p></div>;
 }
 
 function InfoMiniCard({ label, value, monospace = false }: { label: string; value: string; monospace?: boolean }) {
   return (
-    <div className="rounded-xl bg-white/90 p-3 shadow-sm ring-1 ring-black/5">
-      <p className="text-xs uppercase tracking-wide text-slate-400">{label}</p>
-      <p className={`mt-1 text-sm font-medium text-slate-800 ${monospace ? "font-mono" : ""}`}>{value}</p>
+    <div className="rounded-xl bg-white/90 p-2 shadow-sm ring-1 ring-black/5">
+      <p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p>
+      <p className={`mt-0.5 text-xs font-medium text-slate-800 ${monospace ? "font-mono" : ""}`}>{value}</p>
+    </div>
+  );
+}
+
+function CompactTaskStatusPanel({
+  isOutsideAssignedPolygon,
+  isInsideAssignedPolygon,
+  statusMessage,
+  targetLabel,
+  distanceLabel,
+  coordinateLabel,
+  accuracyLabel,
+  googleMapsUrl,
+}: {
+  isOutsideAssignedPolygon: boolean;
+  isInsideAssignedPolygon: boolean | null | undefined;
+  statusMessage: string;
+  targetLabel: string;
+  distanceLabel: string;
+  coordinateLabel: string;
+  accuracyLabel: string;
+  googleMapsUrl: string;
+}) {
+  const panelClassName = isOutsideAssignedPolygon
+    ? "border-amber-300 bg-amber-50 text-amber-900"
+    : isInsideAssignedPolygon
+      ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+      : "border-slate-200 bg-slate-50 text-slate-700";
+
+  const headingClassName = isOutsideAssignedPolygon
+    ? "text-amber-900"
+    : isInsideAssignedPolygon
+      ? "text-emerald-800"
+      : "text-slate-900";
+
+  return (
+    <div className={`rounded-2xl border p-2.5 text-sm ${panelClassName}`}>
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-2 flex-1">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status Area Tugas</p>
+            <p className={`mt-1 text-xs font-semibold ${headingClassName}`}>{statusMessage}</p>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <InfoMiniCard label="Target" value={targetLabel} />
+            <InfoMiniCard label="Jarak" value={distanceLabel} />
+            <InfoMiniCard label="Koordinat" value={coordinateLabel} monospace />
+          </div>
+          {accuracyLabel ? <p className="text-[11px] text-slate-500">{accuracyLabel}</p> : null}
+        </div>
+        <div className="flex w-full flex-col gap-2 lg:max-w-[210px]">
+          <button
+            type="button"
+            onClick={() => {
+              if (!googleMapsUrl) {
+                return;
+              }
+              window.open(googleMapsUrl, "_blank", "noopener,noreferrer");
+            }}
+            disabled={!googleMapsUrl}
+            className="rounded-xl bg-blue-600 px-3 py-2 text-[11px] font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            Arahkan ke Google Maps
+          </button>
+          <p className="text-[11px] text-slate-500">Tujuan diarahkan ke titik tepi atau titik tugas terdekat dari admin.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompactRealtimePanel({
+  trackingEnabled,
+  hasGPS,
+  coordinatesLabel,
+  accuracyLabel,
+  updatedAtLabel,
+}: {
+  trackingEnabled: boolean;
+  hasGPS: boolean;
+  coordinatesLabel: string;
+  accuracyLabel: string;
+  updatedAtLabel: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-2.5 text-sm text-slate-700">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-semibold text-emerald-800">Pelacakan real time {trackingEnabled ? "aktif" : "siap"}</span>
+        <span className="text-xs text-emerald-700">{hasGPS ? "Terverifikasi" : "Menunggu GPS"}</span>
+      </div>
+      <p className="mt-2 rounded-xl bg-white px-3 py-2 font-mono text-xs text-slate-900">{coordinatesLabel}</p>
+      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+        <span>Akurasi: {accuracyLabel}</span>
+        <span>Update: {updatedAtLabel}</span>
+      </div>
     </div>
   );
 }
@@ -765,15 +995,6 @@ interface BaseFieldProps {
   onChange: (value: string) => void;
   required?: boolean;
   disabled?: boolean;
-}
-
-function Field({ label, value, onChange, required, disabled }: BaseFieldProps) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-medium text-slate-700">{label}{required ? <span className="ml-1 text-red-500">*</span> : null}</span>
-      <input type="text" value={value} onChange={(event) => onChange(event.target.value)} required={required} disabled={disabled} className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-100" />
-    </label>
-  );
 }
 
 interface SelectFieldProps extends BaseFieldProps {
@@ -789,15 +1010,6 @@ function SelectField({ label, value, onChange, options, optionLabelMap, required
         <option value="">Pilih</option>
         {options.map((option) => <option key={option} value={option}>{optionLabelMap?.[option] || option}</option>)}
       </select>
-    </label>
-  );
-}
-
-function TextAreaField({ label, value, onChange, required }: BaseFieldProps) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-medium text-slate-700">{label}{required ? <span className="ml-1 text-red-500">*</span> : null}</span>
-      <textarea value={value} onChange={(event) => onChange(event.target.value)} required={required} rows={4} className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
     </label>
   );
 }

@@ -41,14 +41,10 @@ interface Task {
   kmzFileUrl?: string;
   kmzFileUrl2?: string;
   excelFileUrl?: string;
-  createdAt: any;
+  createdAt: { toDate?: () => Date } | Date | string | number | null;
 }
 
-interface DistribusiTugasProps {
-  setActiveMenu: (menu: string) => void;
-}
-
-export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps) {
+export default function DistribusiTugas() {
   const [showTaskDropdown, setShowTaskDropdown] = useState(false);
   const [showProposeModal, setShowProposeModal] = useState(false);
   const [showExistingModal, setShowExistingModal] = useState(false);
@@ -317,6 +313,27 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
     } catch (error) {
       console.error("Error deleting task:", error);
       alert("Gagal menghapus tugas.");
+    }
+  };
+
+  const handleReactivateTask = async (task: Task) => {
+    if (!confirm(`Aktifkan kembali tugas "${task.title}" agar petugas bisa melanjutkan survey?`)) {
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, "tasks", task.id), {
+        status: "in-progress",
+        reactivatedAt: new Date(),
+        completedAt: null,
+      });
+
+      await fetchTasks();
+      setSelectedTaskDetail((previous) => (previous?.id === task.id ? { ...previous, status: "in-progress" } : previous));
+      alert("Tugas berhasil diaktifkan kembali.");
+    } catch (error) {
+      console.error("Error reactivating task:", error);
+      alert("Gagal mengaktifkan kembali tugas.");
     }
   };
 
@@ -697,6 +714,17 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
                         </div>
 
                         <div className="flex gap-2">
+                          {task.status === "completed" && (
+                            <button
+                              onClick={() => handleReactivateTask(task)}
+                              className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                              title="Aktifkan kembali"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               setSelectedTaskDetail(task);
@@ -1909,7 +1937,7 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
             </div>
 
             {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-white border-t px-6 py-4 rounded-b-2xl">
+            <div className="sticky bottom-0 bg-white border-t px-6 py-4 rounded-b-2xl flex gap-3">
               <button
                 onClick={() => {
                   setShowDetailModal(false);
@@ -1917,10 +1945,18 @@ export default function DistribusiTugas({ setActiveMenu }: DistribusiTugasProps)
                   setDetailKmzFile(null);
                   setDetailKmzFile2(null);
                 }}
-                className="w-full px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold transition-all"
+                className="flex-1 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold transition-all"
               >
                 Tutup
               </button>
+              {selectedTaskDetail.status === "completed" && (
+                <button
+                  onClick={() => void handleReactivateTask(selectedTaskDetail)}
+                  className="flex-1 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold transition-all"
+                >
+                  Aktifkan Lagi
+                </button>
+              )}
             </div>
           </div>
         </div>

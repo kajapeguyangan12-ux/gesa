@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { collection, getDocs, query, where, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
@@ -130,6 +130,15 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   const [filterStatus, setFilterStatus] = useState<string>("Semua Status");
   const [filterJenisExisting, setFilterJenisExisting] = useState<string>("Semua Jenis");
   const [filterSort, setFilterSort] = useState<string>("Terbaru");
+  const [filterSurveyor, setFilterSurveyor] = useState<string>("Semua Petugas");
+  const [filterKecamatan, setFilterKecamatan] = useState<string>("Semua Kecamatan");
+  const [filterDesa, setFilterDesa] = useState<string>("Semua Desa");
+  
+  // Additional filters for existing and propose tabs
+  const [filterExistingSurveyor, setFilterExistingSurveyor] = useState<string>("Semua Petugas");
+  const [filterExistingJudul, setFilterExistingJudul] = useState<string>("Semua Judul");
+  const [filterProposeSurveyor, setFilterProposeSurveyor] = useState<string>("Semua Petugas");
+  const [filterProposeJudul, setFilterProposeJudul] = useState<string>("Semua Judul");
 
   // State untuk menyimpan semua surveys
   const [allSurveys, setAllSurveys] = useState<Survey[]>([]);
@@ -228,6 +237,42 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     if (activeTab === "existing" && filterJenisExisting !== "Semua Jenis") {
       if (survey.jenisExisting !== filterJenisExisting) return false;
     }
+
+    // Filter by surveyor (only for pra-existing tab)
+    if (activeTab === "pra-existing" && filterSurveyor !== "Semua Petugas") {
+      if (survey.surveyorName !== filterSurveyor) return false;
+    }
+
+    // Filter by kecamatan (only for pra-existing tab)
+    if (activeTab === "pra-existing" && filterKecamatan !== "Semua Kecamatan") {
+      if (survey.kecamatan !== filterKecamatan) return false;
+    }
+
+    // Filter by desa (only for pra-existing tab)
+    if (activeTab === "pra-existing" && filterDesa !== "Semua Desa") {
+      if (survey.desa !== filterDesa) return false;
+    }
+
+    // Filter by surveyor (only for existing tab)
+    if (activeTab === "existing" && filterExistingSurveyor !== "Semua Petugas") {
+      if (survey.surveyorName !== filterExistingSurveyor) return false;
+    }
+
+    // Filter by judul (only for existing tab)
+    if (activeTab === "existing" && filterExistingJudul !== "Semua Judul") {
+      const judul = survey.title || survey.lokasiJalan;
+      if (judul !== filterExistingJudul) return false;
+    }
+
+    // Filter by surveyor (only for propose tab)
+    if (activeTab === "propose" && filterProposeSurveyor !== "Semua Petugas") {
+      if (survey.surveyorName !== filterProposeSurveyor) return false;
+    }
+
+    // Filter by judul (only for propose tab)
+    if (activeTab === "propose" && filterProposeJudul !== "Semua Judul") {
+      if (survey.title !== filterProposeJudul) return false;
+    }
     
     return true;
   }).sort((a, b) => {
@@ -235,6 +280,62 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     const bTime = getTimestampValue(b.createdAt);
     return filterSort === "Terbaru" ? bTime - aTime : aTime - bTime;
   });
+
+  // Get unique surveyors from pra-existing surveys
+  const surveyorOptions = useMemo(() => {
+    const praExistingSurveys = surveys.filter(s => s.type === "pra-existing");
+    const uniqueSurveyors = [...new Set(praExistingSurveys.map(s => s.surveyorName).filter(Boolean))];
+    return ["Semua Petugas", ...uniqueSurveyors.sort()];
+  }, [surveys]);
+
+  // Get unique kecamatans from pra-existing surveys
+  const kecamatanOptions = useMemo(() => {
+    const praExistingSurveys = surveys.filter(s => s.type === "pra-existing");
+    const uniqueKecamatans = [...new Set(praExistingSurveys.map(s => s.kecamatan).filter(Boolean))];
+    return ["Semua Kecamatan", ...uniqueKecamatans.sort()];
+  }, [surveys]);
+
+  // Get unique desas based on selected kecamatan
+  const desaOptions = useMemo(() => {
+    const praExistingSurveys = surveys.filter(s => s.type === "pra-existing");
+    
+    if (filterKecamatan === "Semua Kecamatan") {
+      const uniqueDesas = [...new Set(praExistingSurveys.map(s => s.desa).filter(Boolean))];
+      return ["Semua Desa", ...uniqueDesas.sort()];
+    } else {
+      const filtered = praExistingSurveys.filter(s => s.kecamatan === filterKecamatan);
+      const uniqueDesas = [...new Set(filtered.map(s => s.desa).filter(Boolean))];
+      return ["Semua Desa", ...uniqueDesas.sort()];
+    }
+  }, [surveys, filterKecamatan]);
+  
+  // Get unique surveyors from existing surveys
+  const existingSurveyorOptions = useMemo(() => {
+    const existingSurveys = surveys.filter(s => s.type === "existing");
+    const uniqueSurveyors = [...new Set(existingSurveys.map(s => s.surveyorName).filter(Boolean))];
+    return ["Semua Petugas", ...uniqueSurveyors.sort()];
+  }, [surveys]);
+
+  // Get unique juduls from existing surveys
+  const existingJudulOptions = useMemo(() => {
+    const existingSurveys = surveys.filter(s => s.type === "existing");
+    const uniqueJuduls = [...new Set(existingSurveys.map(s => s.title || s.lokasiJalan).filter(Boolean))];
+    return ["Semua Judul", ...uniqueJuduls.sort()];
+  }, [surveys]);
+
+  // Get unique surveyors from propose surveys
+  const proposeSurveyorOptions = useMemo(() => {
+    const proposeSurveys = surveys.filter(s => s.type === "propose");
+    const uniqueSurveyors = [...new Set(proposeSurveys.map(s => s.surveyorName).filter(Boolean))];
+    return ["Semua Petugas", ...uniqueSurveyors.sort()];
+  }, [surveys]);
+
+  // Get unique juduls from propose surveys
+  const proposeJudulOptions = useMemo(() => {
+    const proposeSurveys = surveys.filter(s => s.type === "propose");
+    const uniqueJuduls = [...new Set(proposeSurveys.map(s => s.title).filter(Boolean))];
+    return ["Semua Judul", ...uniqueJuduls.sort()];
+  }, [surveys]);
   
   // Calculate statistics dari semua surveys yang diverifikasi
   const totalSurveys = allSurveys.length;
@@ -586,15 +687,106 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                 <option>Ditolak</option>
               </select>
               {activeTab === "existing" && (
-                <select 
-                  value={filterJenisExisting}
-                  onChange={(e) => setFilterJenisExisting(e.target.value)}
-                  className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option>Semua Jenis</option>
-                  <option>Murni</option>
-                  <option>Tidak Murni</option>
-                </select>
+                <>
+                  <select 
+                    value={filterJenisExisting}
+                    onChange={(e) => setFilterJenisExisting(e.target.value)}
+                    className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option>Semua Jenis</option>
+                    <option>Murni</option>
+                    <option>Tidak Murni</option>
+                  </select>
+                  <select 
+                    value={filterExistingSurveyor}
+                    onChange={(e) => setFilterExistingSurveyor(e.target.value)}
+                    className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {existingSurveyorOptions.map(option => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                  <select 
+                    value={filterExistingJudul}
+                    onChange={(e) => setFilterExistingJudul(e.target.value)}
+                    className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {existingJudulOptions.map(option => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
+              {activeTab === "pra-existing" && (
+                <>
+                  <select 
+                    value={filterSurveyor}
+                    onChange={(e) => setFilterSurveyor(e.target.value)}
+                    className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {surveyorOptions.map(option => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                  <select 
+                    value={filterKecamatan}
+                    onChange={(e) => {
+                      setFilterKecamatan(e.target.value);
+                      setFilterDesa("Semua Desa"); // Reset desa when kecamatan changes
+                    }}
+                    className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {kecamatanOptions.map(option => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                  <select 
+                    value={filterDesa}
+                    onChange={(e) => setFilterDesa(e.target.value)}
+                    disabled={filterKecamatan === "Semua Kecamatan"}
+                    className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-black focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+                  >
+                    {desaOptions.map(option => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
+              {activeTab === "propose" && (
+                <>
+                  <select 
+                    value={filterProposeSurveyor}
+                    onChange={(e) => setFilterProposeSurveyor(e.target.value)}
+                    className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {proposeSurveyorOptions.map(option => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                  <select 
+                    value={filterProposeJudul}
+                    onChange={(e) => setFilterProposeJudul(e.target.value)}
+                    className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {proposeJudulOptions.map(option => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </>
               )}<select 
                 value={filterSort}
                 onChange={(e) => setFilterSort(e.target.value)}
