@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
 import { collection, doc, getDocs, orderBy, query, updateDoc, where } from "firebase/firestore";
@@ -33,12 +33,14 @@ interface Task {
   type: string;
   kmzFileUrl?: string;
   kmzFileUrl2?: string;
+  offlineEnabled?: boolean;
   createdAt?: DateValue;
   startedAt?: DateValue;
 }
 
 function TugasSurveyPraExistingContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,6 +65,20 @@ function TugasSurveyPraExistingContent() {
         ...(entry.data() as Omit<Task, "id">),
       }));
       setTasks(tasksData);
+
+      const storedTask = localStorage.getItem("activeTask");
+      if (storedTask) {
+        try {
+          const parsedTask = JSON.parse(storedTask) as { id?: string };
+          const matchedTask = tasksData.find((task) => task.id === parsedTask.id);
+          if (matchedTask && matchedTask.type === "pra-existing" && matchedTask.status !== "in-progress") {
+            localStorage.removeItem("activeTask");
+          }
+        } catch (storageError) {
+          console.error("Error validating active task cache:", storageError);
+          localStorage.removeItem("activeTask");
+        }
+      }
     } catch (error) {
       console.error("Error fetching pra existing tasks:", error);
     } finally {
@@ -75,6 +91,21 @@ function TugasSurveyPraExistingContent() {
       fetchTasks();
     }
   }, [user, fetchTasks]);
+
+  useEffect(() => {
+    const targetTaskId = searchParams.get("taskId");
+    if (!targetTaskId || tasks.length === 0) {
+      return;
+    }
+
+    const taskToOpen = tasks.find((task) => task.id === targetTaskId);
+    if (!taskToOpen) {
+      return;
+    }
+
+    setSelectedTask(taskToOpen);
+    setShowModal(true);
+  }, [searchParams, tasks]);
 
   const handleCompleteTask = async (task: Task | null) => {
     if (!task) return;
@@ -142,6 +173,7 @@ function TugasSurveyPraExistingContent() {
           status: task.status === "pending" ? "in-progress" : task.status,
           kmzFileUrl: task.kmzFileUrl,
           kmzFileUrl2: task.kmzFileUrl2,
+          offlineEnabled: task.offlineEnabled,
         })
       );
       router.push("/survey-pra-existing");

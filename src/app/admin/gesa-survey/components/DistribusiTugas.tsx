@@ -1,10 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { collection, getDoc, getDocs, addDoc, serverTimestamp, query, orderBy, deleteDoc, doc, setDoc, updateDoc } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import dynamic from "next/dynamic";
+import {
+  DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS,
+  PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION,
+  PRA_EXISTING_OFFLINE_SETTINGS_DOC,
+  type PraExistingOfflineSettings,
+} from "@/utils/praExistingOfflineSettings";
 
 // Dynamic import for KMZ Map Preview (SSR disabled for Leaflet)
 const DynamicKMZMapPreview = dynamic(
@@ -41,6 +47,7 @@ interface Task {
   kmzFileUrl?: string;
   kmzFileUrl2?: string;
   excelFileUrl?: string;
+  offlineEnabled?: boolean;
   createdAt: { toDate?: () => Date } | Date | string | number | null;
 }
 
@@ -58,6 +65,7 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
   const [selectedSurveyor, setSelectedSurveyor] = useState("");
   const [surveyorSearch, setSurveyorSearch] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
+  const [taskOfflineEnabled, setTaskOfflineEnabled] = useState(true);
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [kmzFile, setKmzFile] = useState<File | null>(null);
   const [kmzFile2, setKmzFile2] = useState<File | null>(null);
@@ -68,6 +76,10 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
   // Task list states
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
+  const [offlineSettings, setOfflineSettings] = useState<PraExistingOfflineSettings>(DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS);
+  const [loadingOfflineSettings, setLoadingOfflineSettings] = useState(true);
+  const [savingOfflineSettings, setSavingOfflineSettings] = useState(false);
+  const [savingTaskOfflineId, setSavingTaskOfflineId] = useState<string | null>(null);
   const [selectedTaskFilter, setSelectedTaskFilter] = useState<"all" | "pending" | "in-progress" | "completed">("all");
   const [searchQuery, setSearchQuery] = useState("");
   
@@ -80,6 +92,7 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
 
   // Fetch tasks on component mount
   useEffect(() => {
+    fetchOfflineSettings();
     fetchTasks();
   }, []);
 
@@ -89,6 +102,36 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
       loadDetailKmzFiles(selectedTaskDetail);
     }
   }, [showDetailModal, selectedTaskDetail]);
+
+  const fetchOfflineSettings = async () => {
+    try {
+      setLoadingOfflineSettings(true);
+      const settingsRef = doc(
+        db,
+        PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION,
+        PRA_EXISTING_OFFLINE_SETTINGS_DOC
+      );
+      const settingsSnap = await getDoc(settingsRef);
+
+      if (!settingsSnap.exists()) {
+        setOfflineSettings(DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS);
+        return;
+      }
+
+      const data = settingsSnap.data() as { globalEnabled?: unknown };
+      setOfflineSettings({
+        globalEnabled:
+          typeof data.globalEnabled === "boolean"
+            ? data.globalEnabled
+            : DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS.globalEnabled,
+      });
+    } catch (error) {
+      console.error("Error fetching pra-existing offline settings:", error);
+      setOfflineSettings(DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS);
+    } finally {
+      setLoadingOfflineSettings(false);
+    }
+  };
 
   const fetchTasks = async () => {
     try {
@@ -147,6 +190,12 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
   useEffect(() => {
     setSurveyorSearch("");
   }, [showProposeModal, showExistingModal, showProposeExistingModal, showPraExistingModal]);
+
+  useEffect(() => {
+    if (showPraExistingModal) {
+      setTaskOfflineEnabled(offlineSettings.globalEnabled);
+    }
+  }, [showPraExistingModal, offlineSettings.globalEnabled]);
 
   const fetchPetugas = async () => {
     try {
@@ -288,6 +337,7 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
         kmzFileUrl: kmzFileUrl || null,
         kmzFileUrl2: kmzFileUrl2 || null,
         excelFileUrl: excelFileUrl || null,
+        offlineEnabled: taskType === "pra-existing" ? taskOfflineEnabled : false,
         createdAt: serverTimestamp(),
         startedAt: null,
         completedAt: null,
@@ -310,6 +360,7 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
       setTaskTitle("");
       setSelectedSurveyor("");
       setTaskDescription("");
+      setTaskOfflineEnabled(offlineSettings.globalEnabled);
       setExcelFile(null);
       setKmzFile(null);
       setKmzFile2(null);
@@ -358,6 +409,50 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
     } catch (error) {
       console.error("Error reactivating task:", error);
       alert("Gagal mengaktifkan kembali tugas.");
+    }
+  };
+
+  const handleSaveGlobalOfflineSettings = async (nextEnabled: boolean) => {
+    try {
+      setSavingOfflineSettings(true);
+      await setDoc(
+        doc(db, PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION, PRA_EXISTING_OFFLINE_SETTINGS_DOC),
+        {
+          globalEnabled: nextEnabled,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setOfflineSettings({ globalEnabled: nextEnabled });
+      alert(`Mode offline pra-existing ${nextEnabled ? "diaktifkan" : "dinonaktifkan"} untuk seluruh sistem.`);
+    } catch (error) {
+      console.error("Error updating global offline settings:", error);
+      alert("Gagal menyimpan pengaturan offline global.");
+    } finally {
+      setSavingOfflineSettings(false);
+    }
+  };
+
+  const handleToggleTaskOffline = async (task: Task, nextEnabled: boolean) => {
+    try {
+      setSavingTaskOfflineId(task.id);
+      await updateDoc(doc(db, "tasks", task.id), {
+        offlineEnabled: nextEnabled,
+        offlineUpdatedAt: new Date(),
+      });
+
+      setTasks((previous) =>
+        previous.map((item) => (item.id === task.id ? { ...item, offlineEnabled: nextEnabled } : item))
+      );
+      setSelectedTaskDetail((previous) =>
+        previous?.id === task.id ? { ...previous, offlineEnabled: nextEnabled } : previous
+      );
+      alert(`Mode offline untuk tugas "${task.title}" ${nextEnabled ? "diaktifkan" : "dinonaktifkan"}.`);
+    } catch (error) {
+      console.error("Error updating task offline settings:", error);
+      alert("Gagal memperbarui pengaturan offline tugas.");
+    } finally {
+      setSavingTaskOfflineId(null);
     }
   };
 
@@ -468,6 +563,34 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
     }
   };
 
+  const getOfflineBadge = (task: Task) => {
+    if (task.type !== "pra-existing") {
+      return {
+        text: "Tidak dipakai",
+        className: "bg-slate-100 text-slate-600 border-slate-200",
+      };
+    }
+
+    if (!offlineSettings.globalEnabled) {
+      return {
+        text: "Global off",
+        className: "bg-rose-50 text-rose-700 border-rose-200",
+      };
+    }
+
+    if (task.offlineEnabled === false) {
+      return {
+        text: "Per tugas off",
+        className: "bg-amber-50 text-amber-700 border-amber-200",
+      };
+    }
+
+    return {
+      text: "Aktif",
+      className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    };
+  };
+
   // Filter tasks
   const filteredTasks = tasks.filter(task => {
     const matchesFilter = selectedTaskFilter === "all" || task.status === selectedTaskFilter;
@@ -562,6 +685,33 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
                 <span className="text-3xl font-bold text-gray-900">{stats.inProgress}</span>
               </div>
               <p className="text-sm font-medium text-gray-600">Pending</p>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-gray-100 bg-white p-5 shadow-lg">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-base font-semibold text-gray-900">Kontrol Offline Pra Existing</p>
+                <p className="mt-1 text-sm text-gray-500">
+                  Toggle global ini menjadi izin utama. Jika global mati, semua tugas pra-existing tetap online-only walaupun per tugas diaktifkan.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${offlineSettings.globalEnabled ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                  {loadingOfflineSettings ? "Memuat pengaturan..." : offlineSettings.globalEnabled ? "Global aktif" : "Global nonaktif"}
+                </span>
+                <button
+                  onClick={() => void handleSaveGlobalOfflineSettings(!offlineSettings.globalEnabled)}
+                  disabled={loadingOfflineSettings || savingOfflineSettings}
+                  className={`rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-60 ${offlineSettings.globalEnabled ? "bg-rose-600 hover:bg-rose-700" : "bg-emerald-600 hover:bg-emerald-700"}`}
+                >
+                  {savingOfflineSettings
+                    ? "Menyimpan..."
+                    : offlineSettings.globalEnabled
+                      ? "Nonaktifkan Offline Global"
+                      : "Aktifkan Offline Global"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -715,6 +865,7 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
                 {filteredTasks.map((task) => {
                   const typeInfo = getTypeLabel(task.type);
                   const statusInfo = getStatusBadge(task.status);
+                  const offlineInfo = getOfflineBadge(task);
                   
                   return (
                     <div key={task.id} className="p-6 hover:bg-gray-50 transition-all">
@@ -733,6 +884,14 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
                               <span className="text-xl">{typeInfo.icon}</span>
                               <span className={`font-medium ${typeInfo.color}`}>{typeInfo.text}</span>
                             </div>
+                            {task.type === "pra-existing" && (
+                              <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${offlineInfo.className}`}>
+                                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.556A5.5 5.5 0 0112 6.5a5.5 5.5 0 013.889 10.056M4.929 19.071a10 10 0 0114.142 0M1.5 15.643a15 15 0 0121 0" />
+                                </svg>
+                                <span>Offline: {offlineInfo.text}</span>
+                              </div>
+                            )}
                             <div className="flex items-center gap-2 text-gray-600">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -1257,7 +1416,10 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
                 </div>
               </div>
               <button
-                onClick={() => setShowPraExistingModal(false)}
+                onClick={() => {
+                  setShowPraExistingModal(false);
+                  setTaskOfflineEnabled(offlineSettings.globalEnabled);
+                }}
                 className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white hover:bg-opacity-20 transition-all"
               >
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1318,6 +1480,32 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
                   rows={4}
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all resize-none placeholder:text-gray-400"
                 />
+              </div>
+
+              <div className={`rounded-2xl border p-4 ${offlineSettings.globalEnabled ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">Mode Offline Tugas</p>
+                    <p className="mt-1 text-xs text-gray-600">
+                      Jika aktif, petugas pra-existing boleh menyiapkan paket offline saat mulai tugas. Jika nonaktif, form hanya bisa dipakai saat online.
+                    </p>
+                  </div>
+                  <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-800">
+                    <input
+                      type="checkbox"
+                      checked={taskOfflineEnabled}
+                      onChange={(e) => setTaskOfflineEnabled(e.target.checked)}
+                      disabled={!offlineSettings.globalEnabled}
+                      className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                    {taskOfflineEnabled ? "Aktif" : "Nonaktif"}
+                  </label>
+                </div>
+                {!offlineSettings.globalEnabled ? (
+                  <p className="mt-2 text-xs font-medium text-amber-700">
+                    Offline global sedang dimatikan. Toggle per tugas akan aktif lagi setelah global dihidupkan.
+                  </p>
+                ) : null}
               </div>
 
               <div>
@@ -1381,6 +1569,7 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
                     setSelectedSurveyor("");
                     setSurveyorSearch("");
                     setTaskDescription("");
+                    setTaskOfflineEnabled(offlineSettings.globalEnabled);
                     setKmzFile2(null);
                   }}
                   className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all"
@@ -1707,6 +1896,11 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
                 <span className={`px-4 py-2 rounded-xl text-sm font-bold ${getTypeLabel(selectedTaskDetail.type).color} bg-opacity-10`}>
                   {getTypeLabel(selectedTaskDetail.type).icon} {getTypeLabel(selectedTaskDetail.type).text}
                 </span>
+                {selectedTaskDetail.type === "pra-existing" ? (
+                  <span className={`px-4 py-2 rounded-xl text-sm font-semibold border ${getOfflineBadge(selectedTaskDetail).className}`}>
+                    Offline: {getOfflineBadge(selectedTaskDetail).text}
+                  </span>
+                ) : null}
               </div>
 
               {/* Description */}
@@ -1758,6 +1952,35 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
                   </div>
                 </div>
               </div>
+
+              {selectedTaskDetail.type === "pra-existing" ? (
+                <div className={`rounded-2xl border p-4 ${offlineSettings.globalEnabled ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-gray-900">Kontrol Offline Tugas Ini</h4>
+                      <p className="mt-1 text-xs text-gray-600">
+                        Jika aktif, petugas boleh melanjutkan form pra-existing saat offline setelah tugas dimulai dan paket offline selesai disiapkan.
+                      </p>
+                      {!offlineSettings.globalEnabled ? (
+                        <p className="mt-2 text-xs font-medium text-amber-700">
+                          Global offline sedang nonaktif. Toggle per tugas tidak berlaku sampai admin menyalakan global lagi.
+                        </p>
+                      ) : null}
+                    </div>
+                    <button
+                      onClick={() => void handleToggleTaskOffline(selectedTaskDetail, selectedTaskDetail.offlineEnabled === false)}
+                      disabled={savingTaskOfflineId === selectedTaskDetail.id}
+                      className={`rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-60 ${selectedTaskDetail.offlineEnabled === false ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700"}`}
+                    >
+                      {savingTaskOfflineId === selectedTaskDetail.id
+                        ? "Menyimpan..."
+                        : selectedTaskDetail.offlineEnabled === false
+                          ? "Aktifkan Offline Tugas"
+                          : "Nonaktifkan Offline Tugas"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               {/* Files Section */}
               {(selectedTaskDetail.kmzFileUrl || selectedTaskDetail.kmzFileUrl2 || selectedTaskDetail.excelFileUrl) && (
