@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -441,7 +441,22 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function TugasSurveyPraExistingPage() {
-  return <TugasSurveyPraExistingContent />;
+  return (
+    <Suspense
+      fallback={
+        <ProtectedRoute>
+          <div className="flex min-h-screen items-center justify-center bg-slate-50">
+            <div className="text-center">
+              <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-b-2 border-blue-600" />
+              <p className="text-sm text-slate-500">Memuat daftar tugas...</p>
+            </div>
+          </div>
+        </ProtectedRoute>
+      }
+    >
+      <TugasSurveyPraExistingContent />
+    </Suspense>
+  );
 }
 
 
