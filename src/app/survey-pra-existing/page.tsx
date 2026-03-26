@@ -9,7 +9,9 @@ import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
 import { db, storage } from "@/lib/firebase";
+import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
 import type { TaskNavigationInfo } from "@/utils/taskNavigation";
+import { analyzeTaskNavigation, type ParsedTaskGeometries } from "@/utils/taskNavigation";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
 import { PRA_EXISTING_TABANAN_DATA } from "./location-data";
@@ -114,6 +116,12 @@ declare global {
   }
 }
 
+const emptyTaskGeometries: ParsedTaskGeometries = {
+  polygons: [],
+  polylines: [],
+  points: [],
+};
+
 function SurveyPraExistingContent() {
   const router = useRouter();
   const { user } = useAuth();
@@ -131,6 +139,7 @@ function SurveyPraExistingContent() {
   const [showTaskSummary, setShowTaskSummary] = useState(false);
   const [formData, setFormData] = useState<FormState>(initialFormState);
   const [taskNavigationInfo, setTaskNavigationInfo] = useState<TaskNavigationInfo | null>(null);
+  const [taskGeometries, setTaskGeometries] = useState<ParsedTaskGeometries>(emptyTaskGeometries);
   const [fotoAktual, setFotoAktual] = useState<File | null>(null);
   const [fotoPreview, setFotoPreview] = useState("");
   const [saving, setSaving] = useState(false);
@@ -498,6 +507,52 @@ function SurveyPraExistingContent() {
   const gpsStatusLabel = !isGPSActive ? "GPS belum aktif" : gpsCoords ? `Akurasi +/-${gpsCoords.accuracy.toFixed(1)} m` : "Mencari posisi GPS";
   const currentGeoStamp = gpsCoords ? `Lat ${gpsCoords.latitude.toFixed(6)} | Lng ${gpsCoords.longitude.toFixed(6)} | ${new Date(gpsCoords.timestamp).toLocaleString("id-ID")}` : "Geostamp akan muncul setelah GPS terbaca";
   const isFormLocked = checkingTaskAccess || !isTaskEditable;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTaskGeometries = async () => {
+      if (!taskPolygonUrl) {
+        setTaskGeometries(emptyTaskGeometries);
+        return;
+      }
+
+      try {
+        const geometries = await loadParsedTaskGeometries(taskPolygonUrl);
+        if (!cancelled) {
+          setTaskGeometries(geometries);
+        }
+      } catch (error) {
+        console.error("Gagal memuat geometri tugas pra-existing:", error);
+        if (!cancelled) {
+          setTaskGeometries(emptyTaskGeometries);
+        }
+      }
+    };
+
+    void loadTaskGeometries();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [taskPolygonUrl]);
+
+  useEffect(() => {
+    if (!gpsCoords) {
+      setTaskNavigationInfo(null);
+      return;
+    }
+
+    const info = analyzeTaskNavigation(
+      {
+        lat: gpsCoords.latitude,
+        lng: gpsCoords.longitude,
+      },
+      taskGeometries
+    );
+
+    setTaskNavigationInfo(info);
+  }, [gpsCoords, taskGeometries]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

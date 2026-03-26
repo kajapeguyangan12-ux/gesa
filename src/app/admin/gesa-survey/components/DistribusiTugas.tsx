@@ -48,7 +48,7 @@ interface DistribusiTugasProps {
   setActiveMenu?: (menu: string) => void;
 }
 
-export default function DistribusiTugas(_props: DistribusiTugasProps) {
+export default function DistribusiTugas({}: DistribusiTugasProps) {
   const [showTaskDropdown, setShowTaskDropdown] = useState(false);
   const [showProposeModal, setShowProposeModal] = useState(false);
   const [showExistingModal, setShowExistingModal] = useState(false);
@@ -56,6 +56,7 @@ export default function DistribusiTugas(_props: DistribusiTugasProps) {
   const [showPraExistingModal, setShowPraExistingModal] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
   const [selectedSurveyor, setSelectedSurveyor] = useState("");
+  const [surveyorSearch, setSurveyorSearch] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [kmzFile, setKmzFile] = useState<File | null>(null);
@@ -143,6 +144,10 @@ export default function DistribusiTugas(_props: DistribusiTugasProps) {
     };
   }, [showProposeModal, showExistingModal, showProposeExistingModal, showPraExistingModal]);
 
+  useEffect(() => {
+    setSurveyorSearch("");
+  }, [showProposeModal, showExistingModal, showProposeExistingModal, showPraExistingModal]);
+
   const fetchPetugas = async () => {
     try {
       setLoadingPetugas(true);
@@ -173,11 +178,26 @@ export default function DistribusiTugas(_props: DistribusiTugasProps) {
     }
   };
 
-  const getPetugasOptions = (taskType: "propose" | "existing" | "propose-existing" | "pra-existing") => {
+  const getPetugasOptions = (taskType: "propose" | "existing" | "propose-existing" | "pra-existing" | "all") => {
     if (taskType === "propose") return petugasList.filter((p) => p.role === "petugas-apj-propose");
     if (taskType === "existing") return petugasList.filter((p) => p.role === "petugas-existing");
     if (taskType === "pra-existing") return petugasList.filter((p) => p.role === "petugas-pra-existing");
     return petugasList;
+  };
+
+  const getFilteredPetugasOptions = (taskType: "propose" | "existing" | "propose-existing" | "pra-existing" | "all") => {
+    const options = getPetugasOptions(taskType);
+    const keyword = surveyorSearch.trim().toLowerCase();
+
+    if (!keyword) {
+      return options;
+    }
+
+    return options.filter((petugas) =>
+      petugas.name.toLowerCase().includes(keyword) ||
+      petugas.email.toLowerCase().includes(keyword) ||
+      (petugas.role || "").toLowerCase().includes(keyword)
+    );
   };
 
   const uploadFileToStorage = async (file: File, folder: string): Promise<string> => {
@@ -837,30 +857,15 @@ export default function DistribusiTugas(_props: DistribusiTugasProps) {
                   Surveyor
                   <span className="text-red-500">*</span>
                 </label>
-                <div className="relative">
-                  <select
-                    value={selectedSurveyor}
-                    onChange={(e) => setSelectedSurveyor(e.target.value)}
-                    disabled={loadingPetugas}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <option value="">
-                      {loadingPetugas 
-                        ? "Memuat data..." 
-                        : getPetugasOptions("propose").length === 0 
-                        ? "Tidak ada petugas tersedia" 
-                        : "Pilih Surveyor"}
-                    </option>
-                    {!loadingPetugas && getPetugasOptions("propose").map((petugas) => (
-                      <option key={petugas.id} value={petugas.id} className="text-gray-900">
-                        {petugas.name} - {petugas.email}
-                      </option>
-                    ))}
-                  </select>
-                  <svg className="absolute right-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
+                <SurveyorSelectField
+                  selectedSurveyor={selectedSurveyor}
+                  onSurveyorChange={setSelectedSurveyor}
+                  surveyorSearch={surveyorSearch}
+                  onSurveyorSearchChange={setSurveyorSearch}
+                  loadingPetugas={loadingPetugas}
+                  surveyorOptions={getFilteredPetugasOptions("propose")}
+                  accentColor="blue"
+                />
               </div>
 
               {/* Deskripsi */}
@@ -994,6 +999,7 @@ export default function DistribusiTugas(_props: DistribusiTugasProps) {
                     setShowProposeModal(false);
                     setTaskTitle("");
                     setSelectedSurveyor("");
+                    setSurveyorSearch("");
                     setTaskDescription("");
                     setExcelFile(null);
                     setKmzFile(null);
@@ -1083,30 +1089,15 @@ export default function DistribusiTugas(_props: DistribusiTugasProps) {
                   Surveyor
                   <span className="text-red-500">*</span>
                 </label>
-                <div className="relative">
-                  <select
-                    value={selectedSurveyor}
-                    onChange={(e) => setSelectedSurveyor(e.target.value)}
-                    disabled={loadingPetugas}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <option value="">Pilih Surveyor</option>
-                    {loadingPetugas ? (
-                      <option value="" disabled>Memuat data...</option>
-                    ) : getPetugasOptions("existing").length === 0 ? (
-                      <option value="" disabled>Tidak ada petugas tersedia</option>
-                    ) : (
-                      getPetugasOptions("existing").map((petugas) => (
-                        <option key={petugas.id} value={petugas.id} className="text-gray-900">
-                          {petugas.name} - {petugas.email}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <svg className="absolute right-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
+                <SurveyorSelectField
+                  selectedSurveyor={selectedSurveyor}
+                  onSurveyorChange={setSelectedSurveyor}
+                  surveyorSearch={surveyorSearch}
+                  onSurveyorSearchChange={setSurveyorSearch}
+                  loadingPetugas={loadingPetugas}
+                  surveyorOptions={getFilteredPetugasOptions("existing")}
+                  accentColor="blue"
+                />
               </div>
 
               {/* Deskripsi */}
@@ -1216,6 +1207,7 @@ export default function DistribusiTugas(_props: DistribusiTugasProps) {
                     setShowExistingModal(false);
                     setTaskTitle("");
                     setSelectedSurveyor("");
+                    setSurveyorSearch("");
                     setTaskDescription("");
                     setKmzFile2(null);
                   }}
@@ -1300,30 +1292,15 @@ export default function DistribusiTugas(_props: DistribusiTugasProps) {
                   Surveyor
                   <span className="text-red-500">*</span>
                 </label>
-                <div className="relative">
-                  <select
-                    value={selectedSurveyor}
-                    onChange={(e) => setSelectedSurveyor(e.target.value)}
-                    disabled={loadingPetugas}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <option value="">Pilih Surveyor</option>
-                    {loadingPetugas ? (
-                      <option value="" disabled>Memuat data...</option>
-                    ) : getPetugasOptions("pra-existing").length === 0 ? (
-                      <option value="" disabled>Tidak ada petugas tersedia</option>
-                    ) : (
-                      getPetugasOptions("pra-existing").map((petugas) => (
-                        <option key={petugas.id} value={petugas.id} className="text-gray-900">
-                          {petugas.name} - {petugas.email}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <svg className="absolute right-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
+                <SurveyorSelectField
+                  selectedSurveyor={selectedSurveyor}
+                  onSurveyorChange={setSelectedSurveyor}
+                  surveyorSearch={surveyorSearch}
+                  onSurveyorSearchChange={setSurveyorSearch}
+                  loadingPetugas={loadingPetugas}
+                  surveyorOptions={getFilteredPetugasOptions("pra-existing")}
+                  accentColor="emerald"
+                />
               </div>
 
               <div>
@@ -1402,6 +1379,7 @@ export default function DistribusiTugas(_props: DistribusiTugasProps) {
                     setShowPraExistingModal(false);
                     setTaskTitle("");
                     setSelectedSurveyor("");
+                    setSurveyorSearch("");
                     setTaskDescription("");
                     setKmzFile2(null);
                   }}
@@ -1490,30 +1468,15 @@ export default function DistribusiTugas(_props: DistribusiTugasProps) {
                   Surveyor
                   <span className="text-red-500">*</span>
                 </label>
-                <div className="relative">
-                  <select
-                    value={selectedSurveyor}
-                    onChange={(e) => setSelectedSurveyor(e.target.value)}
-                    disabled={loadingPetugas}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <option value="">
-                      {loadingPetugas 
-                        ? "Memuat data..." 
-                        : petugasList.length === 0 
-                        ? "Tidak ada petugas tersedia" 
-                        : "Pilih Surveyor"}
-                    </option>
-                    {!loadingPetugas && petugasList.map((petugas) => (
-                      <option key={petugas.id} value={petugas.id} className="text-gray-900">
-                        {petugas.name} - {petugas.email} ({petugas.role === "petugas apj propose" ? "APJ Propose" : petugas.role === "petugas existing" ? "Existing" : "Petugas"})
-                      </option>
-                    ))}
-                  </select>
-                  <svg className="absolute right-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
+                <SurveyorSelectField
+                  selectedSurveyor={selectedSurveyor}
+                  onSurveyorChange={setSelectedSurveyor}
+                  surveyorSearch={surveyorSearch}
+                  onSurveyorSearchChange={setSurveyorSearch}
+                  loadingPetugas={loadingPetugas}
+                  surveyorOptions={getFilteredPetugasOptions("all")}
+                  accentColor="purple"
+                />
               </div>
 
               {/* Deskripsi */}
@@ -1675,6 +1638,7 @@ export default function DistribusiTugas(_props: DistribusiTugasProps) {
                     setShowProposeExistingModal(false);
                     setTaskTitle("");
                     setSelectedSurveyor("");
+                    setSurveyorSearch("");
                     setTaskDescription("");
                     setKmzFile(null);
                     setKmzFile2(null);
@@ -1985,5 +1949,72 @@ export default function DistribusiTugas(_props: DistribusiTugasProps) {
         </div>
       )}
     </>
+  );
+}
+
+function SurveyorSelectField({
+  selectedSurveyor,
+  onSurveyorChange,
+  surveyorSearch,
+  onSurveyorSearchChange,
+  loadingPetugas,
+  surveyorOptions,
+  accentColor,
+}: {
+  selectedSurveyor: string;
+  onSurveyorChange: (value: string) => void;
+  surveyorSearch: string;
+  onSurveyorSearchChange: (value: string) => void;
+  loadingPetugas: boolean;
+  surveyorOptions: Petugas[];
+  accentColor: "blue" | "emerald" | "purple";
+}) {
+  const focusClassName =
+    accentColor === "emerald"
+      ? "focus:ring-2 focus:ring-emerald-500"
+      : accentColor === "purple"
+        ? "focus:ring-2 focus:ring-purple-500"
+        : "focus:ring-2 focus:ring-blue-500";
+
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <svg className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input
+          type="text"
+          value={surveyorSearch}
+          onChange={(e) => onSurveyorSearchChange(e.target.value)}
+          placeholder="Cari nama atau email petugas"
+          disabled={loadingPetugas}
+          className={`w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-11 pr-4 text-sm text-gray-900 transition-all placeholder:text-gray-400 focus:outline-none ${focusClassName} disabled:cursor-not-allowed disabled:opacity-50`}
+        />
+      </div>
+      <div className="relative">
+        <select
+          value={selectedSurveyor}
+          onChange={(e) => onSurveyorChange(e.target.value)}
+          disabled={loadingPetugas}
+          className={`w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 transition-all focus:outline-none ${focusClassName} disabled:cursor-not-allowed disabled:opacity-50`}
+        >
+          <option value="">
+            {loadingPetugas ? "Memuat data..." : surveyorOptions.length === 0 ? "Tidak ada petugas yang cocok" : "Pilih Surveyor"}
+          </option>
+          {!loadingPetugas &&
+            surveyorOptions.map((petugas) => (
+              <option key={petugas.id} value={petugas.id} className="text-gray-900">
+                {petugas.name} - {petugas.email}
+              </option>
+            ))}
+        </select>
+        <svg className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
+      {!loadingPetugas && surveyorSearch.trim() ? (
+        <p className="text-xs text-gray-500">{surveyorOptions.length} petugas cocok dengan pencarian.</p>
+      ) : null}
+    </div>
   );
 }
