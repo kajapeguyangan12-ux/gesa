@@ -13,7 +13,17 @@ export async function loadParsedTaskGeometries(kmzFileUrl?: string): Promise<Par
   }
 
   const proxyUrl = `/api/proxy-kmz?url=${encodeURIComponent(kmzFileUrl)}`;
-  const response = await fetch(proxyUrl);
+  let response: Response;
+
+  try {
+    response = await fetch(proxyUrl);
+  } catch (error) {
+    throw new Error(
+      error instanceof Error
+        ? `Gagal mengambil file KMZ dari server: ${error.message}`
+        : "Gagal mengambil file KMZ dari server."
+    );
+  }
 
   if (!response.ok) {
     const kabupatenName = kmzFileUrl.split("/").pop()?.replace(".kmz", "").replace(/_/g, " ") || "Unknown";

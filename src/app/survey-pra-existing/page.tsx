@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } fro
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, doc, getDoc, getDocs, query, serverTimestamp, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, where } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
@@ -25,6 +25,13 @@ import type { TaskNavigationInfo } from "@/utils/taskNavigation";
 import { analyzeTaskNavigation, type ParsedTaskGeometries } from "@/utils/taskNavigation";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
+import {
+  DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS,
+  PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION,
+  PRA_EXISTING_OFFLINE_SETTINGS_DOC,
+  isPraExistingTaskOfflineEnabled,
+  type PraExistingOfflineSettings,
+} from "@/utils/praExistingOfflineSettings";
 import { PRA_EXISTING_TABANAN_DATA } from "./location-data";
 
 type DynamicMapProps = {
@@ -71,6 +78,7 @@ interface ActiveTask {
   surveyorId?: string;
   kmzFileUrl?: string;
   kmzFileUrl2?: string;
+  offlineEnabled?: boolean;
 }
 
 interface FormState {
@@ -162,6 +170,13 @@ function SurveyPraExistingContent() {
   const [isSyncingQueue, setIsSyncingQueue] = useState(false);
   const [offlineBasemapReady, setOfflineBasemapReady] = useState(false);
   const [offlineBasemapMessage, setOfflineBasemapMessage] = useState("Basemap offline belum disiapkan.");
+  const [offlineSettings, setOfflineSettings] = useState<PraExistingOfflineSettings>(DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS);
+  const [isOfflineAllowed, setIsOfflineAllowed] = useState(false);
+  const activeTaskId = activeTask?.id;
+  const activeTaskType = activeTask?.type;
+  const activeTaskStatus = activeTask?.status;
+  const activeTaskSurveyorId = activeTask?.surveyorId;
+  const activeTaskOfflineEnabled = activeTask?.offlineEnabled;
 
   const refreshPendingSyncCount = useCallback(async () => {
     try {
@@ -186,8 +201,40 @@ function SurveyPraExistingContent() {
     });
   }, []);
 
+  const uploadSurveyPayloadToServer = useCallback(
+    async ({
+      payload,
+      photoFile,
+      createdAtLocal,
+      uploadedFromOffline,
+    }: {
+      payload: Record<string, unknown>;
+      photoFile: File;
+      createdAtLocal: number;
+      uploadedFromOffline: boolean;
+    }) => {
+      if (!user) {
+        throw new Error("User tidak ditemukan. Silakan login ulang.");
+      }
+
+      const fileName = `${user.uid}-${createdAtLocal}-${photoFile.name}`;
+      const fotoRef = ref(storage, `survey-pra-existing/${fileName}`);
+      await uploadBytes(fotoRef, photoFile);
+      const fotoAktualUrl = await getDownloadURL(fotoRef);
+
+      await addDoc(collection(db, "survey-pra-existing"), {
+        ...payload,
+        fotoAktual: fotoAktualUrl,
+        uploadedFromOffline,
+        offlineCreatedAt: new Date(createdAtLocal).toISOString(),
+        createdAt: serverTimestamp(),
+      });
+    },
+    [user]
+  );
+
   const syncPendingSurveys = useCallback(async () => {
-    if (!user || !isOnline || isSyncingQueue) {
+    if (!user || !isOnline || isSyncingQueue || !isOfflineAllowed) {
       return;
     }
 
@@ -206,17 +253,11 @@ function SurveyPraExistingContent() {
           const file = new File([item.photoBlob], item.photoName, {
             type: item.photoType || "image/jpeg",
           });
-          const fileName = `${user.uid}-${item.createdAtLocal}-${file.name}`;
-          const fotoRef = ref(storage, `survey-pra-existing/${fileName}`);
-          await uploadBytes(fotoRef, file);
-          const fotoAktualUrl = await getDownloadURL(fotoRef);
-
-          await addDoc(collection(db, "survey-pra-existing"), {
-            ...item.payload,
-            fotoAktual: fotoAktualUrl,
+          await uploadSurveyPayloadToServer({
+            payload: item.payload,
+            photoFile: file,
+            createdAtLocal: item.createdAtLocal,
             uploadedFromOffline: true,
-            offlineCreatedAt: new Date(item.createdAtLocal).toISOString(),
-            createdAt: serverTimestamp(),
           });
 
           await removePendingPraExistingSurvey(item.id);
@@ -232,7 +273,7 @@ function SurveyPraExistingContent() {
       await refreshPendingSyncCount();
       setIsSyncingQueue(false);
     }
-  }, [activeTask?.id, isOnline, isSyncingQueue, refreshPendingSyncCount, user]);
+  }, [activeTask?.id, isOfflineAllowed, isOnline, isSyncingQueue, refreshPendingSyncCount, uploadSurveyPayloadToServer, user]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -270,6 +311,37 @@ function SurveyPraExistingContent() {
   }, [isOnline, syncPendingSurveys]);
 
   useEffect(() => {
+    const settingsRef = doc(
+      db,
+      PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION,
+      PRA_EXISTING_OFFLINE_SETTINGS_DOC
+    );
+
+    const unsubscribe = onSnapshot(
+      settingsRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          setOfflineSettings(DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS);
+          return;
+        }
+
+        const data = snapshot.data() as { globalEnabled?: unknown };
+        setOfflineSettings({
+          globalEnabled:
+            typeof data.globalEnabled === "boolean"
+              ? data.globalEnabled
+              : DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS.globalEnabled,
+        });
+      },
+      (error) => {
+        console.error("Gagal memantau pengaturan offline pra-existing:", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     const storedKabupaten = getActiveKabupatenFromStorage(user?.uid || "") || getActiveKabupatenFromStorage();
     if (storedKabupaten) {
       setActiveKabupaten(storedKabupaten);
@@ -287,6 +359,7 @@ function SurveyPraExistingContent() {
     if (!storedTask) {
       setActiveTask(null);
       setCompletedPoints([]);
+      setIsOfflineAllowed(false);
       setIsTaskEditable(false);
       setTaskAccessMessage("Belum ada tugas yang dimulai. Mulai tugas dari daftar tugas agar form bisa diisi.");
       setCheckingTaskAccess(false);
@@ -307,6 +380,7 @@ function SurveyPraExistingContent() {
       window.localStorage.removeItem("activeTask");
       setActiveTask(null);
       setCompletedPoints([]);
+      setIsOfflineAllowed(false);
       setIsTaskEditable(false);
       setTaskAccessMessage("Data tugas aktif tidak valid. Buka ulang tugas dari daftar tugas.");
     } finally {
@@ -315,22 +389,84 @@ function SurveyPraExistingContent() {
   }, []);
 
   useEffect(() => {
+    if (!activeTask?.id) {
+      return;
+    }
+
+    const taskRef = doc(db, "tasks", activeTask.id);
+    const unsubscribe = onSnapshot(
+      taskRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          window.localStorage.removeItem("activeTask");
+          setActiveTask(null);
+          setCompletedPoints([]);
+          setIsOfflineAllowed(false);
+          setIsTaskEditable(false);
+          setTaskAccessMessage("Tugas aktif tidak ditemukan. Minta admin membagikan atau aktifkan ulang tugas.");
+          return;
+        }
+
+        const taskData = snapshot.data() as ActiveTask;
+        setActiveTask((previous) =>
+          previous
+            ? {
+                ...previous,
+                title: typeof taskData.title === "string" ? taskData.title : previous.title,
+                description: typeof taskData.description === "string" ? taskData.description : previous.description,
+                type: typeof taskData.type === "string" ? taskData.type : previous.type,
+                status: typeof taskData.status === "string" ? taskData.status : previous.status,
+                surveyorId: typeof taskData.surveyorId === "string" ? taskData.surveyorId : previous.surveyorId,
+                kmzFileUrl: typeof taskData.kmzFileUrl === "string" ? taskData.kmzFileUrl : previous.kmzFileUrl,
+                kmzFileUrl2: typeof taskData.kmzFileUrl2 === "string" ? taskData.kmzFileUrl2 : previous.kmzFileUrl2,
+                offlineEnabled:
+                  typeof taskData.offlineEnabled === "boolean" ? taskData.offlineEnabled : previous.offlineEnabled,
+              }
+            : previous
+        );
+      },
+      (error) => {
+        console.error("Gagal memantau perubahan tugas aktif:", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [activeTask?.id]);
+
+  useEffect(() => {
     const validateActiveTask = async () => {
       if (!user?.uid) {
+        setIsOfflineAllowed(false);
         setIsTaskEditable(false);
         setTaskAccessMessage("User tidak ditemukan. Silakan login ulang.");
         return;
       }
 
-      if (!activeTask?.id) {
+      if (!activeTaskId) {
+        setIsOfflineAllowed(false);
         setIsTaskEditable(false);
         setTaskAccessMessage("Belum ada tugas yang dimulai. Mulai tugas dari daftar tugas agar form bisa diisi.");
         return;
       }
 
+      const offlineAllowed = isPraExistingTaskOfflineEnabled(offlineSettings, {
+        type: activeTaskType,
+        offlineEnabled: activeTaskOfflineEnabled,
+      });
+      setIsOfflineAllowed(offlineAllowed);
+
       if (!isOnline) {
+        if (!offlineAllowed) {
+          setCheckingTaskAccess(false);
+          setIsTaskEditable(false);
+          setTaskAccessMessage("Mode offline untuk tugas ini dimatikan oleh admin. Form hanya bisa dipakai saat online.");
+          setOfflineBasemapReady(false);
+          setOfflineBasemapMessage("Mode offline dimatikan admin. Basemap offline tidak disiapkan.");
+          return;
+        }
+
         try {
-          const offlinePackage = await getOfflineTaskPackage(activeTask.id);
+          const offlinePackage = await getOfflineTaskPackage(activeTaskId);
           if (offlinePackage) {
             setIsTaskEditable(true);
             setCheckingTaskAccess(false);
@@ -355,12 +491,13 @@ function SurveyPraExistingContent() {
 
       try {
         setCheckingTaskAccess(true);
-        const taskSnap = await getDoc(doc(db, "tasks", activeTask.id));
+        const taskSnap = await getDoc(doc(db, "tasks", activeTaskId));
 
         if (!taskSnap.exists()) {
           window.localStorage.removeItem("activeTask");
           setActiveTask(null);
           setCompletedPoints([]);
+          setIsOfflineAllowed(false);
           setIsTaskEditable(false);
           setTaskAccessMessage("Tugas aktif tidak ditemukan. Minta admin membagikan atau aktifkan ulang tugas.");
           return;
@@ -370,24 +507,17 @@ function SurveyPraExistingContent() {
         const belongsToUser = taskData.surveyorId === user.uid;
         const canEdit = belongsToUser && taskData.type === "pra-existing" && taskData.status === "in-progress";
 
-        setActiveTask((previous) =>
-          previous
-            ? {
-                ...previous,
-                title: typeof taskData.title === "string" ? taskData.title : previous.title,
-                description: typeof taskData.description === "string" ? taskData.description : previous.description,
-                type: typeof taskData.type === "string" ? taskData.type : previous.type,
-                status: typeof taskData.status === "string" ? taskData.status : previous.status,
-                surveyorId: typeof taskData.surveyorId === "string" ? taskData.surveyorId : previous.surveyorId,
-                kmzFileUrl: typeof taskData.kmzFileUrl === "string" ? taskData.kmzFileUrl : previous.kmzFileUrl,
-                kmzFileUrl2: typeof taskData.kmzFileUrl2 === "string" ? taskData.kmzFileUrl2 : previous.kmzFileUrl2,
-              }
-            : previous
-        );
-
         if (canEdit) {
           setIsTaskEditable(true);
-          setTaskAccessMessage("Tugas aktif ditemukan. Form bisa diisi dan dikirim.");
+          setTaskAccessMessage(
+            offlineAllowed
+              ? "Tugas aktif ditemukan. Form bisa diisi dan mode offline diizinkan."
+              : "Tugas aktif ditemukan. Form bisa diisi saat online, tetapi mode offline dimatikan admin."
+          );
+          if (!offlineAllowed) {
+            setOfflineBasemapReady(false);
+            setOfflineBasemapMessage("Mode offline dimatikan admin. Basemap offline tidak disiapkan.");
+          }
           return;
         }
 
@@ -395,6 +525,7 @@ function SurveyPraExistingContent() {
           window.localStorage.removeItem("activeTask");
           setActiveTask(null);
           setCompletedPoints([]);
+          setIsOfflineAllowed(false);
           setIsTaskEditable(false);
           setTaskAccessMessage("Tugas aktif ini bukan milik akun Anda.");
           return;
@@ -404,6 +535,7 @@ function SurveyPraExistingContent() {
           window.localStorage.removeItem("activeTask");
           setActiveTask(null);
           setCompletedPoints([]);
+          setIsOfflineAllowed(false);
           setIsTaskEditable(false);
           setTaskAccessMessage("Tugas ini sudah selesai. Admin harus mengaktifkan ulang tugas jika survey perlu dilanjutkan.");
           return;
@@ -413,6 +545,7 @@ function SurveyPraExistingContent() {
         setTaskAccessMessage("Tugas belum aktif. Mulai tugas dari daftar tugas agar form bisa diisi.");
       } catch (error) {
         console.error("Gagal memvalidasi tugas aktif:", error);
+        setIsOfflineAllowed(false);
         setIsTaskEditable(false);
         setTaskAccessMessage("Gagal memeriksa status tugas. Coba buka ulang tugas dari daftar tugas.");
       } finally {
@@ -421,7 +554,7 @@ function SurveyPraExistingContent() {
     };
 
     void validateActiveTask();
-  }, [activeTask?.id, isOnline, user?.uid]);
+  }, [activeTaskId, activeTaskOfflineEnabled, activeTaskStatus, activeTaskSurveyorId, activeTaskType, isOnline, offlineSettings, user?.uid]);
 
   useEffect(() => {
     if (!("geolocation" in navigator)) {
@@ -655,14 +788,18 @@ function SurveyPraExistingContent() {
   const currentGeoStamp = gpsCoords ? `Lat ${gpsCoords.latitude.toFixed(6)} | Lng ${gpsCoords.longitude.toFixed(6)} | ${new Date(gpsCoords.timestamp).toLocaleString("id-ID")}` : "Geostamp akan muncul setelah GPS terbaca";
   const isFormLocked = checkingTaskAccess || !isTaskEditable;
   const syncStatusLabel = isSyncingQueue ? "Menyinkronkan..." : pendingSyncCount > 0 ? `${pendingSyncCount} antrean` : "Sinkron";
-  const basemapStatusLabel = offlineBasemapReady ? "Peta offline siap" : "Peta offline belum siap";
+  const basemapStatusLabel = !isOfflineAllowed ? "Offline dimatikan" : offlineBasemapReady ? "Peta offline siap" : "Peta offline belum siap";
   const compactOfflineInfo = isOnline
-    ? pendingSyncCount > 0
+    ? !isOfflineAllowed
+      ? "Mode offline dimatikan admin. Form hanya mengikuti koneksi online."
+      : pendingSyncCount > 0
       ? `${pendingSyncCount} data akan dikirim otomatis.`
       : offlineBasemapReady
         ? "Siap kerja online/offline untuk area tugas."
         : "Paket tugas aktif. Peta offline sedang disiapkan."
-    : pendingSyncCount > 0
+    : !isOfflineAllowed
+      ? "Mode offline dimatikan admin. Form tidak bisa dipakai tanpa koneksi."
+      : pendingSyncCount > 0
       ? `${pendingSyncCount} data tersimpan lokal dan menunggu sinyal.`
       : "Mode offline aktif untuk tugas yang sudah dimulai.";
 
@@ -709,6 +846,8 @@ function SurveyPraExistingContent() {
               savedAt: Date.now(),
               basemapReady: existingPackage?.basemapReady ?? false,
               basemapPreparedAt: existingPackage?.basemapPreparedAt ?? null,
+              offlineAllowed: isOfflineAllowed,
+              globalOfflineEnabled: offlineSettings.globalEnabled,
             });
           }
         }
@@ -725,11 +864,11 @@ function SurveyPraExistingContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeTask, isOnline, taskPolygonUrl]);
+  }, [activeTask, isOfflineAllowed, isOnline, offlineSettings.globalEnabled, taskPolygonUrl]);
 
   useEffect(() => {
     const prepareOfflinePackage = async () => {
-      if (!activeTask?.id || !isOnline) {
+      if (!activeTask?.id || !isOnline || !isOfflineAllowed) {
         return;
       }
 
@@ -749,6 +888,8 @@ function SurveyPraExistingContent() {
           savedAt: Date.now(),
           basemapReady: existingPackage?.basemapReady ?? false,
           basemapPreparedAt: existingPackage?.basemapPreparedAt ?? null,
+          offlineAllowed: true,
+          globalOfflineEnabled: offlineSettings.globalEnabled,
         });
 
         const result = await prepareOfflineBasemapForTask(taskGeometries);
@@ -768,7 +909,16 @@ function SurveyPraExistingContent() {
     };
 
     void prepareOfflinePackage();
-  }, [activeTask, isOnline, taskGeometries]);
+  }, [activeTask, isOfflineAllowed, isOnline, offlineSettings.globalEnabled, taskGeometries]);
+
+  useEffect(() => {
+    if (isOfflineAllowed) {
+      return;
+    }
+
+    setOfflineBasemapReady(false);
+    setOfflineBasemapMessage("Mode offline dimatikan admin. Basemap offline tidak disiapkan.");
+  }, [isOfflineAllowed]);
 
   useEffect(() => {
     if (!gpsCoords) {
@@ -816,8 +966,54 @@ function SurveyPraExistingContent() {
 
       const kepemilikanDisplay = formData.kepemilikanTiang === "PLN" && formData.tipeTiangPLN ? `PLN - ${formData.tipeTiangPLN}` : formData.kepemilikanTiang;
       const createdAtLocal = Date.now();
-      const queueId = `${user.uid}-${createdAtLocal}-${Math.random().toString(36).slice(2, 8)}`;
+      const payload = {
+        ...formData,
+        lokasiLengkap: [selectedKabupatenOption?.name, formData.kecamatan, formData.desa, formData.banjar].filter(Boolean).join(" - "),
+        kabupaten: formData.kabupaten,
+        kabupatenName: selectedKabupatenOption?.name || "",
+        keteranganTiang: kepemilikanDisplay,
+        kepemilikanDisplay,
+        latitude: gpsCoords.latitude,
+        longitude: gpsCoords.longitude,
+        accuracy: gpsCoords.accuracy,
+        trackingPath,
+        geostamp: {
+          latitude: gpsCoords.latitude,
+          longitude: gpsCoords.longitude,
+          accuracy: gpsCoords.accuracy,
+          capturedAt: new Date(gpsCoords.timestamp).toISOString(),
+        },
+        type: "pra-existing",
+        status: "menunggu",
+        taskId: activeTask.id,
+        taskTitle: activeTask.title || "",
+        kmzFileUrl: taskPolygonUrl || "",
+        completedPoints,
+        surveyorUid: user.uid,
+        surveyorEmail: user.email || "",
+        surveyorName: user.displayName || user.email || "Unknown",
+        title: `Survey Pra Existing - ${formData.desa} - ${formData.banjar}`,
+        submittedAtLocal: new Date(createdAtLocal).toISOString(),
+      };
 
+      if (!isOfflineAllowed) {
+        if (!isOnline) {
+          throw new Error("Mode offline dimatikan admin. Sambungkan internet untuk mengirim survey.");
+        }
+
+        await uploadSurveyPayloadToServer({
+          payload,
+          photoFile: stampedFile,
+          createdAtLocal,
+          uploadedFromOffline: false,
+        });
+        alert("Survey pra-existing berhasil dikirim.");
+        resetSurveyForm();
+        router.push(`/tugas-survey-pra-existing?taskId=${encodeURIComponent(activeTask.id)}`);
+        return;
+      }
+
+      const queueId = `${user.uid}-${createdAtLocal}-${Math.random().toString(36).slice(2, 8)}`;
       await addPendingPraExistingSurvey({
         id: queueId,
         taskId: activeTask.id,
@@ -827,35 +1023,7 @@ function SurveyPraExistingContent() {
         photoType: stampedFile.type,
         syncStatus: "pending",
         attempts: 0,
-        payload: {
-          ...formData,
-          lokasiLengkap: [selectedKabupatenOption?.name, formData.kecamatan, formData.desa, formData.banjar].filter(Boolean).join(" - "),
-          kabupaten: formData.kabupaten,
-          kabupatenName: selectedKabupatenOption?.name || "",
-          keteranganTiang: kepemilikanDisplay,
-          kepemilikanDisplay,
-          latitude: gpsCoords.latitude,
-          longitude: gpsCoords.longitude,
-          accuracy: gpsCoords.accuracy,
-          trackingPath,
-          geostamp: {
-            latitude: gpsCoords.latitude,
-            longitude: gpsCoords.longitude,
-            accuracy: gpsCoords.accuracy,
-            capturedAt: new Date(gpsCoords.timestamp).toISOString(),
-          },
-          type: "pra-existing",
-          status: "menunggu",
-          taskId: activeTask.id,
-          taskTitle: activeTask.title || "",
-          kmzFileUrl: taskPolygonUrl || "",
-          completedPoints,
-          surveyorUid: user.uid,
-          surveyorEmail: user.email || "",
-          surveyorName: user.displayName || user.email || "Unknown",
-          title: `Survey Pra Existing - ${formData.desa} - ${formData.banjar}`,
-          submittedAtLocal: new Date(createdAtLocal).toISOString(),
-        },
+        payload,
       });
 
       await refreshPendingSyncCount();
@@ -871,7 +1039,7 @@ function SurveyPraExistingContent() {
       }
     } catch (error) {
       console.error("Gagal menyimpan survey pra-existing:", error);
-      alert("Gagal menyimpan survey. Silakan coba lagi.");
+      alert(error instanceof Error ? error.message : "Gagal menyimpan survey. Silakan coba lagi.");
     } finally {
       setSaving(false);
     }
@@ -893,7 +1061,9 @@ function SurveyPraExistingContent() {
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               <div className={`rounded-full px-3 py-1 text-xs font-medium ${connectivityClassName}`}>{connectivityLabel}</div>
-              <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{syncStatusLabel}</div>
+              {isOfflineAllowed ? (
+                <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{syncStatusLabel}</div>
+              ) : null}
               <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">{gpsStatusLabel}</div>
             </div>
           </div>
@@ -1039,21 +1209,23 @@ function SurveyPraExistingContent() {
                   </div>
                   <div className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${connectivityClassName}`}>{connectivityLabel}</div>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
-                  <div className="rounded-xl bg-white/70 px-3 py-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Sinkron</p>
-                    <p className="mt-0.5 font-semibold text-slate-800">{syncStatusLabel}</p>
+                {isOfflineAllowed ? (
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+                    <div className="rounded-xl bg-white/70 px-3 py-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Sinkron</p>
+                      <p className="mt-0.5 font-semibold text-slate-800">{syncStatusLabel}</p>
+                    </div>
+                    <div className="rounded-xl bg-white/70 px-3 py-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Basemap</p>
+                      <p className="mt-0.5 font-semibold text-slate-800">{basemapStatusLabel}</p>
+                    </div>
+                    <div className="hidden rounded-xl bg-white/70 px-3 py-2 sm:block">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Status</p>
+                      <p className="mt-0.5 font-semibold text-slate-800">{isTaskEditable ? "Siap survey" : "Perlu cek tugas"}</p>
+                    </div>
                   </div>
-                  <div className="rounded-xl bg-white/70 px-3 py-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Basemap</p>
-                    <p className="mt-0.5 font-semibold text-slate-800">{basemapStatusLabel}</p>
-                  </div>
-                  <div className="hidden rounded-xl bg-white/70 px-3 py-2 sm:block">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Status</p>
-                    <p className="mt-0.5 font-semibold text-slate-800">{isTaskEditable ? "Siap survey" : "Perlu cek tugas"}</p>
-                  </div>
-                </div>
-                {isTaskEditable ? (
+                ) : null}
+                {isTaskEditable && isOfflineAllowed ? (
                   <p className="mt-2 text-[11px] text-slate-600">{offlineBasemapMessage}</p>
                 ) : null}
                 {!isTaskEditable && !checkingTaskAccess ? (
