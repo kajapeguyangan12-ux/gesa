@@ -214,7 +214,7 @@ export function analyzeTaskNavigation(
           name: polygon.name,
           isInside,
           coordinate: nearest.coordinate,
-          distanceMeters: isInside ? 0 : nearest.distanceMeters,
+          distanceMeters: nearest.distanceMeters,
         };
         continue;
       }
@@ -224,7 +224,7 @@ export function analyzeTaskNavigation(
           name: polygon.name,
           isInside,
           coordinate: nearest.coordinate,
-          distanceMeters: 0,
+          distanceMeters: nearest.distanceMeters,
         };
         continue;
       }
@@ -234,7 +234,7 @@ export function analyzeTaskNavigation(
           name: polygon.name,
           isInside,
           coordinate: nearest.coordinate,
-          distanceMeters: isInside ? 0 : nearest.distanceMeters,
+          distanceMeters: nearest.distanceMeters,
         };
       }
     }

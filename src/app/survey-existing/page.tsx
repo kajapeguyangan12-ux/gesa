@@ -1,14 +1,19 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, where, onSnapshot } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, where } from "firebase/firestore";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
+import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
+import { KABUPATEN_OPTIONS } from "@/utils/constants";
+import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
+import { analyzeTaskNavigation, type ParsedTaskGeometries, type TaskNavigationInfo } from "@/utils/taskNavigation";
+import { CompactRealtimePanel, CompactTaskStatusPanel, StatCard } from "@/components/SurveyTaskPanels";
 
 interface GPSCoordinates {
   latitude: number;
@@ -17,33 +22,27 @@ interface GPSCoordinates {
   timestamp: number;
 }
 
-// Dynamic import for Map component (SSR disabled for Leaflet)
-const DynamicMap = dynamic<{ 
-  latitude: number | null; 
-  longitude: number | null; 
-  accuracy: number;
-  hasGPS: boolean;
+interface ActiveTask {
+  id: string;
+  title?: string;
+  description?: string;
+  type?: string;
+  status?: string;
+  surveyorId?: string;
   kmzFileUrl?: string;
-  completedPoints?: string[];
-  onPointComplete?: (pointId: string, pointName: string, lat: number, lng: number) => void;
-}>(
-  () => import("@/components/GPSMap"),
-  { 
-    ssr: false,
-    loading: () => (
-      <div className="rounded-xl overflow-hidden border-2 border-blue-200 shadow-lg flex items-center justify-center bg-gray-100" style={{ height: '300px' }}>
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-          <p className="text-gray-500 text-sm">Memuat peta...</p>
-        </div>
-      </div>
-    )
-  }
-);
+  kmzFileUrl2?: string;
+  kabupaten?: string;
+  kabupatenName?: string;
+}
 
-// Dynamic import for Survey Existing Map
-const DynamicSurveyMap = dynamic(
-  () => import("@/components/SurveyExistingMap"),
+const emptyTaskGeometries: ParsedTaskGeometries = {
+  polygons: [],
+  polylines: [],
+  points: [],
+};
+
+const DynamicUnifiedMap = dynamic(
+  () => import("@/components/SurveyTaskUnifiedMap"),
   { 
     ssr: false,
     loading: () => (
@@ -60,6 +59,10 @@ const DynamicSurveyMap = dynamic(
 function SurveyExistingContent() {
   const router = useRouter();
   const { user } = useAuth();
+  const [activeKabupaten, setActiveKabupaten] = useState<string | null>(null);
+  const [pendingKabupaten, setPendingKabupaten] = useState<string | null>(null);
+  const [showKabupatenPicker, setShowKabupatenPicker] = useState(false);
+  const [showKabupatenConfirm, setShowKabupatenConfirm] = useState(false);
 
   const [gpsCoords, setGpsCoords] = useState<GPSCoordinates | null>(null);
   const [isGPSActive, setIsGPSActive] = useState(false);
@@ -98,6 +101,11 @@ function SurveyExistingContent() {
 
   // State for KMZ file from active task
   const [kmzFileUrl, setKmzFileUrl] = useState<string | undefined>(undefined);
+  const [activeTask, setActiveTask] = useState<ActiveTask | null>(null);
+  const [showUnifiedMap, setShowUnifiedMap] = useState(false);
+  const [showTaskSummary, setShowTaskSummary] = useState(false);
+  const [taskNavigationInfo, setTaskNavigationInfo] = useState<TaskNavigationInfo | null>(null);
+  const [taskGeometries, setTaskGeometries] = useState<ParsedTaskGeometries>(emptyTaskGeometries);
 
   // State for completed task points
   const [completedPoints, setCompletedPoints] = useState<string[]>([]);
@@ -133,6 +141,92 @@ function SurveyExistingContent() {
     lainnyaBertiang: "",
   });
 
+  const taskPolygonUrl = kmzFileUrl;
+  const submittedSurveyMarkers = useMemo(
+    () =>
+      surveyData.map((survey) => ({
+        id: survey.id,
+        latitude: Number(survey.latitude) || 0,
+        longitude: Number(survey.longitude) || 0,
+        title: "Survey Existing",
+        details: [
+          { label: "Lokasi", value: [survey.namaJalan, survey.namaGang].filter(Boolean).join(" - ") || "-" },
+          { label: "Kepemilikan", value: survey.keteranganTiang || "-" },
+          { label: "Surveyor", value: survey.surveyorName || "-" },
+          { label: "Status", value: survey.status || "-" },
+        ],
+        createdAt: survey.createdAt,
+      })),
+    [surveyData]
+  );
+  const distanceToTaskLabel = useMemo(() => {
+    const distance = taskNavigationInfo?.distanceToTargetMeters;
+    if (distance === null || distance === undefined) return "-";
+    if (distance < 1000) return `${Math.round(distance)} m`;
+    return `${(distance / 1000).toFixed(2)} km`;
+  }, [taskNavigationInfo?.distanceToTargetMeters]);
+  const nearestTaskCoordinateLabel = useMemo(() => {
+    const coordinate = taskNavigationInfo?.nearestCoordinate;
+    if (!coordinate) return "-";
+    return `${coordinate.lat.toFixed(6)}, ${coordinate.lng.toFixed(6)}`;
+  }, [taskNavigationInfo?.nearestCoordinate]);
+  const isOutsideAssignedPolygon = Boolean(
+    taskNavigationInfo?.hasTaskGeometry &&
+      taskNavigationInfo.geometryType === "polygon" &&
+      taskNavigationInfo.isInsidePolygon === false
+  );
+  const taskStatusMessage = useMemo(() => {
+    if (!taskNavigationInfo?.hasTaskGeometry) {
+      return "Area tugas belum tersedia. Peta tetap bisa dipakai untuk survey dan tracking.";
+    }
+    if (taskNavigationInfo.geometryType === "polygon") {
+      return taskNavigationInfo.isInsidePolygon
+        ? "Posisi GPS berada di dalam area tugas existing."
+        : "Posisi GPS berada di luar area tugas existing.";
+    }
+    if (taskNavigationInfo.geometryType === "polyline") {
+      return "Tugas berbentuk jalur. Jarak dihitung ke garis terdekat.";
+    }
+    return "Tugas berbentuk titik. Jarak dihitung ke titik tugas terdekat.";
+  }, [taskNavigationInfo]);
+  const googleMapsUrl = useMemo(() => {
+    const coordinate = taskNavigationInfo?.nearestCoordinate;
+    if (!coordinate) return "";
+    return `https://www.google.com/maps/dir/?api=1&destination=${coordinate.lat},${coordinate.lng}`;
+  }, [taskNavigationInfo?.nearestCoordinate]);
+  const coordinatesLabel = gpsCoords ? `${gpsCoords.latitude.toFixed(6)}, ${gpsCoords.longitude.toFixed(6)}` : "Koordinat belum tersedia";
+  const accuracyLabel = gpsCoords ? `+/-${gpsCoords.accuracy.toFixed(1)}m` : "-";
+  const updatedAtLabel = gpsCoords ? new Date(gpsCoords.timestamp).toLocaleTimeString("id-ID") : "-";
+  const taskKabupaten = activeTask?.kabupaten || null;
+  const effectiveKabupaten = taskKabupaten || activeKabupaten;
+  const activeKabupatenName = KABUPATEN_OPTIONS.find((k) => k.id === activeKabupaten)?.name || "-";
+  const pendingKabupatenName = KABUPATEN_OPTIONS.find((k) => k.id === pendingKabupaten)?.name || "-";
+
+  const handleKabupatenPick = (kabupatenId: string) => {
+    if (taskKabupaten) return;
+    if (kabupatenId === activeKabupaten) {
+      setShowKabupatenPicker(false);
+      return;
+    }
+    setPendingKabupaten(kabupatenId);
+    setShowKabupatenConfirm(true);
+  };
+
+  const handleKabupatenConfirm = () => {
+    if (taskKabupaten) return;
+    if (!pendingKabupaten) return;
+    setActiveKabupaten(pendingKabupaten);
+    setActiveKabupatenToStorage(user?.uid || "", pendingKabupaten);
+    setPendingKabupaten(null);
+    setShowKabupatenConfirm(false);
+    setShowKabupatenPicker(false);
+  };
+
+  const handleKabupatenCancel = () => {
+    setPendingKabupaten(null);
+    setShowKabupatenConfirm(false);
+  };
+
   // Handle save location from modal
   const handleSaveLokasi = () => {
     if (!tempNamaJalan.trim()) {
@@ -165,6 +259,23 @@ function SurveyExistingContent() {
     });
     setShowLebarJalanModal(false);
   };
+
+  useEffect(() => {
+    if (taskKabupaten) {
+      setActiveKabupaten(taskKabupaten);
+      setActiveKabupatenToStorage(user?.uid || "", taskKabupaten);
+      setShowKabupatenPicker(false);
+      return;
+    }
+    const stored = getActiveKabupatenFromStorage(user?.uid || "");
+    if (stored) {
+      setActiveKabupaten(stored);
+      setShowKabupatenPicker(false);
+    } else {
+      setActiveKabupaten(null);
+      setShowKabupatenPicker(true);
+    }
+  }, [taskKabupaten, user?.uid]);
 
   // Handle kepemilikan selection
   const handleKepemilikanSelect = (kepemilikan: string) => {
@@ -288,12 +399,55 @@ function SurveyExistingContent() {
     }
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTaskGeometries = async () => {
+      if (!taskPolygonUrl) {
+        setTaskGeometries(emptyTaskGeometries);
+        return;
+      }
+
+      try {
+        const geometries = await loadParsedTaskGeometries(taskPolygonUrl);
+        if (!cancelled) {
+          setTaskGeometries(geometries);
+        }
+      } catch (error) {
+        console.error("Gagal membaca geometri tugas existing:", error);
+        if (!cancelled) {
+          setTaskGeometries(emptyTaskGeometries);
+        }
+      }
+    };
+
+    void loadTaskGeometries();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [taskPolygonUrl]);
+
+  useEffect(() => {
+    if (!gpsCoords) {
+      setTaskNavigationInfo(null);
+      return;
+    }
+
+    const info = analyzeTaskNavigation(
+      { lat: gpsCoords.latitude, lng: gpsCoords.longitude },
+      taskGeometries
+    );
+    setTaskNavigationInfo(info);
+  }, [gpsCoords, taskGeometries]);
+
   // Load KMZ file URL from active task
   useEffect(() => {
     const activeTaskStr = localStorage.getItem("activeTask");
     if (activeTaskStr) {
       try {
         const activeTask = JSON.parse(activeTaskStr);
+        setActiveTask(activeTask);
         // For existing survey, use kmzFileUrl2
         if (activeTask.kmzFileUrl2) {
           setKmzFileUrl(activeTask.kmzFileUrl2);
@@ -420,11 +574,16 @@ function SurveyExistingContent() {
     
     const fetchSurveyData = async () => {
       try {
+        if (!effectiveKabupaten) {
+          setSurveyData([]);
+          return;
+        }
         setLoadingSurveys(true);
         const surveysRef = collection(db, "survey-existing");
         const q = query(
           surveysRef, 
-          where("surveyorUid", "==", user.uid), // Filter by current user
+          where("surveyorUid", "==", user.uid),
+          where("kabupaten", "==", effectiveKabupaten),
           orderBy("createdAt", "desc")
         );
         const querySnapshot = await getDocs(q);
@@ -435,7 +594,7 @@ function SurveyExistingContent() {
         }));
         
         setSurveyData(surveys);
-        console.log(`[Survey-Existing] Fetched ${surveys.length} survey data points for user ${user.uid}`);
+        console.log(`[Survey-Existing] Fetched ${surveys.length} survey data points for user ${user.uid} at ${effectiveKabupaten}`);
       } catch (error: any) {
         console.error("Error fetching surveys:", error);
       } finally {
@@ -444,7 +603,7 @@ function SurveyExistingContent() {
     };
 
     fetchSurveyData();
-  }, [user?.uid]);
+  }, [effectiveKabupaten, user?.uid]);
 
   // Start GPS tracking with continuous updates
   useEffect(() => {
@@ -799,6 +958,13 @@ function SurveyExistingContent() {
       return;
     }
 
+    const kabupaten = taskKabupaten || getActiveKabupatenFromStorage(user?.uid || "");
+    if (!kabupaten) {
+      alert("Kabupaten belum dipilih. Silakan pilih kabupaten terlebih dahulu.");
+      setShowKabupatenPicker(true);
+      return;
+    }
+
     try {
       // Check user authentication
       if (!user?.uid) {
@@ -889,6 +1055,7 @@ function SurveyExistingContent() {
         surveyorName: user?.displayName || user?.email || "Unknown",
         surveyorEmail: user?.email,
         surveyorUid: user?.uid,
+        kabupaten,
         createdAt: serverTimestamp(),
         title: `Survey Existing - ${formData.namaJalan}`,
         
@@ -905,7 +1072,12 @@ function SurveyExistingContent() {
       // Refresh survey data to update map
       setSubmitProgress("Memperbarui peta...");
       const surveysRef = collection(db, "survey-existing");
-      const q = query(surveysRef, orderBy("createdAt", "desc"));
+      const q = query(
+        surveysRef,
+        where("surveyorUid", "==", user.uid),
+        where("kabupaten", "==", kabupaten),
+        orderBy("createdAt", "desc")
+      );
       const querySnapshot = await getDocs(q);
       const surveys = querySnapshot.docs.map((doc) => ({
         id: doc.id,
@@ -1003,6 +1175,23 @@ function SurveyExistingContent() {
               <div>
                 <h1 className="text-lg sm:text-xl font-bold text-gray-900">Survey Existing</h1>
                 <p className="text-xs text-gray-600">Form survey penerangan existing</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+                    Kabupaten aktif: {taskKabupaten ? activeTask?.kabupatenName || activeKabupatenName : activeKabupatenName}
+                  </span>
+                  {taskKabupaten ? (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                      Dikunci dari tugas admin
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setShowKabupatenPicker(true)}
+                      className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-gray-700 transition-all hover:border-green-200 hover:text-green-700"
+                    >
+                      Ganti kabupaten
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1011,70 +1200,202 @@ function SurveyExistingContent() {
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
-        {/* Map Section - Data Survey yang Sudah Diinput */}
-        <div className="bg-white rounded-2xl shadow-md p-5 border border-gray-200">
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                  </svg>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-900">Ringkasan Tugas Existing</p>
+              <p className="text-[11px] text-slate-500">Judul tugas, status, dan progres titik bisa dibuka saat perlu.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowTaskSummary((previous) => !previous)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              {showTaskSummary ? "Sembunyikan" : "Lihat Tugas"}
+            </button>
+          </div>
+          {showTaskSummary ? (
+            <div className="mt-3">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">{activeTask?.title || "Belum ada tugas aktif"}</p>
+                  <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">{activeTask?.description || "Buka dari daftar tugas existing agar area kerja tampil."}</p>
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold text-gray-900">Peta Survey Existing</h2>
-                  <p className="text-xs text-gray-600">Lokasi survey yang sudah diinput</p>
-                </div>
+                <div className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">{activeTask?.status || "-"}</div>
               </div>
-              <div className="bg-green-50 px-3 py-1.5 rounded-lg">
-                <span className="text-sm font-bold text-green-700">{surveyData.length} Titik</span>
+              <div className="grid grid-cols-2 gap-2 text-sm text-slate-600 sm:grid-cols-4">
+                <StatCard label="Kabupaten" value={taskKabupaten ? activeTask?.kabupatenName || activeKabupatenName : activeKabupatenName} />
+                <StatCard label="Titik Survey" value={String(surveyData.length)} />
+                <StatCard label="Polygon KMZ" value={taskPolygonUrl ? "Tersedia" : "Belum ada"} />
+                <StatCard label="Titik Selesai" value={String(completedPoints.length)} />
+                <StatCard label="Tracking" value={`${trackingPath.length} titik`} />
               </div>
             </div>
-            
-            {loadingSurveys ? (
-              <div className="rounded-xl overflow-hidden border-2 border-green-200 shadow-lg flex items-center justify-center bg-gray-100" style={{ height: '400px' }}>
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-2"></div>
-                  <p className="text-gray-500 text-sm">Memuat data survey...</p>
-                </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Peta Survey, Area Tugas, dan Tracking</h2>
+                <p className="text-[11px] text-slate-500">Marker existing, polygon tugas, posisi GPS, dan tracking digabung dalam satu panel.</p>
               </div>
-            ) : surveyData.length === 0 ? (
-              <div className="rounded-xl overflow-hidden border-2 border-gray-200 shadow-sm flex items-center justify-center bg-gray-50" style={{ height: '400px' }}>
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center gap-2">
+                <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{loadingSurveys ? "Memuat..." : `${surveyData.length} Titik`}</div>
+                <button
+                  type="button"
+                  onClick={() => setShowUnifiedMap((previous) => !previous)}
+                  className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+                >
+                  {showUnifiedMap ? "Sembunyikan Peta" : "Tampilkan Peta"}
+                </button>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setIsGPSActive(!isGPSActive)}
+                className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${
+                  isGPSActive
+                    ? "bg-green-500 text-white shadow-lg"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                }`}
+              >
+                {isGPSActive ? (
+                  <>
+                    <div className="h-2 w-2 rounded-full bg-white animate-pulse"></div>
+                    GPS Aktif
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    </svg>
+                    Aktifkan GPS
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={isTracking ? stopTracking : startTracking}
+                disabled={!isGPSActive || !gpsCoords}
+                className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${
+                  isTracking
+                    ? "bg-red-500 text-white shadow-lg"
+                    : isGPSActive && gpsCoords
+                    ? "bg-blue-500 text-white hover:bg-blue-600 shadow-md"
+                    : "cursor-not-allowed bg-gray-300 text-gray-500"
+                }`}
+              >
+                {isTracking ? (
+                  <>
+                    <div className="h-2 w-2 rounded-full bg-white animate-pulse"></div>
+                    Stop Tracking
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                     </svg>
-                  </div>
-                  <p className="text-gray-600 font-medium">Belum ada data survey</p>
-                  <p className="text-gray-500 text-sm mt-1">Survey yang diinput akan muncul di peta ini</p>
+                    Mulai Tracking
+                  </>
+                )}
+              </button>
+            </div>
+            {isTracking && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse"></div>
+                  <span className="text-sm font-bold text-red-700">Tracking Aktif</span>
                 </div>
+                <p className="mt-1 text-xs text-red-600">{trackingPath.length} titik terekam, diperbarui setiap 15 detik.</p>
               </div>
-            ) : (
-              <DynamicSurveyMap 
-                surveyData={surveyData} 
-                kmzFileUrl={kmzFileUrl}
-                currentPosition={gpsCoords ? { lat: gpsCoords.latitude, lng: gpsCoords.longitude } : null}
-                completedPoints={completedPoints}
-                onPointComplete={handleCompletePoint}
-              />
             )}
           </div>
-          
-          <div className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg">
-            <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-            </svg>
-            <div className="text-xs text-blue-800">
-              <p className="font-semibold mb-1">Informasi Peta:</p>
-              <ul className="space-y-0.5 list-disc list-inside">
-                <li>Marker hijau menunjukkan lokasi survey yang sudah diinput</li>
-                <li>Klik marker untuk melihat detail survey</li>
-                <li>Data akan terupdate otomatis setelah submit survey baru</li>
-              </ul>
+          {showUnifiedMap ? (
+            <DynamicUnifiedMap
+              latitude={gpsCoords?.latitude ?? null}
+              longitude={gpsCoords?.longitude ?? null}
+              accuracy={gpsCoords?.accuracy ?? 0}
+              hasGPS={isGPSActive && gpsCoords !== null}
+              kmzFileUrl={taskPolygonUrl}
+              completedPoints={completedPoints}
+              trackingPath={trackingPath}
+              onPointComplete={handleCompletePoint}
+              onTaskNavigationInfoChange={setTaskNavigationInfo}
+              surveyData={submittedSurveyMarkers}
+              markerColor="#16a34a"
+              markerLabel="titik existing"
+            />
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3">
+              <p className="text-xs font-semibold text-slate-800">Peta disembunyikan untuk menghemat ruang layar.</p>
+              <p className="mt-1 text-[11px] text-slate-600">Tekan tombol <span className="font-semibold">Tampilkan Peta</span> untuk melihat marker survey, polygon tugas, GPS, dan tracking.</p>
             </div>
+          )}
+          <div className="mt-2 space-y-2">
+            <CompactTaskStatusPanel
+              isOutsideAssignedPolygon={isOutsideAssignedPolygon}
+              isInsideAssignedPolygon={taskNavigationInfo?.geometryType === "polygon" ? taskNavigationInfo.isInsidePolygon : null}
+              statusMessage={taskStatusMessage}
+              targetLabel={taskNavigationInfo?.taskName || "-"}
+              distanceLabel={distanceToTaskLabel}
+              coordinateLabel={nearestTaskCoordinateLabel}
+              accuracyLabel={gpsCoords && taskNavigationInfo?.hasTaskGeometry ? `Status area dihitung dari posisi GPS saat ini. Akurasi perangkat sekitar +/-${gpsCoords.accuracy.toFixed(1)} meter.` : ""}
+              googleMapsUrl={googleMapsUrl}
+            />
+            <CompactRealtimePanel
+              trackingEnabled={isTracking}
+              hasGPS={Boolean(gpsCoords)}
+              coordinatesLabel={coordinatesLabel}
+              accuracyLabel={accuracyLabel}
+              updatedAtLabel={updatedAtLabel}
+            />
           </div>
         </div>
+
+        {kmzFileUrl && gpsCoords && (
+          <div className="bg-white rounded-2xl shadow-md p-5 border border-gray-200">
+            <label className="block text-sm font-bold text-gray-700 mb-3">Aksi Titik Tugas</label>
+            <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-green-500 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-sm font-bold text-gray-900 mb-1">Tandai Titik Selesai</h4>
+                  <p className="text-xs text-gray-600 mb-3">
+                    Klik tombol di bawah untuk menandai titik tugas terdekat sebagai selesai
+                  </p>
+                  <button
+                    onClick={() => {
+                      const activeTaskStr = localStorage.getItem("activeTask");
+                      if (activeTaskStr && gpsCoords) {
+                        const pointId = `point_manual_${Date.now()}`;
+                        const pointName = "Titik Survey";
+                        handleCompletePoint(pointId, pointName, gpsCoords.latitude, gpsCoords.longitude);
+                      }
+                    }}
+                    className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white py-3 px-4 rounded-xl font-bold text-sm transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 active:scale-95"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Selesai Titik Ini
+                  </button>
+                  {completedPoints.length > 0 && (
+                    <div className="mt-3 rounded-lg bg-green-100 px-3 py-2 text-xs font-semibold text-green-700">
+                      {completedPoints.length} titik sudah diselesaikan
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Jenis Existing - NEW */}
         <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl shadow-md p-5 border-2 border-purple-300">
@@ -1405,162 +1726,6 @@ function SurveyExistingContent() {
           </div>
         )}
 
-        {/* Titik Koordinat */}
-        <div className="bg-white rounded-2xl shadow-md p-5 border border-gray-200">
-          <div className="mb-3">
-            <label className="block text-sm font-bold text-gray-700 mb-2">Titik Koordinat & Tracking</label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setIsGPSActive(!isGPSActive)}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all ${
-                  isGPSActive
-                    ? "bg-green-500 text-white shadow-lg"
-                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                }`}
-              >
-                {isGPSActive ? (
-                  <>
-                    <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                    GPS Aktif
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    </svg>
-                    Aktifkan GPS
-                  </>
-                )}
-              </button>
-
-              <button
-                onClick={isTracking ? stopTracking : startTracking}
-                disabled={!isGPSActive || !gpsCoords}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all ${
-                  isTracking
-                    ? "bg-red-500 text-white shadow-lg"
-                    : isGPSActive && gpsCoords
-                    ? "bg-blue-500 text-white hover:bg-blue-600 shadow-md"
-                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                }`}
-              >
-                {isTracking ? (
-                  <>
-                    <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                    Stop Tracking
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                    </svg>
-                    Mulai Tracking
-                  </>
-                )}
-              </button>
-            </div>
-            
-            {/* Tracking Info */}
-            {isTracking && (
-              <div className="mt-2 bg-red-50 border-2 border-red-200 rounded-xl p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-bold text-red-700">Tracking Aktif</span>
-                </div>
-                <p className="text-xs text-red-600">
-                  📍 {trackingPath.length} titik terekam • Setiap 15 detik
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            {/* Map Display - Always show, with GPS marker when active */}
-            <DynamicMap 
-              latitude={gpsCoords?.latitude ?? null}
-              longitude={gpsCoords?.longitude ?? null}
-              accuracy={gpsCoords?.accuracy ?? 0}
-              hasGPS={isGPSActive && gpsCoords !== null}
-              kmzFileUrl={kmzFileUrl}
-              completedPoints={completedPoints}
-              onPointComplete={handleCompletePoint}
-            />
-
-            {/* GPS Status & Coordinate Info */}
-            {isGPSActive && gpsCoords ? (
-              <>
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border-2 border-green-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                      <span className="text-sm font-bold text-gray-700">Pelacakan real-time aktif</span>
-                    </div>
-                    <span className="text-xs text-green-600 font-bold">✓ Terverifikasi</span>
-                  </div>
-                  <p className="text-lg font-mono font-bold text-gray-900 bg-white px-3 py-2 rounded-lg mt-2">
-                    {gpsCoords.latitude.toFixed(7)}, {gpsCoords.longitude.toFixed(7)}
-                  </p>
-                  <div className="flex items-center justify-between mt-2 text-xs text-gray-600">
-                    <span>Akurasi: ±{gpsCoords.accuracy.toFixed(1)}m</span>
-                    <span>Terakhir diperbarui: {new Date(gpsCoords.timestamp).toLocaleTimeString('id-ID')}</span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-xl p-4 border-2 border-gray-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="text-sm font-bold text-gray-600">GPS belum aktif</span>
-                </div>
-                <p className="text-xs text-gray-500">
-                  Aktifkan GPS untuk mendapatkan koordinat real-time lokasi Anda
-                </p>
-              </div>
-            )}
-          </div>
-          
-          {/* Manual Complete Task Point Button */}
-          {kmzFileUrl && gpsCoords && (
-            <div className="mt-3 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl p-4">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-green-500 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-sm font-bold text-gray-900 mb-1">Tandai Titik Selesai</h4>
-                  <p className="text-xs text-gray-600 mb-3">
-                    Klik tombol di bawah untuk menandai titik tugas terdekat sebagai selesai
-                  </p>
-                  <button
-                    onClick={() => {
-                      const activeTaskStr = localStorage.getItem("activeTask");
-                      if (activeTaskStr && gpsCoords) {
-                        const pointId = `point_manual_${Date.now()}`;
-                        const pointName = "Titik Survey";
-                        handleCompletePoint(pointId, pointName, gpsCoords.latitude, gpsCoords.longitude);
-                      }
-                    }}
-                    className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white py-3 px-4 rounded-xl font-bold text-sm transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 active:scale-95"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Selesai Titik Ini
-                  </button>
-                  {completedPoints.length > 0 && (
-                    <div className="mt-3 text-xs text-green-700 font-semibold bg-green-100 px-3 py-2 rounded-lg">
-                      ✓ {completedPoints.length} titik sudah diselesaikan
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
 
         {/* Lebar Bahu Bertiang - Hidden when Tidak Murni */}
         {jenisExisting === "Murni" && (
@@ -1626,7 +1791,7 @@ function SurveyExistingContent() {
                   <li>Lebar Trotoar Berdekatan</li>
                 </ul>
                 <p className="text-xs text-orange-600 mt-2 italic">
-                  Ubah pilihan ke "Murni" jika ingin mengisi semua form.
+                  Ubah pilihan ke &quot;Murni&quot; jika ingin mengisi semua form.
                 </p>
               </div>
             </div>
@@ -1765,6 +1930,72 @@ function SurveyExistingContent() {
           )}
         </button>
       </main>
+
+      {showKabupatenPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="p-5 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-900">Pilih Kabupaten</h3>
+              <p className="text-sm text-gray-600">Pilih wilayah kerja agar data existing tidak salah alamat.</p>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {KABUPATEN_OPTIONS.map((k) => (
+                  <button
+                    key={k.id}
+                    onClick={() => handleKabupatenPick(k.id)}
+                    className={`text-left p-4 rounded-xl border-2 transition-all ${
+                      activeKabupaten === k.id
+                        ? "border-green-400 bg-green-50 shadow-sm"
+                        : "border-gray-200 hover:border-green-300 hover:bg-green-50/40"
+                    }`}
+                  >
+                    <p className="font-bold text-gray-900">{k.name}</p>
+                    <p className="mt-1 text-xs text-gray-600">Data survey existing akan tersimpan ke wilayah ini.</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex items-center justify-end">
+              {activeKabupaten && (
+                <button
+                  onClick={() => setShowKabupatenPicker(false)}
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50"
+                >
+                  Batal
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showKabupatenConfirm && pendingKabupaten && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="p-5 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-900">Konfirmasi Kabupaten</h3>
+              <p className="text-sm text-gray-600">
+                Data survey existing akan diarahkan ke: <span className="font-semibold text-gray-900">{pendingKabupatenName}</span>
+              </p>
+            </div>
+            <div className="p-5 flex items-center justify-end gap-2">
+              <button
+                onClick={handleKabupatenCancel}
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleKabupatenConfirm}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold"
+              >
+                Gunakan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Lokasi Modal */}
       {showLokasiModal && (
@@ -2640,3 +2871,4 @@ function SurveyExistingPage() {
 }
 
 export default SurveyExistingPage;
+

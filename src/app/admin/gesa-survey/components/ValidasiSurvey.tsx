@@ -4,6 +4,9 @@ import { useState, useEffect, useMemo } from "react";
 import { collection, getDocs, query, where, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
+import { KABUPATEN_OPTIONS } from "@/utils/constants";
+import { PRA_EXISTING_TABANAN_DATA } from "@/app/survey-pra-existing/location-data";
+import type { TaskNavigationInfo } from "@/utils/taskNavigation";
 
 // Define props type inline
 interface MapComponentProps {
@@ -11,6 +14,17 @@ interface MapComponentProps {
   longitude: number;
   accuracy?: number;
   title: string;
+  kmzFileUrl?: string;
+  onTaskNavigationInfoChange?: (info: TaskNavigationInfo | null) => void;
+}
+
+interface EditSelectFieldProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  optionLabelMap?: Record<string, string>;
+  disabled?: boolean;
 }
 
 // Dynamic import for Map
@@ -28,6 +42,27 @@ const DynamicDetailMap = dynamic<MapComponentProps>(
     )
   }
 );
+
+function EditSelectField({ label, value, onChange, options, optionLabelMap, disabled }: EditSelectFieldProps) {
+  return (
+    <>
+      <label className="block text-sm font-semibold text-gray-900 mb-2">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900 disabled:bg-gray-100"
+      >
+        <option value="">Pilih</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {optionLabelMap?.[option] || option}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+}
 
 interface Survey {
   id: string;
@@ -102,6 +137,9 @@ interface Survey {
   fungsiLampu?: string;
   garduStatus?: string;
   kodeGardu?: string;
+  taskId?: string;
+  taskTitle?: string;
+  kmzFileUrl?: string;
   
   // Photos
   fotoTiangAPM?: string;
@@ -115,11 +153,31 @@ interface Survey {
   editedBy?: string;
 }
 
+const PRA_EXISTING_KEPEMILIKAN_OPTIONS = ["PLN", "Lainnya"];
+const PRA_EXISTING_TIPE_TANGAN_PLN_OPTIONS = [
+  "Tiang Tegangan Menengah (3 Kabel)",
+  "Tiang Tegangan Rendah (Kabel 1)",
+  "Tiang Trafo",
+];
+const PRA_EXISTING_JENIS_TIANG_OPTIONS = ["Beton", "Besi", "Kayu"];
+const PRA_EXISTING_JENIS_LAMPU_OPTIONS = ["LED", "Mercury", "Panel Surya", "Kap"];
+const PRA_EXISTING_JUMLAH_LAMPU_OPTIONS = ["0", "1", "2", "3", "4"];
+const PRA_EXISTING_FUNGSI_LAMPU_OPTIONS = [
+  "Alat Penerangan Jalan (APJ)",
+  "Fasilitas Sosial (contoh : Rumah Ibadah, Bale Banjar,)",
+  "Fasilitas Umum (contoh: Perumahan, Lapangan, Parkir)",
+];
+
+function buildPraExistingOwnershipDisplay(kepemilikanTiang: string, tipeTiangPLN: string) {
+  return kepemilikanTiang === "PLN" && tipeTiangPLN ? `PLN - ${tipeTiangPLN}` : kepemilikanTiang;
+}
+
 export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: string | null }) {
   const [activeTab, setActiveTab] = useState<"existing" | "propose" | "pra-existing">("existing");
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
+  const [selectedTaskNavigationInfo, setSelectedTaskNavigationInfo] = useState<TaskNavigationInfo | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFormData, setEditFormData] = useState<Survey | null>(null);
@@ -343,9 +401,98 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   const totalPropose = allSurveys.filter(s => s.type === "propose").length;
   const totalPraExisting = allSurveys.filter(s => s.type === "pra-existing").length;
   const diverifikasiCount = allSurveys.length; // semua yang tampil adalah diverifikasi
+  const kabupatenOptionMap = useMemo(
+    () => Object.fromEntries(KABUPATEN_OPTIONS.map((item) => [item.id, item.name])),
+    []
+  );
+  const editPraExistingKabupaten = editFormData?.kabupaten || "";
+  const editPraExistingDistrictOptions = useMemo(
+    () =>
+      editFormData?.type === "pra-existing" && editPraExistingKabupaten === "tabanan"
+        ? Object.keys(PRA_EXISTING_TABANAN_DATA)
+        : [],
+    [editFormData?.type, editPraExistingKabupaten]
+  );
+  const editPraExistingDesaOptions = useMemo(
+    () =>
+      editFormData?.type === "pra-existing" && editFormData.kecamatan
+        ? Object.keys(PRA_EXISTING_TABANAN_DATA[editFormData.kecamatan] || {})
+        : [],
+    [editFormData?.type, editFormData?.kecamatan]
+  );
+  const editPraExistingBanjarOptions = useMemo(
+    () =>
+      editFormData?.type === "pra-existing" && editFormData.kecamatan && editFormData.desa
+        ? PRA_EXISTING_TABANAN_DATA[editFormData.kecamatan]?.[editFormData.desa] || []
+        : [],
+    [editFormData?.type, editFormData?.kecamatan, editFormData?.desa]
+  );
+
+  const handlePraExistingKabupatenChange = (value: string) => {
+    if (!editFormData) return;
+
+    setEditFormData({
+      ...editFormData,
+      kabupaten: value,
+      kabupatenName: kabupatenOptionMap[value] || value,
+      kecamatan: value === "tabanan" ? editFormData.kecamatan || "" : "",
+      desa: value === "tabanan" ? editFormData.desa || "" : "",
+      banjar: value === "tabanan" ? editFormData.banjar || "" : "",
+    });
+  };
+
+  const handlePraExistingKecamatanChange = (value: string) => {
+    if (!editFormData) return;
+
+    setEditFormData({
+      ...editFormData,
+      kecamatan: value,
+      desa: "",
+      banjar: "",
+    });
+  };
+
+  const handlePraExistingDesaChange = (value: string) => {
+    if (!editFormData) return;
+
+    setEditFormData({
+      ...editFormData,
+      desa: value,
+      banjar: "",
+    });
+  };
+
+  const handlePraExistingKepemilikanChange = (value: string) => {
+    if (!editFormData) return;
+
+    const tipeTiangPLN = value === "PLN" ? editFormData.tipeTiangPLN || "" : "";
+    const kepemilikanDisplay = buildPraExistingOwnershipDisplay(value, tipeTiangPLN);
+
+    setEditFormData({
+      ...editFormData,
+      kepemilikanTiang: value,
+      kepemilikanDisplay,
+      keteranganTiang: kepemilikanDisplay,
+      tipeTiangPLN,
+    });
+  };
+
+  const handlePraExistingTipeTiangPLNChange = (value: string) => {
+    if (!editFormData) return;
+
+    const kepemilikanDisplay = buildPraExistingOwnershipDisplay(editFormData.kepemilikanTiang || "", value);
+
+    setEditFormData({
+      ...editFormData,
+      tipeTiangPLN: value,
+      kepemilikanDisplay,
+      keteranganTiang: kepemilikanDisplay,
+    });
+  };
 
   const handleViewDetail = (survey: Survey) => {
     setSelectedSurvey(survey);
+    setSelectedTaskNavigationInfo(null);
     setShowDetailModal(true);
   };
 
@@ -383,6 +530,14 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
         Number.isFinite(editFormData.originalLongitude) ? editFormData.originalLongitude : editFormData.longitude;
       const normalizedOriginalLatitude = Number(originalLatitude);
       const normalizedOriginalLongitude = Number(originalLongitude);
+      const normalizedPraExistingKabupatenName =
+        editFormData.type === "pra-existing"
+          ? kabupatenOptionMap[editFormData.kabupaten || ""] || editFormData.kabupatenName || editFormData.kabupaten || ""
+          : editFormData.kabupatenName;
+      const normalizedPraExistingOwnership =
+        editFormData.type === "pra-existing"
+          ? buildPraExistingOwnershipDisplay(editFormData.kepemilikanTiang || "", editFormData.tipeTiangPLN || "")
+          : editFormData.kepemilikanDisplay;
       
       // Get current user from localStorage
       const storedUser = localStorage.getItem('gesa_user');
@@ -391,6 +546,13 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
       // Update document
       await updateDoc(surveyDoc, {
         ...editFormData,
+        ...(editFormData.type === "pra-existing"
+          ? {
+              kabupatenName: normalizedPraExistingKabupatenName,
+              kepemilikanDisplay: normalizedPraExistingOwnership,
+              keteranganTiang: normalizedPraExistingOwnership,
+            }
+          : {}),
         originalLatitude,
         originalLongitude,
         adminLatitude: hasValidAdminCoords ? normalizedAdminLatitude : null,
@@ -1087,6 +1249,8 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                   longitude={selectedSurvey.longitude}
                   accuracy={selectedSurvey.accuracy || 0}
                   title={selectedSurvey.title}
+                  kmzFileUrl={selectedSurvey.type === "pra-existing" ? selectedSurvey.kmzFileUrl : undefined}
+                  onTaskNavigationInfoChange={setSelectedTaskNavigationInfo}
                 />
                 <div className="mt-3 lg:mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 lg:gap-3 text-xs lg:text-sm">
                   <div className="bg-white/70 backdrop-blur px-3 lg:px-4 py-2 lg:py-3 rounded-lg border border-blue-200">
@@ -1106,6 +1270,40 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                     </div>
                   )}
                 </div>
+                {selectedSurvey.type === "pra-existing" && selectedSurvey.kmzFileUrl ? (
+                  <div
+                    className={`mt-3 rounded-lg border px-3 py-3 ${
+                      selectedTaskNavigationInfo?.geometryType === "polygon"
+                        ? selectedTaskNavigationInfo.isInsidePolygon
+                          ? "border-emerald-200 bg-emerald-50"
+                          : "border-amber-200 bg-amber-50"
+                        : "border-slate-200 bg-slate-50"
+                    }`}
+                  >
+                    <p className="text-sm font-semibold text-slate-900">
+                      {selectedTaskNavigationInfo?.geometryType === "polygon"
+                        ? selectedTaskNavigationInfo.isInsidePolygon
+                          ? (selectedTaskNavigationInfo.distanceToTargetMeters ?? Number.POSITIVE_INFINITY) <= 20
+                            ? "Titik berada di dalam polygon, tetapi sangat dekat batas area"
+                            : "Titik berada di dalam polygon tugas"
+                          : "Titik berada di luar polygon tugas"
+                        : "Polygon tugas dimuat untuk pengecekan area"}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {selectedTaskNavigationInfo?.taskName
+                        ? `Area tugas: ${selectedTaskNavigationInfo.taskName}.`
+                        : selectedSurvey.taskTitle
+                        ? `Tugas: ${selectedSurvey.taskTitle}.`
+                        : "Polygon ditampilkan sesuai tugas survey pra-existing ini."}
+                      {selectedTaskNavigationInfo?.geometryType === "polygon" &&
+                      selectedTaskNavigationInfo.distanceToTargetMeters !== null
+                        ? selectedTaskNavigationInfo.isInsidePolygon
+                          ? ` Jarak titik ke tepi polygon sekitar ${Math.round(selectedTaskNavigationInfo.distanceToTargetMeters)} meter.`
+                          : ` Jarak ke tepi area sekitar ${Math.round(selectedTaskNavigationInfo.distanceToTargetMeters)} meter.`
+                        : ""}
+                    </p>
+                  </div>
+                ) : null}
               </div>
 
               {/* Koordinat Comparison */}
@@ -1920,83 +2118,80 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 lg:gap-4">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">Kabupaten</label>
-                        <input
-                          type="text"
-                          value={editFormData.kabupatenName || editFormData.kabupaten || ''}
-                          onChange={(e) => setEditFormData({...editFormData, kabupatenName: e.target.value, kabupaten: e.target.value.toLowerCase()})}
-                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
-                          placeholder="Tabanan"
+                        <EditSelectField
+                          label="Kabupaten"
+                          value={editFormData.kabupaten || ""}
+                          onChange={handlePraExistingKabupatenChange}
+                          options={KABUPATEN_OPTIONS.map((item) => item.id)}
+                          optionLabelMap={kabupatenOptionMap}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">Kecamatan</label>
-                        <input
-                          type="text"
-                          value={editFormData.kecamatan || ''}
-                          onChange={(e) => setEditFormData({...editFormData, kecamatan: e.target.value})}
-                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
-                          placeholder="Kecamatan"
+                        <EditSelectField
+                          label="Kecamatan"
+                          value={editFormData.kecamatan || ""}
+                          onChange={handlePraExistingKecamatanChange}
+                          options={editPraExistingDistrictOptions}
+                          disabled={(editFormData.kabupaten || "") !== "tabanan"}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">Desa</label>
-                        <input
-                          type="text"
-                          value={editFormData.desa || ''}
-                          onChange={(e) => setEditFormData({...editFormData, desa: e.target.value})}
-                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
-                          placeholder="Desa"
+                        <EditSelectField
+                          label="Desa"
+                          value={editFormData.desa || ""}
+                          onChange={handlePraExistingDesaChange}
+                          options={editPraExistingDesaOptions}
+                          disabled={!editFormData.kecamatan}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">Banjar</label>
-                        <input
-                          type="text"
-                          value={editFormData.banjar || ''}
-                          onChange={(e) => setEditFormData({...editFormData, banjar: e.target.value})}
-                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
-                          placeholder="Banjar"
+                        <EditSelectField
+                          label="Banjar"
+                          value={editFormData.banjar || ""}
+                          onChange={(value) => setEditFormData({ ...editFormData, banjar: value })}
+                          options={editPraExistingBanjarOptions}
+                          disabled={!editFormData.desa}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">Kepemilikan Tiang</label>
-                        <input
-                          type="text"
-                          value={editFormData.kepemilikanDisplay || editFormData.kepemilikanTiang || editFormData.keteranganTiang || ''}
-                          onChange={(e) => setEditFormData({...editFormData, kepemilikanDisplay: e.target.value, kepemilikanTiang: e.target.value, keteranganTiang: e.target.value})}
-                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
-                          placeholder="PLN / Pemkab / Swadaya"
+                        <EditSelectField
+                          label="Kepemilikan Tiang"
+                          value={editFormData.kepemilikanTiang || ""}
+                          onChange={handlePraExistingKepemilikanChange}
+                          options={PRA_EXISTING_KEPEMILIKAN_OPTIONS}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">Tipe Tiang PLN</label>
-                        <input
-                          type="text"
-                          value={editFormData.tipeTiangPLN || ''}
-                          onChange={(e) => setEditFormData({...editFormData, tipeTiangPLN: e.target.value})}
-                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
-                          placeholder="Tiang TM / Tiang TR"
+                        <EditSelectField
+                          label="Tipe Tiang PLN"
+                          value={editFormData.tipeTiangPLN || ""}
+                          onChange={handlePraExistingTipeTiangPLNChange}
+                          options={PRA_EXISTING_TIPE_TANGAN_PLN_OPTIONS}
+                          disabled={editFormData.kepemilikanTiang !== "PLN"}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">Jenis Lampu</label>
-                        <input
-                          type="text"
-                          value={editFormData.jenisLampu || ''}
-                          onChange={(e) => setEditFormData({...editFormData, jenisLampu: e.target.value})}
-                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
-                          placeholder="Contoh: LED 60W"
+                        <EditSelectField
+                          label="Jenis Tiang"
+                          value={editFormData.jenisTiang || ""}
+                          onChange={(value) => setEditFormData({ ...editFormData, jenisTiang: value })}
+                          options={PRA_EXISTING_JENIS_TIANG_OPTIONS}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">Jumlah Lampu</label>
-                        <input
-                          type="number"
-                          value={editFormData.jumlahLampu || ''}
-                          onChange={(e) => setEditFormData({...editFormData, jumlahLampu: e.target.value})}
-                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
-                          placeholder="0"
+                        <EditSelectField
+                          label="Jenis Lampu"
+                          value={editFormData.jenisLampu || ""}
+                          onChange={(value) => setEditFormData({ ...editFormData, jenisLampu: value })}
+                          options={PRA_EXISTING_JENIS_LAMPU_OPTIONS}
+                        />
+                      </div>
+                      <div>
+                        <EditSelectField
+                          label="Jumlah Lampu"
+                          value={editFormData.jumlahLampu || ""}
+                          onChange={(value) => setEditFormData({ ...editFormData, jumlahLampu: value })}
+                          options={PRA_EXISTING_JUMLAH_LAMPU_OPTIONS}
                         />
                       </div>
                       <div>
@@ -2010,13 +2205,11 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">Fungsi Lampu</label>
-                        <input
-                          type="text"
-                          value={editFormData.fungsiLampu || ''}
-                          onChange={(e) => setEditFormData({...editFormData, fungsiLampu: e.target.value})}
-                          className="w-full px-3 lg:px-4 py-2 lg:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm lg:text-base text-gray-900"
-                          placeholder="APJ / FASOS / FASUM"
+                        <EditSelectField
+                          label="Fungsi Lampu"
+                          value={editFormData.fungsiLampu || ""}
+                          onChange={(value) => setEditFormData({ ...editFormData, fungsiLampu: value })}
+                          options={PRA_EXISTING_FUNGSI_LAMPU_OPTIONS}
                         />
                       </div>
                       <div>

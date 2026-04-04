@@ -12,6 +12,7 @@ interface KMZTaskOverlayProps {
   completedPoints?: string[];
   onPointComplete?: (pointId: string, pointName: string, lat: number, lng: number) => void;
   onTaskNavigationInfoChange?: (info: TaskNavigationInfo | null) => void;
+  fitBoundsOnLoad?: boolean;
 }
 
 const emptyGeometries: ParsedTaskGeometries = {
@@ -27,6 +28,7 @@ export default function KMZTaskOverlay({
   completedPoints = [],
   onPointComplete,
   onTaskNavigationInfoChange,
+  fitBoundsOnLoad = false,
 }: KMZTaskOverlayProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,11 +118,18 @@ export default function KMZTaskOverlay({
         }
 
         if (layerGroupRef.current) {
-          layerGroupRef.current.clearLayers();
-          layerGroupRef.current.remove();
+          try {
+            layerGroupRef.current.clearLayers();
+            layerGroupRef.current.remove();
+          } catch (layerError) {
+            console.warn("Gagal membersihkan layer KMZ sebelumnya:", layerError);
+          } finally {
+            layerGroupRef.current = null;
+          }
         }
 
         const nextLayerGroup = L.layerGroup().addTo(map);
+        const nextBounds = L.latLngBounds([]);
         const nextGeometries: ParsedTaskGeometries = {
           polygons: [],
           polylines: [],
@@ -246,6 +255,7 @@ export default function KMZTaskOverlay({
               `);
 
               nextLayerGroup.addLayer(marker);
+              nextBounds.extend([coordinate.lat, coordinate.lng]);
               nextGeometries.points.push({ name, coordinate });
               continue;
             }
@@ -277,8 +287,9 @@ export default function KMZTaskOverlay({
                 </div>
               `);
 
-              if (nextLayerGroup && nextLayerGroup.addLayer && typeof nextLayerGroup.addLayer === 'function') {
+              if (nextLayerGroup && nextLayerGroup.addLayer && typeof nextLayerGroup.addLayer === "function") {
                 nextLayerGroup.addLayer(polygon);
+                coordinates.forEach((coordinate) => nextBounds.extend([coordinate.lat, coordinate.lng]));
                 nextGeometries.polygons.push({ name, coordinates });
               }
               continue;
@@ -305,6 +316,7 @@ export default function KMZTaskOverlay({
             `);
 
             nextLayerGroup.addLayer(polyline);
+            coordinates.forEach((coordinate) => nextBounds.extend([coordinate.lat, coordinate.lng]));
             nextGeometries.polylines.push({ name, coordinates });
           } catch (placemarkError) {
             console.error("Error processing placemark:", placemarkError);
@@ -313,6 +325,15 @@ export default function KMZTaskOverlay({
 
         layerGroupRef.current = nextLayerGroup;
         setParsedGeometries(nextGeometries);
+
+        if (fitBoundsOnLoad && nextBounds.isValid()) {
+          map.fitBounds(nextBounds, {
+            padding: [24, 24],
+            maxZoom: 17,
+            animate: false,
+          });
+        }
+
         setLoading(false);
       } catch (loadError) {
         console.error("[KMZ] Error loading KMZ file:", loadError);
@@ -326,12 +347,17 @@ export default function KMZTaskOverlay({
 
     return () => {
       if (layerGroupRef.current) {
-        layerGroupRef.current.clearLayers();
-        layerGroupRef.current.remove();
-        layerGroupRef.current = null;
+        try {
+          layerGroupRef.current.clearLayers();
+          layerGroupRef.current.remove();
+        } catch (layerError) {
+          console.warn("Gagal membersihkan layer KMZ saat unmount:", layerError);
+        } finally {
+          layerGroupRef.current = null;
+        }
       }
     };
-  }, [map, kmzFileUrl, completedPoints, onPointComplete]);
+  }, [fitBoundsOnLoad, map, kmzFileUrl, completedPoints, onPointComplete]);
 
   useEffect(() => {
     if (!error || !map) return;

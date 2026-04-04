@@ -36,6 +36,8 @@ interface Task {
   kmzFileUrl?: string;
   kmzFileUrl2?: string;
   excelFileUrl?: string;
+  kabupaten?: string;
+  kabupatenName?: string;
   createdAt: any;
   startedAt?: any;
   completedAt?: any;
@@ -121,9 +123,13 @@ function TugasSurveyContent() {
       localStorage.setItem("activeTask", JSON.stringify({
         id: task.id,
         title: task.title,
+        description: task.description,
         type: task.type,
+        status: "in-progress",
         kmzFileUrl: task.kmzFileUrl,
         kmzFileUrl2: task.kmzFileUrl2,
+        kabupaten: task.kabupaten,
+        kabupatenName: task.kabupatenName,
       }));
       
       // Navigate to appropriate survey page based on type
