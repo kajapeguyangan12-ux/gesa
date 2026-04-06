@@ -89,6 +89,8 @@ interface Survey {
   kodeGardu?: string;
   adminLatitude?: number;
   adminLongitude?: number;
+  finalLatitude?: number;
+  finalLongitude?: number;
   hasAdminCoordinateOverride?: boolean;
   fotoAktual?: string;
   fotoKemerataan?: string;
@@ -135,6 +137,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   const [isSaving, setIsSaving] = useState(false);
   const [filterType, setFilterType] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [coordinateSearch, setCoordinateSearch] = useState("");
   const [stats, setStats] = useState({
     total: 0,
     existing: 0,
@@ -154,6 +157,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       const storedUser = localStorage.getItem('gesa_user');
       const currentAdmin = storedUser ? JSON.parse(storedUser) : null;
       const adminId = currentAdmin?.uid || null;
+      const superAdmin = currentAdmin?.role === "super-admin";
       setCurrentAdminId(adminId);
       
       // Fetch tasks first to get list of assigned surveyors by THIS admin
@@ -203,13 +207,15 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         getDocs(praExistingQuery),
       ]);
       
-      // Combine data from both collections with full data
-      // Filter only surveys from surveyors assigned by THIS admin AND with status 'diverifikasi'
+      // Super admin can validate all verified surveys.
+      // Regular admin remains limited to surveyors assigned from their own tasks.
       const existingData = existingSnapshot.docs
         .filter((doc) => {
           const surveyorUid = doc.data().surveyorUid;
           const status = doc.data().status;
-          return surveyorUid && assignedSurveyorIds.includes(surveyorUid) && status === "diverifikasi";
+          if (status !== "diverifikasi") return false;
+          if (superAdmin) return true;
+          return surveyorUid && assignedSurveyorIds.includes(surveyorUid);
         })
         .map((doc) => ({
           id: doc.id,
@@ -223,7 +229,9 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         .filter((doc) => {
           const surveyorUid = doc.data().surveyorUid;
           const status = doc.data().status;
-          return surveyorUid && assignedSurveyorIds.includes(surveyorUid) && status === "diverifikasi";
+          if (status !== "diverifikasi") return false;
+          if (superAdmin) return true;
+          return surveyorUid && assignedSurveyorIds.includes(surveyorUid);
         })
         .map((doc) => ({
           id: doc.id,
@@ -237,7 +245,9 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         .filter((doc) => {
           const surveyorUid = doc.data().surveyorUid;
           const status = doc.data().status;
-          return surveyorUid && assignedSurveyorIds.includes(surveyorUid) && status === "diverifikasi";
+          if (status !== "diverifikasi") return false;
+          if (superAdmin) return true;
+          return surveyorUid && assignedSurveyorIds.includes(surveyorUid);
         })
         .map((doc) => ({
           id: doc.id,
@@ -288,19 +298,43 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       
       const storedUser = localStorage.getItem('gesa_user');
       const currentUser = storedUser ? JSON.parse(storedUser) : null;
+      const normalizedLatitude = Number(editFormData.latitude);
+      const normalizedLongitude = Number(editFormData.longitude);
       const normalizedAdminLatitude = Number(editFormData.adminLatitude);
       const normalizedAdminLongitude = Number(editFormData.adminLongitude);
+      const hasValidBaseCoords = Number.isFinite(normalizedLatitude) && Number.isFinite(normalizedLongitude);
       const hasValidAdminCoords = Number.isFinite(normalizedAdminLatitude) && Number.isFinite(normalizedAdminLongitude);
+      const resolvedPraLatitude = hasValidAdminCoords
+        ? normalizedAdminLatitude
+        : hasValidBaseCoords
+          ? normalizedLatitude
+          : null;
+      const resolvedPraLongitude = hasValidAdminCoords
+        ? normalizedAdminLongitude
+        : hasValidBaseCoords
+          ? normalizedLongitude
+          : null;
       
       await updateDoc(surveyDoc, {
         ...editFormData,
+        latitude: hasValidBaseCoords ? normalizedLatitude : editFormData.latitude,
+        longitude: hasValidBaseCoords ? normalizedLongitude : editFormData.longitude,
         adminLatitude: hasValidAdminCoords ? normalizedAdminLatitude : null,
         adminLongitude: hasValidAdminCoords ? normalizedAdminLongitude : null,
+        finalLatitude:
+          editFormData.type === "pra-existing" && resolvedPraLatitude !== null
+            ? resolvedPraLatitude
+            : editFormData.finalLatitude ?? null,
+        finalLongitude:
+          editFormData.type === "pra-existing" && resolvedPraLongitude !== null
+            ? resolvedPraLongitude
+            : editFormData.finalLongitude ?? null,
         hasAdminCoordinateOverride:
           editFormData.type === "pra-existing" &&
-          hasValidAdminCoords &&
-          (Math.abs(normalizedAdminLatitude - editFormData.latitude) > 0.0000001 ||
-            Math.abs(normalizedAdminLongitude - editFormData.longitude) > 0.0000001),
+          resolvedPraLatitude !== null &&
+          resolvedPraLongitude !== null &&
+          (Math.abs(resolvedPraLatitude - normalizedLatitude) > 0.0000001 ||
+            Math.abs(resolvedPraLongitude - normalizedLongitude) > 0.0000001),
         kepemilikanTiang: editFormData.kepemilikanDisplay || editFormData.kepemilikanTiang,
         editedBy: currentUser?.name || currentUser?.email || 'Admin',
         updatedAt: new Date()
@@ -465,9 +499,33 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     return "bg-emerald-100 text-emerald-700";
   };
 
+  const normalizeCoordinateText = (value: string) => value.replace(/\s+/g, "");
+
   const filteredSurveys = surveys.filter(survey => {
     if (filterType !== "all" && survey.type !== filterType) return false;
     if (filterStatus !== "all" && survey.status !== filterStatus) return false;
+
+    if (coordinateSearch.trim()) {
+      const searchTerms = coordinateSearch
+        .split(/[\s,;]+/)
+        .map((term) => normalizeCoordinateText(term.trim()))
+        .filter(Boolean);
+      const coordinateValues = [
+        survey.latitude,
+        survey.longitude,
+        survey.adminLatitude,
+        survey.adminLongitude,
+      ]
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+        .flatMap((value) => [value.toString(), value.toFixed(7)]);
+
+      const matchesCoordinate = searchTerms.every((term) =>
+        coordinateValues.some((value) => normalizeCoordinateText(value).includes(term))
+      );
+
+      if (!matchesCoordinate) return false;
+    }
+
     return true;
   });
 
@@ -477,10 +535,10 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-6">
           <div>
             <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-2">
-              Data Survey Validasi
+              Validasi Data
             </h2>
             <p className="text-sm text-gray-600">
-              Data survey yang sudah diverifikasi. Setelah divalidasi, data akan pindah ke Data Survey Valid.
+              Data survey yang sudah diverifikasi pada tahap awal. Setelah divalidasi, data akan pindah ke Data Survey Valid.
             </p>
           </div>
         </div>
@@ -515,6 +573,15 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
               <option value="tervalidasi">Tervalidasi</option>
               <option value="ditolak">Ditolak</option>
             </select>
+            <div className="w-full lg:w-80">
+              <input
+                type="text"
+                value={coordinateSearch}
+                onChange={(e) => setCoordinateSearch(e.target.value)}
+                placeholder="Cari koordinat, contoh: -8.53 atau 115.12"
+                className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
             <div className="ml-auto text-sm text-gray-600 font-medium">
               Total: {filteredSurveys.length} dari {surveys.length} survey
             </div>
@@ -599,7 +666,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
                           <button 
                             onClick={() => handleValidasi(survey)}
                             className="p-2 hover:bg-green-100 rounded-lg transition-all" 
-                            title="Verifikasi - pindah ke Validasi Survey"
+                            title="Validasi Data - pindah ke Data Survey Valid"
                           >
                             <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />

@@ -2,9 +2,10 @@
 
 interface DashboardContentProps {
   setActiveMenu: (menu: string) => void;
+  isSuperAdmin: boolean;
 }
 
-export default function DashboardContent({ setActiveMenu }: DashboardContentProps) {
+export default function DashboardContent({ setActiveMenu, isSuperAdmin }: DashboardContentProps) {
   return (
     <>
       {/* Dashboard Content */}
@@ -35,7 +36,7 @@ export default function DashboardContent({ setActiveMenu }: DashboardContentProp
           <p className="text-sm text-gray-600 mb-4">Kelola distribusi tugas survey kepada petugas</p>
           <div className="flex items-center justify-between">
             <div className="text-2xl font-bold text-green-600">0</div>
-            <button 
+            <button
               onClick={() => setActiveMenu("distribusi-tugas")}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all text-sm font-medium"
             >
@@ -45,11 +46,18 @@ export default function DashboardContent({ setActiveMenu }: DashboardContentProp
         </div>
 
         <div className="bg-white rounded-xl p-6 shadow-sm hover:shadow-lg transition-all border border-gray-200">
-          <h3 className="text-lg font-bold text-gray-800 mb-2">Validasi Survey</h3>
-          <p className="text-sm text-gray-600 mb-4">Review dan validasi hasil survey</p>
+          <h3 className="text-lg font-bold text-gray-800 mb-2">Verifikasi</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            {isSuperAdmin
+              ? "Review hasil survey tahap awal sebelum masuk ke validasi data."
+              : "Review dan verifikasi hasil survey tahap awal."}
+          </p>
           <div className="flex items-center justify-between">
             <div className="text-2xl font-bold text-blue-600">0</div>
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm font-medium">
+            <button
+              onClick={() => setActiveMenu("validasi-survey")}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm font-medium"
+            >
               Kelola
             </button>
           </div>

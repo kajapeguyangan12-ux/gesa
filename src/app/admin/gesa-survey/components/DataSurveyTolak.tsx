@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useAuth } from "@/hooks/useAuth";
 import SurveyExistingDetail from "./SurveyExistingDetail";
 import SurveyProposeDetail from "./SurveyProposeDetail";
 import SurveyPraExistingDetail from "./SurveyPraExistingDetail";
@@ -21,6 +22,12 @@ interface Survey {
 }
 
 export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?: string | null }) {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super-admin";
+  const pageTitle = isSuperAdmin ? "Data Survey Valid (TOLAK)" : "Data Survey Terverifikasi (TOLAK)";
+  const pageDescription = isSuperAdmin
+    ? "Data survey yang ditolak pada tahap validasi data"
+    : "Data survey yang ditolak pada tahap verifikasi";
   const [selectedCategory, setSelectedCategory] = useState<"existing" | "propose" | "pra-existing" | null>(null);
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [stats, setStats] = useState({
@@ -177,8 +184,8 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
               </svg>
             </div>
             <div>
-              <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Data Survey Tolak</h1>
-              <p className="text-sm text-gray-600 mt-1">Data survey yang ditolak validasi</p>
+              <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">{pageTitle}</h1>
+              <p className="text-sm text-gray-600 mt-1">{pageDescription}</p>
             </div>
           </div>
           <button 
@@ -280,7 +287,9 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
           <div>
             <h3 className="font-bold text-gray-900 mb-1">Tentang Data Survey Ditolak</h3>
             <p className="text-sm text-gray-700 leading-relaxed">
-              Halaman ini menampilkan data survey yang telah ditolak oleh admin. Data ini dapat digunakan untuk review dan analisis lebih lanjut. 
+              {isSuperAdmin
+                ? "Halaman ini menampilkan data survey yang telah ditolak pada tahap validasi data. Data ini dapat digunakan untuk review dan analisis lebih lanjut."
+                : "Halaman ini menampilkan data survey yang telah ditolak pada tahap verifikasi. Data ini dapat digunakan untuk review dan analisis lebih lanjut."}{" "}
               Klik pada kategori yang diinginkan untuk melihat detail lengkap survey yang ditolak.
             </p>
           </div>

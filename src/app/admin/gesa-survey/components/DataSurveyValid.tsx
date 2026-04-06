@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useAuth } from "@/hooks/useAuth";
 import SurveyExistingDetail from "./SurveyExistingDetail";
 import SurveyProposeDetail from "./SurveyProposeDetail";
 import SurveyPraExistingDetail from "./SurveyPraExistingDetail";
@@ -14,6 +15,8 @@ interface Survey {
   status: string;
   surveyorName: string;
   createdAt: { toDate?: () => Date } | Date | string | number | null;
+  taskId?: string;
+  taskTitle?: string;
   kabupaten?: string;
   kecamatan?: string;
   desa?: string;
@@ -21,7 +24,15 @@ interface Survey {
 }
 
 export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?: string | null }) {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super-admin";
+  const targetStatus = isSuperAdmin ? "tervalidasi" : "diverifikasi";
+  const pageTitle = isSuperAdmin ? "Data Survey Valid" : "Data Survey Terverifikasi";
+  const pageDescription = isSuperAdmin
+    ? "Akses data survey yang telah tervalidasi berdasarkan kategori dan zona"
+    : "Akses data survey yang telah diverifikasi berdasarkan kategori dan zona";
   const [selectedCategory, setSelectedCategory] = useState<"existing" | "propose" | "pra-existing" | null>(null);
+  const [selectedSurveyor, setSelectedSurveyor] = useState("Semua Petugas");
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [stats, setStats] = useState({
     total: 0,
@@ -38,12 +49,14 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
       const praExistingRef = collection(db, "survey-pra-existing");
       
       const qExisting = activeKabupaten
-        ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"))
-        : query(existingRef, where("status", "==", "diverifikasi"));
+        ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
+        : query(existingRef, where("status", "==", targetStatus));
       const qPropose = activeKabupaten
-        ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"))
-        : query(proposeRef, where("status", "==", "diverifikasi"));
-      const qPraExisting = query(praExistingRef, where("status", "==", "diverifikasi"));
+        ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
+        : query(proposeRef, where("status", "==", targetStatus));
+      const qPraExisting = activeKabupaten
+        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
+        : query(praExistingRef, where("status", "==", targetStatus));
       
       console.log("🔍 Debug - Active Kabupaten:", activeKabupaten);
       console.log("🔍 Debug - Query Pra Existing:", qPraExisting);
@@ -83,9 +96,11 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
           id: doc.id,
           title: doc.data().title || `Survey Existing - ${doc.data().namaJalan || "Untitled"}`,
           type: "existing",
-          status: doc.data().status || "tervalidasi",
+          status: doc.data().status || targetStatus,
           surveyorName: doc.data().surveyorName || "Unknown",
           createdAt: doc.data().createdAt,
+          taskId: doc.data().taskId || "",
+          taskTitle: doc.data().taskTitle || "",
           kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
           kecamatan: doc.data().kecamatan || "",
           desa: doc.data().desa || "",
@@ -95,9 +110,11 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
           id: doc.id,
           title: doc.data().title || `Survey APJ Propose - ${doc.data().namaJalan || "Untitled"}`,
           type: "propose",
-          status: doc.data().status || "tervalidasi",
+          status: doc.data().status || targetStatus,
           surveyorName: doc.data().surveyorName || "Unknown",
           createdAt: doc.data().createdAt,
+          taskId: doc.data().taskId || "",
+          taskTitle: doc.data().taskTitle || "",
           kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
           kecamatan: doc.data().kecamatan || "",
           desa: doc.data().desa || "",
@@ -107,9 +124,11 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
           id: doc.id,
           title: doc.data().title || `Survey Pra Existing - ${doc.data().jenisLampu || "Untitled"}`,
           type: "pra-existing",
-          status: doc.data().status || "tervalidasi",
+          status: doc.data().status || targetStatus,
           surveyorName: doc.data().surveyorName || "Unknown",
           createdAt: doc.data().createdAt,
+          taskId: doc.data().taskId || "",
+          taskTitle: doc.data().taskTitle || "",
           kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
           kecamatan: doc.data().kecamatan || "",
           desa: doc.data().desa || "",
@@ -121,11 +140,48 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
     } catch (error) {
       console.error("Error fetching statistics:", error);
     }
-  }, [activeKabupaten]);
+  }, [activeKabupaten, targetStatus]);
 
   useEffect(() => {
     void Promise.resolve().then(fetchStatistics);
   }, [fetchStatistics]);
+
+  const surveyorOptions = useMemo(
+    () => ["Semua Petugas", ...new Set(surveys.map((survey) => survey.surveyorName).filter(Boolean))],
+    [surveys]
+  );
+
+  const recapSurveys = useMemo(() => {
+    if (selectedSurveyor === "Semua Petugas") return surveys;
+    return surveys.filter((survey) => survey.surveyorName === selectedSurveyor);
+  }, [selectedSurveyor, surveys]);
+
+  const recapStats = useMemo(
+    () => ({
+      total: recapSurveys.length,
+      existing: recapSurveys.filter((survey) => survey.type === "existing").length,
+      propose: recapSurveys.filter((survey) => survey.type === "propose").length,
+      praExisting: recapSurveys.filter((survey) => survey.type === "pra-existing").length,
+    }),
+    [recapSurveys]
+  );
+
+  const taskRecap = useMemo(() => {
+    const taskMap = new Map<string, { label: string; count: number }>();
+
+    recapSurveys.forEach((survey) => {
+      const taskKey = survey.taskId || survey.taskTitle || "tanpa-tugas";
+      const taskLabel = survey.taskTitle || survey.taskId || "Tanpa Tugas";
+      const current = taskMap.get(taskKey);
+      if (current) {
+        current.count += 1;
+        return;
+      }
+      taskMap.set(taskKey, { label: taskLabel, count: 1 });
+    });
+
+    return Array.from(taskMap.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  }, [recapSurveys]);
 
   const handleCategoryClick = (category: "existing" | "propose" | "pra-existing") => {
     setSelectedCategory(category);
@@ -150,7 +206,7 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `data-survey-valid-${new Date().toISOString().split("T")[0]}.csv`;
+    link.download = `${isSuperAdmin ? "data-survey-valid" : "data-survey-terverifikasi"}-${new Date().toISOString().split("T")[0]}.csv`;
     link.click();
   };
 
@@ -168,15 +224,15 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
 
   // Render detail view jika kategori dipilih
   if (selectedCategory === "existing") {
-    return <SurveyExistingDetail onBack={() => setSelectedCategory(null)} activeKabupaten={activeKabupaten} />;
+    return <SurveyExistingDetail onBack={() => setSelectedCategory(null)} statusFilter={targetStatus} activeKabupaten={activeKabupaten} />;
   }
 
   if (selectedCategory === "propose") {
-    return <SurveyProposeDetail onBack={() => setSelectedCategory(null)} activeKabupaten={activeKabupaten} />;
+    return <SurveyProposeDetail onBack={() => setSelectedCategory(null)} statusFilter={targetStatus} activeKabupaten={activeKabupaten} />;
   }
 
   if (selectedCategory === "pra-existing") {
-    return <SurveyPraExistingDetail onBack={() => setSelectedCategory(null)} activeKabupaten={activeKabupaten} />;
+    return <SurveyPraExistingDetail onBack={() => setSelectedCategory(null)} statusFilter={targetStatus} activeKabupaten={activeKabupaten} />;
   }
 
   return (
@@ -191,7 +247,7 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
               </svg>
             </div>
             <div>
-              <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Data Survey Valid</h1>
+              <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">{pageTitle}</h1>
               <p className="text-sm text-gray-600 mt-1">Kelola dan pantau aktivitas survey</p>
             </div>
           </div>
@@ -209,9 +265,83 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
 
       {/* Page Description */}
       <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Data Survey Valid</h2>
-        <p className="text-gray-600 text-sm">Akses data survey yang telah tervalidasi berdasarkan kategori dan zona</p>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">{pageTitle}</h2>
+        <p className="text-gray-600 text-sm">{pageDescription}</p>
       </div>
+
+      {isSuperAdmin && (
+        <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100 space-y-6">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 mb-2">Rekap Titik Valid per Petugas</h2>
+              <p className="text-sm text-gray-600">
+                Alat bantu untuk melihat jumlah titik yang sudah tervalidasi per petugas dan per tugas.
+              </p>
+            </div>
+            <div className="w-full lg:w-72">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Filter Petugas</label>
+              <select
+                value={selectedSurveyor}
+                onChange={(event) => setSelectedSurveyor(event.target.value)}
+                className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {surveyorOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <p className="text-sm font-medium text-blue-900 mb-1">Total Titik Valid</p>
+              <h3 className="text-3xl font-bold text-blue-700">{recapStats.total}</h3>
+            </div>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="text-sm font-medium text-emerald-900 mb-1">Survey Existing</p>
+              <h3 className="text-3xl font-bold text-emerald-700">{recapStats.existing}</h3>
+            </div>
+            <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+              <p className="text-sm font-medium text-green-900 mb-1">Survey APJ Propose</p>
+              <h3 className="text-3xl font-bold text-green-700">{recapStats.propose}</h3>
+            </div>
+            <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
+              <p className="text-sm font-medium text-teal-900 mb-1">Survey Pra Existing</p>
+              <h3 className="text-3xl font-bold text-teal-700">{recapStats.praExisting}</h3>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-4 bg-gray-50 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-900">Jumlah Titik per Tugas</h3>
+              <p className="text-sm text-gray-600">
+                {selectedSurveyor === "Semua Petugas"
+                  ? "Menampilkan akumulasi semua petugas."
+                  : `Menampilkan tugas untuk ${selectedSurveyor}.`}
+              </p>
+            </div>
+            {taskRecap.length === 0 ? (
+              <div className="px-5 py-8 text-sm text-gray-500">Belum ada titik valid untuk filter yang dipilih.</div>
+            ) : (
+              <div className="divide-y divide-gray-200">
+                {taskRecap.map((task, index) => (
+                  <div key={`${task.label}-${index}`} className="px-5 py-4 flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-semibold text-gray-900">{task.label}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-bold text-blue-700">{task.count}</p>
+                      <p className="text-xs text-gray-500">titik valid</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Survey Category Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -231,7 +361,7 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
               
               {/* Description */}
               <p className="text-gray-600 text-sm mb-6 leading-relaxed">
-                Data Survey Existing yang telah tervalidasi
+                {isSuperAdmin ? "Data Survey Existing yang telah tervalidasi" : "Data Survey Existing yang telah diverifikasi"}
               </p>
 
               {/* Button */}
@@ -264,7 +394,7 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
               
               {/* Description */}
               <p className="text-gray-600 text-sm mb-6 leading-relaxed">
-                Data Survey Tiang APJ Propose yang telah tervalidasi
+                {isSuperAdmin ? "Data Survey Tiang APJ Propose yang telah tervalidasi" : "Data Survey Tiang APJ Propose yang telah diverifikasi"}
               </p>
 
               {/* Button */}
@@ -293,7 +423,7 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
 
               <h3 className="text-2xl font-bold text-gray-900 mb-3">Survey Pra Existing</h3>
               <p className="text-gray-600 text-sm mb-6 leading-relaxed">
-                Data Survey Pra Existing yang telah tervalidasi
+                {isSuperAdmin ? "Data Survey Pra Existing yang telah tervalidasi" : "Data Survey Pra Existing yang telah diverifikasi"}
               </p>
               <button
                 onClick={() => handleCategoryClick("pra-existing")}

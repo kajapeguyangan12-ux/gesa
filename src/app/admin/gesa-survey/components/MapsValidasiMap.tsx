@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 
 interface Survey {
   id: string;
@@ -14,6 +13,8 @@ interface Survey {
   validatedBy: string;
   latitude: number;
   longitude: number;
+  adminLatitude?: number;
+  adminLongitude?: number;
   createdAt: TimestampLike;
   validatedAt: TimestampLike;
   // Data sesuai modal
@@ -103,7 +104,7 @@ export default function MapsValidasiMap({ surveys }: MapsValidasiMapProps) {
         
         {surveys.map((survey) => (
           <Marker
-            key={survey.id}
+            key={`${survey.id}-${survey.latitude}-${survey.longitude}`}
             position={[survey.latitude, survey.longitude]}
             icon={getCustomIcon(survey.type)}
           >
@@ -142,7 +143,7 @@ export default function MapsValidasiMap({ surveys }: MapsValidasiMapProps) {
                       <div><span className="text-gray-500">12. Gardu</span><br/><span className="font-medium text-gray-800">{survey.garduStatus || "-"}</span></div>
 
                       <div><span className="text-gray-500">13. Kode Gardu</span><br/><span className="font-medium text-gray-800">{survey.kodeGardu || "-"}</span></div>
-                      <div><span className="text-gray-500">14. Koordinat Final</span><br/><span className="font-medium text-gray-800">{survey.finalLatitude || survey.latitude}, {survey.finalLongitude || survey.longitude}</span></div>
+                      <div><span className="text-gray-500">14. Koordinat Final</span><br/><span className="font-medium text-gray-800">{survey.finalLatitude || survey.adminLatitude || survey.latitude}, {survey.finalLongitude || survey.adminLongitude || survey.longitude}</span></div>
 
                       <div className="col-span-2"><span className="text-gray-500">15. Keterangan</span><br/><span className="font-medium text-gray-800">{survey.keterangan}</span></div>
                     </>
@@ -151,8 +152,8 @@ export default function MapsValidasiMap({ surveys }: MapsValidasiMapProps) {
                       <div><span className="text-gray-500">1. Nama Jalan</span><br/><span className="font-medium text-gray-800">{survey.namaJalan}</span></div>
                       <div><span className="text-gray-500">2. Surveyor</span><br/><span className="font-medium text-gray-800">{survey.surveyorName}</span></div>
 
-                      <div><span className="text-gray-500">3. Latitude</span><br/><span className="font-medium text-gray-800">{survey.latitude}</span></div>
-                      <div><span className="text-gray-500">4. Longitude</span><br/><span className="font-medium text-gray-800">{survey.longitude}</span></div>
+                      <div><span className="text-gray-500">3. Latitude</span><br/><span className="font-medium text-gray-800">{survey.finalLatitude || survey.adminLatitude || survey.latitude}</span></div>
+                      <div><span className="text-gray-500">4. Longitude</span><br/><span className="font-medium text-gray-800">{survey.finalLongitude || survey.adminLongitude || survey.longitude}</span></div>
 
                       <div><span className="text-gray-500">5. Zona</span><br/><span className="font-medium text-gray-800">{survey.zona}</span></div>
                       <div><span className="text-gray-500">6. Kategori</span><br/><span className="font-medium text-gray-800">{survey.kategori}</span></div>

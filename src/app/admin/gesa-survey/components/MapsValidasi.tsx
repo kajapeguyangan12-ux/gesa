@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
+import { useAuth } from "@/hooks/useAuth";
 
 // Import Map component dynamically to avoid SSR issues
 const MapsValidasiMap = dynamic(
@@ -28,6 +29,8 @@ interface Survey {
   validatedBy: string;
   latitude: number;
   longitude: number;
+  adminLatitude?: number;
+  adminLongitude?: number;
   createdAt: TimestampLike;
   validatedAt: TimestampLike;
   // Data sesuai modal
@@ -66,6 +69,13 @@ type TimestampLike =
   | undefined;
 
 export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: string | null }) {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super-admin";
+  const targetStatus = isSuperAdmin ? "tervalidasi" : "diverifikasi";
+  const pageTitle = isSuperAdmin ? "Maps Valid" : "Maps Terverifikasi";
+  const pageDescription = isSuperAdmin
+    ? "Visualisasi bersama titik koordinat survey yang telah divalidasi dalam peta interaktif"
+    : "Visualisasi bersama titik koordinat survey yang telah diverifikasi dalam peta interaktif";
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -83,36 +93,40 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
       // Fetch dari survey-existing
       const existingRef = collection(db, "survey-existing");
       const existingQuery = activeKabupaten
-        ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"))
-        : query(existingRef, where("status", "==", "diverifikasi"));
+        ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
+        : query(existingRef, where("status", "==", targetStatus));
       const existingSnapshot = await getDocs(existingQuery);
       
       // Fetch dari survey-apj-propose
       const proposeRef = collection(db, "survey-apj-propose");
       const proposeQuery = activeKabupaten
-        ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"))
-        : query(proposeRef, where("status", "==", "diverifikasi"));
+        ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
+        : query(proposeRef, where("status", "==", targetStatus));
       const proposeSnapshot = await getDocs(proposeQuery);
       
       // Fetch dari survey-pra-existing
       const praExistingRef = collection(db, "survey-pra-existing");
       const praExistingQuery = activeKabupaten
-        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"))
-        : query(praExistingRef, where("status", "==", "diverifikasi"));
+        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
+        : query(praExistingRef, where("status", "==", targetStatus));
       const praExistingSnapshot = await getDocs(praExistingQuery);
 
       // Combine data dari collection
       const existingData = existingSnapshot.docs.map((doc) => {
         const surveyData = doc.data();
+        const resolvedLatitude = surveyData.finalLatitude || surveyData.adminLatitude || surveyData.latitude || 0;
+        const resolvedLongitude = surveyData.finalLongitude || surveyData.adminLongitude || surveyData.longitude || 0;
         return {
           id: doc.id,
           title: surveyData.namaTitikSurvey || surveyData.title || "Untitled",
           type: "existing",
-          status: surveyData.status || "tervalidasi",
+          status: surveyData.status || targetStatus,
           surveyorName: surveyData.namaSurveyor || "-",
           validatedBy: surveyData.validatedBy || surveyData.editedBy || "Admin",
-          latitude: surveyData.latitude || 0,
-          longitude: surveyData.longitude || 0,
+          latitude: resolvedLatitude,
+          longitude: resolvedLongitude,
+          adminLatitude: surveyData.adminLatitude,
+          adminLongitude: surveyData.adminLongitude,
           createdAt: surveyData.createdAt,
           validatedAt: surveyData.validatedAt || surveyData.createdAt,
           namaJalan: surveyData.namaJalan || "-",
@@ -126,20 +140,26 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
           subRuas: surveyData.subRuas || "-",
           jarakAntarTiang: surveyData.jarakAntarTiang || "-",
           keterangan: surveyData.keterangan || "N/A",
+          finalLatitude: resolvedLatitude,
+          finalLongitude: resolvedLongitude,
         };
       }) as Survey[];
       
       const proposeData = proposeSnapshot.docs.map((doc) => {
         const surveyData = doc.data();
+        const resolvedLatitude = surveyData.finalLatitude || surveyData.adminLatitude || surveyData.latitude || 0;
+        const resolvedLongitude = surveyData.finalLongitude || surveyData.adminLongitude || surveyData.longitude || 0;
         return {
           id: doc.id,
           title: surveyData.namaTitikSurvey || surveyData.title || "Untitled",
           type: "propose",
-          status: surveyData.status || "tervalidasi",
+          status: surveyData.status || targetStatus,
           surveyorName: surveyData.namaSurveyor || "-",
           validatedBy: surveyData.validatedBy || surveyData.editedBy || "Admin",
-          latitude: surveyData.latitude || 0,
-          longitude: surveyData.longitude || 0,
+          latitude: resolvedLatitude,
+          longitude: resolvedLongitude,
+          adminLatitude: surveyData.adminLatitude,
+          adminLongitude: surveyData.adminLongitude,
           createdAt: surveyData.createdAt,
           validatedAt: surveyData.validatedAt || surveyData.createdAt,
           namaJalan: surveyData.namaJalan || "-",
@@ -153,6 +173,8 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
           subRuas: surveyData.subRuas || "-",
           jarakAntarTiang: surveyData.jarakAntarTiang || "-",
           keterangan: surveyData.keterangan || "N/A",
+          finalLatitude: resolvedLatitude,
+          finalLongitude: resolvedLongitude,
         };
       }) as Survey[];
 
@@ -162,7 +184,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
           id: doc.id,
           title: surveyData.title || `Survey Pra Existing - ${surveyData.jenisLampu || "Untitled"}`,
           type: "pra-existing",
-          status: surveyData.status || "tervalidasi",
+          status: surveyData.status || targetStatus,
           surveyorName: surveyData.surveyorName || "-",
           validatedBy: surveyData.validatedBy || surveyData.editedBy || "Admin",
           latitude: surveyData.finalLatitude || surveyData.adminLatitude || surveyData.latitude || 0,
@@ -211,7 +233,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
     } finally {
       setLoading(false);
     }
-  }, [activeKabupaten]);
+  }, [activeKabupaten, targetStatus]);
 
   useEffect(() => {
     void Promise.resolve().then(fetchSurveys);
@@ -234,8 +256,8 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
               </svg>
             </div>
             <div>
-              <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Peta Bersama</h1>
-              <p className="text-sm text-gray-600 mt-1">Visualisasi bersama titik koordinat survey yang telah divalidasi dalam peta interaktif</p>
+              <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">{pageTitle}</h1>
+              <p className="text-sm text-gray-600 mt-1">{pageDescription}</p>
             </div>
           </div>
           <button 
@@ -261,7 +283,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
               </svg>
             </div>
             <div className="flex-1">
-              <p className="text-xs text-gray-600 font-medium">Total Survey Valid</p>
+              <p className="text-xs text-gray-600 font-medium">{isSuperAdmin ? "Total Survey Valid" : "Total Survey Terverifikasi"}</p>
               <h3 className="text-3xl font-bold text-gray-900">{stats.total}</h3>
             </div>
           </div>
@@ -334,8 +356,10 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
               </svg>
               <div>
-                <h3 className="font-bold text-gray-900 text-lg">Peta Bersama</h3>
-                <p className="text-sm text-gray-600">Menampilkan {stats.visible} titik koordinat survey tervalidasi</p>
+                <h3 className="font-bold text-gray-900 text-lg">{pageTitle}</h3>
+                <p className="text-sm text-gray-600">
+                  Menampilkan {stats.visible} titik koordinat survey {isSuperAdmin ? "tervalidasi" : "terverifikasi"}
+                </p>
               </div>
             </div>
           </div>

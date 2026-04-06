@@ -581,7 +581,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   };
 
   const handleValidasi = async (survey: Survey) => {
-    if (!confirm('Apakah Anda yakin ingin memverifikasi survey ini? Survey akan dipindahkan ke Data Survey Validasi.')) return;
+    if (!confirm('Apakah Anda yakin ingin memverifikasi survey ini? Survey akan dipindahkan ke Validasi Data.')) return;
     
     try {
       const collectionName =
@@ -748,15 +748,15 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
 
   return (
     <>
-      {/* Validasi Survey Content */}
+      {/* Verifikasi Content */}
       <div className="mb-6 bg-white rounded-2xl shadow-sm p-4 lg:p-6 border border-gray-100">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-6">
           <div>
             <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-2">
-              Validasi Survey
+              Verifikasi
             </h2>
             <p className="text-sm text-gray-600">
-              Data survey dari petugas yang menunggu verifikasi awal. Setelah diverifikasi, data akan pindah ke Data Survey Validasi
+              Data survey dari petugas yang menunggu verifikasi awal. Setelah diverifikasi, data akan pindah ke Validasi Data.
             </p>
           </div>
         </div>
@@ -784,7 +784,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
           </div>
 
           <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
-            <p className="text-sm font-medium text-green-900 mb-1">Menunggu Validasi</p>
+            <p className="text-sm font-medium text-green-900 mb-1">Menunggu Verifikasi</p>
             <h3 className="text-4xl font-bold text-green-600">{diverifikasiCount}</h3>
           </div>
         </div>
@@ -845,7 +845,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
               >
                 <option>Semua Status</option>
                 <option>Menunggu</option>
-                <option>Tervalidasi</option>
+                <option>Diverifikasi</option>
                 <option>Ditolak</option>
               </select>
               {activeTab === "existing" && (
@@ -1021,7 +1021,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
               </div>
               <h4 className="text-lg font-semibold text-gray-900 mb-2">Belum Ada Survey</h4>
               <p className="text-sm text-gray-600 text-center max-w-md">
-                Belum ada data survey {activeTab === "existing" ? "existing" : activeTab === "propose" ? "APJ propose" : "pra existing"} yang perlu divalidasi.
+                Belum ada data survey {activeTab === "existing" ? "existing" : activeTab === "propose" ? "APJ propose" : "pra existing"} yang perlu diverifikasi.
               </p>
             </div>
           ) : (
@@ -1055,7 +1055,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                             <span className={`px-2 py-1 text-xs font-medium rounded-full flex items-center gap-1 ${
                               survey.status === "menunggu" 
                                 ? "bg-yellow-100 text-yellow-700"
-                                : survey.status === "tervalidasi"
+                                : survey.status === "diverifikasi"
                                 ? "bg-green-100 text-green-700"
                                 : "bg-red-100 text-red-700"
                             }`}>
@@ -1163,7 +1163,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                               </svg>
-                              Validasi
+                              Verifikasi
                             </button>
                             <button 
                               onClick={(e) => {
@@ -1210,7 +1210,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                       <span className={`px-2 lg:px-3 py-1 lg:py-1.5 rounded-full font-medium ${
                         selectedSurvey.status === "menunggu" 
                           ? "bg-yellow-100 text-yellow-700"
-                          : selectedSurvey.status === "tervalidasi"
+                          : selectedSurvey.status === "diverifikasi"
                           ? "bg-green-100 text-green-700"
                           : "bg-red-100 text-red-700"
                       }`}>
@@ -1789,7 +1789,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                       <svg className="w-4 h-4 lg:w-5 lg:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
-                      Validasi
+                      Verifikasi
                     </button>
                   </>
                 )}
@@ -1849,7 +1849,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                     <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
                       editFormData.status === "menunggu" 
                         ? "bg-yellow-100 text-yellow-700"
-                        : editFormData.status === "tervalidasi"
+                        : editFormData.status === "diverifikasi"
                         ? "bg-green-100 text-green-700"
                         : "bg-red-100 text-red-700"
                     }`}>
@@ -2284,7 +2284,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                           />
                         </div>
                         <p className="mt-2 text-xs text-emerald-700">
-                          Koordinat ini menjadi acuan map setelah tombol validasi dijalankan admin.
+                          Koordinat ini menjadi acuan map setelah tombol Verifikasi dijalankan admin.
                         </p>
                         <p className="mt-1 text-xs text-gray-600">
                           Koordinat petugas awal: {(editFormData.originalLatitude ?? editFormData.latitude).toFixed(7)}, {(editFormData.originalLongitude ?? editFormData.longitude).toFixed(7)}
@@ -2393,4 +2393,5 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     </>
   );
 }
+
 

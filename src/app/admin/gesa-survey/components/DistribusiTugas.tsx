@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, getDoc, getDocs, addDoc, serverTimestamp, query, orderBy, deleteDoc, doc, setDoc, updateDoc } from "firebase/firestore";
+import { collection, getDoc, getDocs, addDoc, serverTimestamp, query, orderBy, deleteDoc, doc, setDoc, updateDoc, where } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import dynamic from "next/dynamic";
+import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
+import { analyzeTaskNavigation, type LatLngPoint, type ParsedTaskGeometries } from "@/utils/taskNavigation";
+import type { UnifiedSurveyMarker } from "@/components/SurveyTaskUnifiedMap";
 import {
   DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS,
   PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION,
@@ -25,6 +28,21 @@ const DynamicKMZMapPreview = dynamic(
         </div>
       </div>
     )
+  }
+);
+
+const DynamicSurveyTaskUnifiedMap = dynamic(
+  () => import("@/components/SurveyTaskUnifiedMap"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[300px] items-center justify-center rounded-2xl border border-blue-200 bg-slate-100">
+        <div className="text-center">
+          <div className="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+          <p className="text-sm text-slate-500">Memuat peta progres...</p>
+        </div>
+      </div>
+    ),
   }
 );
 
@@ -49,6 +67,40 @@ interface Task {
   excelFileUrl?: string;
   offlineEnabled?: boolean;
   createdAt: { toDate?: () => Date } | Date | string | number | null;
+}
+
+type TaskProgressKind = "propose" | "existing" | "pra-existing";
+
+interface TaskProgressSection {
+  kind: TaskProgressKind;
+  label: string;
+  markerLabel: string;
+  markerColor: string;
+  kmzFileUrl?: string;
+  markers: UnifiedSurveyMarker[];
+  totalPoints: number;
+  exactMatchCount: number;
+  inferredMatchCount: number;
+}
+
+interface SurveyDocData {
+  id: string;
+  title?: string;
+  status?: string;
+  latitude?: number | string;
+  longitude?: number | string;
+  accuracy?: number | string;
+  lokasiLengkap?: string;
+  namaJalan?: string;
+  desa?: string;
+  banjar?: string;
+  kabupaten?: string;
+  surveyorName?: string;
+  surveyorUid?: string;
+  taskId?: string;
+  taskTitle?: string;
+  createdAt?: { toDate?: () => Date } | Date | string | number | null;
+  submittedAtLocal?: string;
 }
 
 interface DistribusiTugasProps {
@@ -89,6 +141,9 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
   const [detailKmzFile, setDetailKmzFile] = useState<File | null>(null);
   const [detailKmzFile2, setDetailKmzFile2] = useState<File | null>(null);
   const [loadingDetailKmz, setLoadingDetailKmz] = useState(false);
+  const [loadingTaskProgress, setLoadingTaskProgress] = useState(false);
+  const [taskProgressError, setTaskProgressError] = useState<string | null>(null);
+  const [taskProgressSections, setTaskProgressSections] = useState<TaskProgressSection[]>([]);
 
   // Fetch tasks on component mount
   useEffect(() => {
@@ -100,7 +155,10 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
   useEffect(() => {
     if (showDetailModal && selectedTaskDetail) {
       loadDetailKmzFiles(selectedTaskDetail);
+      void loadTaskProgress(selectedTaskDetail);
     }
+    // Fungsi loader didefinisikan di komponen yang sama dan aman dipicu ulang saat task detail berubah.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showDetailModal, selectedTaskDetail]);
 
   const fetchOfflineSettings = async () => {
@@ -257,6 +315,215 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
     await uploadBytes(storageRef, file);
     const downloadURL = await getDownloadURL(storageRef);
     return downloadURL;
+  };
+
+  const getTaskCreatedAtMs = (value: Task["createdAt"]) => {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return value.getTime();
+    }
+    if (typeof value === "object" && "toDate" in value && typeof value.toDate === "function") {
+      return value.toDate().getTime();
+    }
+    if (typeof value === "string" || typeof value === "number") {
+      const parsed = new Date(value).getTime();
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+    return null;
+  };
+
+  const getSurveyCreatedAtMs = (value: SurveyDocData["createdAt"], submittedAtLocal?: string) => {
+    if (value && typeof value === "object" && "toDate" in value && typeof value.toDate === "function") {
+      return value.toDate().getTime();
+    }
+    if (value instanceof Date) {
+      return value.getTime();
+    }
+    if (typeof value === "string" || typeof value === "number") {
+      const parsed = new Date(value).getTime();
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+    if (submittedAtLocal) {
+      const parsed = new Date(submittedAtLocal).getTime();
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+    return null;
+  };
+
+  const getTaskProgressConfigs = (task: Task) => {
+    const configs: Array<{
+      kind: TaskProgressKind;
+      label: string;
+      markerLabel: string;
+      markerColor: string;
+      collectionName: string;
+      kmzFileUrl?: string;
+    }> = [];
+
+    if (task.type === "propose" || task.type === "propose-existing") {
+      configs.push({
+        kind: "propose",
+        label: "Progress Survey Propose",
+        markerLabel: "Titik Propose",
+        markerColor: "#16a34a",
+        collectionName: "survey-apj-propose",
+        kmzFileUrl: task.kmzFileUrl,
+      });
+    }
+
+    if (task.type === "existing" || task.type === "propose-existing") {
+      configs.push({
+        kind: "existing",
+        label: "Progress Survey Existing",
+        markerLabel: "Titik Existing",
+        markerColor: "#2563eb",
+        collectionName: "survey-existing",
+        kmzFileUrl: task.kmzFileUrl2,
+      });
+    }
+
+    if (task.type === "pra-existing") {
+      configs.push({
+        kind: "pra-existing",
+        label: "Progress Survey Pra Existing",
+        markerLabel: "Titik Pra Existing",
+        markerColor: "#0f766e",
+        collectionName: "survey-pra-existing",
+        kmzFileUrl: task.kmzFileUrl2,
+      });
+    }
+
+    return configs;
+  };
+
+  const isPointMatchedToTaskGeometry = (point: LatLngPoint, geometries: ParsedTaskGeometries | null) => {
+    if (!geometries) return false;
+
+    const hasGeometry =
+      geometries.polygons.length > 0 || geometries.polylines.length > 0 || geometries.points.length > 0;
+    if (!hasGeometry) return false;
+
+    const info = analyzeTaskNavigation(point, geometries);
+    if (!info?.hasTaskGeometry) return false;
+
+    if (info.geometryType === "polygon") {
+      return info.isInsidePolygon === true || (info.distanceToTargetMeters ?? Number.POSITIVE_INFINITY) <= 120;
+    }
+
+    return (info.distanceToTargetMeters ?? Number.POSITIVE_INFINITY) <= 120;
+  };
+
+  const mapSurveyDocToMarker = (kind: TaskProgressKind, data: SurveyDocData): UnifiedSurveyMarker | null => {
+    const latitude = Number(data.latitude);
+    const longitude = Number(data.longitude);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+
+    const locationLabel =
+      data.lokasiLengkap ||
+      data.namaJalan ||
+      [data.desa, data.banjar].filter(Boolean).join(" - ") ||
+      data.kabupaten ||
+      "-";
+
+    const typeLabel =
+      kind === "existing"
+        ? "Existing"
+        : kind === "propose"
+          ? "APJ Propose"
+          : "Pra Existing";
+
+    return {
+      id: data.id,
+      latitude,
+      longitude,
+      title: data.title || `Titik ${typeLabel}`,
+      details: [
+        { label: "Petugas", value: data.surveyorName || "-" },
+        { label: "Status", value: data.status || "-" },
+        { label: "Lokasi", value: locationLabel },
+        { label: "Sumber", value: data.taskId ? "taskId" : "area tugas" },
+      ],
+      createdAt: data.createdAt || data.submittedAtLocal || null,
+    };
+  };
+
+  const loadTaskProgress = async (task: Task) => {
+    try {
+      setLoadingTaskProgress(true);
+      setTaskProgressError(null);
+      const taskCreatedAtMs = getTaskCreatedAtMs(task.createdAt);
+      const configs = getTaskProgressConfigs(task);
+
+      const sections = await Promise.all(
+        configs.map(async (config): Promise<TaskProgressSection> => {
+          const geometries =
+            config.kmzFileUrl
+              ? await loadParsedTaskGeometries(config.kmzFileUrl).catch(() => null)
+              : null;
+
+          const surveyQuery = query(collection(db, config.collectionName), where("surveyorUid", "==", task.surveyorId));
+          const snapshot = await getDocs(surveyQuery);
+
+          let exactMatchCount = 0;
+          let inferredMatchCount = 0;
+
+          const markers = snapshot.docs
+            .map((surveyDoc) => ({ id: surveyDoc.id, ...surveyDoc.data() }) as SurveyDocData)
+            .filter((survey) => {
+              if (survey.taskId) {
+                const isExact = survey.taskId === task.id;
+                if (isExact) exactMatchCount += 1;
+                return isExact;
+              }
+
+              const latitude = Number(survey.latitude);
+              const longitude = Number(survey.longitude);
+              if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                return false;
+              }
+
+              const surveyCreatedAtMs = getSurveyCreatedAtMs(survey.createdAt, survey.submittedAtLocal);
+              if (taskCreatedAtMs && surveyCreatedAtMs && surveyCreatedAtMs + 5 * 60 * 1000 < taskCreatedAtMs) {
+                return false;
+              }
+
+              const matched = isPointMatchedToTaskGeometry({ lat: latitude, lng: longitude }, geometries);
+              if (matched) inferredMatchCount += 1;
+              return matched;
+            })
+            .map((survey) => mapSurveyDocToMarker(config.kind, survey))
+            .filter((marker): marker is UnifiedSurveyMarker => marker !== null)
+            .sort((left, right) => {
+              const leftTime = getSurveyCreatedAtMs(left.createdAt, undefined) ?? 0;
+              const rightTime = getSurveyCreatedAtMs(right.createdAt, undefined) ?? 0;
+              return rightTime - leftTime;
+            });
+
+          return {
+            kind: config.kind,
+            label: config.label,
+            markerLabel: config.markerLabel,
+            markerColor: config.markerColor,
+            kmzFileUrl: config.kmzFileUrl,
+            markers,
+            totalPoints: markers.length,
+            exactMatchCount,
+            inferredMatchCount,
+          };
+        })
+      );
+
+      setTaskProgressSections(sections);
+    } catch (error) {
+      console.error("Error loading task progress:", error);
+      setTaskProgressSections([]);
+      setTaskProgressError("Progress tugas gagal dimuat. Coba buka ulang detail tugas.");
+    } finally {
+      setLoadingTaskProgress(false);
+    }
   };
 
   const handleSubmitTask = async (taskType: "propose" | "existing" | "propose-existing" | "pra-existing") => {
@@ -1877,6 +2144,8 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
                   setSelectedTaskDetail(null);
                   setDetailKmzFile(null);
                   setDetailKmzFile2(null);
+                  setTaskProgressSections([]);
+                  setTaskProgressError(null);
                 }}
                 className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white hover:bg-opacity-20 transition-all"
               >
@@ -2139,6 +2408,106 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
                   )}
               </div>
 
+              <div>
+                <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
+                  Progress Tugas di Peta
+                </h4>
+
+                {loadingTaskProgress ? (
+                  <div className="flex h-[220px] items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50">
+                    <div className="text-center">
+                      <div className="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-b-2 border-emerald-600" />
+                      <p className="text-sm font-medium text-emerald-700">Memuat progress tugas...</p>
+                    </div>
+                  </div>
+                ) : taskProgressError ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    {taskProgressError}
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Total Titik Input</p>
+                        <p className="mt-2 text-3xl font-bold text-blue-900">
+                          {taskProgressSections.reduce((total, section) => total + section.totalPoints, 0)}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Match Task ID</p>
+                        <p className="mt-2 text-3xl font-bold text-emerald-900">
+                          {taskProgressSections.reduce((total, section) => total + section.exactMatchCount, 0)}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Match Area KMZ</p>
+                        <p className="mt-2 text-3xl font-bold text-amber-900">
+                          {taskProgressSections.reduce((total, section) => total + section.inferredMatchCount, 0)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
+                      Titik dengan <span className="font-semibold text-slate-900">Match Task ID</span> dihitung langsung dari `taskId` di data survey.
+                      Titik dengan <span className="font-semibold text-slate-900">Match Area KMZ</span> dipetakan dari koordinat survey yang masuk ke area atau titik tugas pada KMZ.
+                    </div>
+
+                    {taskProgressSections.map((section) => (
+                      <div key={section.kind} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                        <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <h5 className="text-sm font-bold text-slate-900">{section.label}</h5>
+                            <p className="mt-1 text-xs text-slate-500">
+                              Polygon atau titik tugas ditampilkan bersama titik hasil input petugas.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            <span className="rounded-full bg-slate-900 px-3 py-1 font-semibold text-white">
+                              {section.totalPoints} titik
+                            </span>
+                            <span className="rounded-full bg-emerald-100 px-3 py-1 font-semibold text-emerald-800">
+                              {section.exactMatchCount} taskId
+                            </span>
+                            <span className="rounded-full bg-amber-100 px-3 py-1 font-semibold text-amber-800">
+                              {section.inferredMatchCount} area KMZ
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="p-4">
+                          {section.kmzFileUrl ? (
+                            <DynamicSurveyTaskUnifiedMap
+                              latitude={null}
+                              longitude={null}
+                              accuracy={0}
+                              hasGPS={false}
+                              kmzFileUrl={section.kmzFileUrl}
+                              surveyData={section.markers}
+                              markerColor={section.markerColor}
+                              markerLabel={section.markerLabel}
+                              stableOverlay
+                            />
+                          ) : (
+                            <div className="flex h-[220px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
+                              File KMZ tugas belum tersedia.
+                            </div>
+                          )}
+
+                          <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                            {section.totalPoints > 0
+                              ? `Terdeteksi ${section.totalPoints} titik input petugas untuk bagian tugas ini.`
+                              : "Belum ada titik input petugas yang cocok untuk bagian tugas ini."}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Task ID */}
               <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                 <p className="text-xs text-gray-500 mb-1">ID Tugas</p>
@@ -2154,6 +2523,8 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
                   setSelectedTaskDetail(null);
                   setDetailKmzFile(null);
                   setDetailKmzFile2(null);
+                  setTaskProgressSections([]);
+                  setTaskProgressError(null);
                 }}
                 className="flex-1 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold transition-all"
               >

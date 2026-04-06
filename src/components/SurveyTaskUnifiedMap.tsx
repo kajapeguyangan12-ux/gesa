@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Circle, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { Circle, MapContainer, Marker, Polygon, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import dynamic from "next/dynamic";
-import type { TaskNavigationInfo } from "@/utils/taskNavigation";
+import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
+import { analyzeTaskNavigation, type ParsedTaskGeometries, type TaskNavigationInfo } from "@/utils/taskNavigation";
 
 const KMZTaskOverlay = dynamic(() => import("./KMZTaskOverlay"), { ssr: false });
 const DEFAULT_POSITION: [number, number] = [-8.4095, 115.1889];
@@ -44,6 +45,7 @@ interface SurveyTaskUnifiedMapProps {
   surveyData: UnifiedSurveyMarker[];
   markerColor?: string;
   markerLabel?: string;
+  stableOverlay?: boolean;
 }
 
 function createMarkerIcon(color: string) {
@@ -140,6 +142,118 @@ function MapWithKMZ({
   ) : null;
 }
 
+const emptyGeometries: ParsedTaskGeometries = {
+  polygons: [],
+  polylines: [],
+  points: [],
+};
+
+const taskPointIcon = L.divIcon({
+  className: "task-kmz-marker",
+  html: `
+    <div style="position:relative;width:18px;height:18px;">
+      <div style="width:18px;height:18px;border-radius:9999px;background:#059669;border:3px solid #ffffff;box-shadow:0 4px 10px rgba(5,150,105,0.28);"></div>
+    </div>
+  `,
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+  popupAnchor: [0, -12],
+});
+
+function DeclarativeKMZOverlay({
+  kmzFileUrl,
+  currentPosition,
+  onTaskNavigationInfoChange,
+}: {
+  kmzFileUrl?: string;
+  currentPosition?: { lat: number; lng: number } | null;
+  onTaskNavigationInfoChange?: (info: TaskNavigationInfo | null) => void;
+}) {
+  const [geometries, setGeometries] = useState<ParsedTaskGeometries>(emptyGeometries);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadGeometries = async () => {
+      if (!kmzFileUrl) {
+        setGeometries(emptyGeometries);
+        return;
+      }
+
+      try {
+        const parsed = await loadParsedTaskGeometries(kmzFileUrl);
+        if (!cancelled) {
+          setGeometries(parsed);
+        }
+      } catch (error) {
+        console.error("Gagal memuat overlay KMZ declarative:", error);
+        if (!cancelled) {
+          setGeometries(emptyGeometries);
+        }
+      }
+    };
+
+    void loadGeometries();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [kmzFileUrl]);
+
+  useEffect(() => {
+    const info = currentPosition ? analyzeTaskNavigation(currentPosition, geometries) : null;
+    onTaskNavigationInfoChange?.(info);
+  }, [currentPosition, geometries, onTaskNavigationInfoChange]);
+
+  return (
+    <>
+      {geometries.polygons.map((polygon, index) => (
+        <Polygon
+          key={`stable-polygon-${polygon.name}-${index}-${polygon.coordinates[0]?.lat ?? 0}-${polygon.coordinates[0]?.lng ?? 0}`}
+          positions={polygon.coordinates.map((coordinate) => [coordinate.lat, coordinate.lng] as [number, number])}
+          pathOptions={{
+            color: "#059669",
+            fillColor: "#10B981",
+            fillOpacity: 0.22,
+            weight: 3,
+          }}
+        >
+          <Popup>
+            <div className="text-sm font-semibold text-slate-900">{polygon.name}</div>
+          </Popup>
+        </Polygon>
+      ))}
+
+      {geometries.polylines.map((polyline, index) => (
+        <Polyline
+          key={`stable-polyline-${polyline.name}-${index}-${polyline.coordinates[0]?.lat ?? 0}-${polyline.coordinates[0]?.lng ?? 0}`}
+          positions={polyline.coordinates.map((coordinate) => [coordinate.lat, coordinate.lng] as [number, number])}
+          pathOptions={{
+            color: "#059669",
+            weight: 4,
+          }}
+        >
+          <Popup>
+            <div className="text-sm font-semibold text-slate-900">{polyline.name}</div>
+          </Popup>
+        </Polyline>
+      ))}
+
+      {geometries.points.map((point) => (
+        <Marker
+          key={`stable-point-${point.name}-${point.coordinate.lat}-${point.coordinate.lng}`}
+          position={[point.coordinate.lat, point.coordinate.lng]}
+          icon={taskPointIcon}
+        >
+          <Popup>
+            <div className="text-sm font-semibold text-slate-900">{point.name}</div>
+          </Popup>
+        </Marker>
+      ))}
+    </>
+  );
+}
+
 export default function SurveyTaskUnifiedMap({
   latitude,
   longitude,
@@ -153,6 +267,7 @@ export default function SurveyTaskUnifiedMap({
   surveyData,
   markerColor = "#10b981",
   markerLabel = "Titik Survey",
+  stableOverlay = false,
 }: SurveyTaskUnifiedMapProps) {
   const [ready, setReady] = useState(false);
   const surveyMarkerIcon = useMemo(() => createMarkerIcon(markerColor), [markerColor]);
@@ -243,13 +358,21 @@ export default function SurveyTaskUnifiedMap({
           maxZoom={20}
         />
 
-        <MapWithKMZ
-          kmzFileUrl={kmzFileUrl}
-          currentPosition={currentPosition}
-          completedPoints={completedPoints}
-          onPointComplete={onPointComplete}
-          onTaskNavigationInfoChange={onTaskNavigationInfoChange}
-        />
+        {stableOverlay ? (
+          <DeclarativeKMZOverlay
+            kmzFileUrl={kmzFileUrl}
+            currentPosition={currentPosition}
+            onTaskNavigationInfoChange={onTaskNavigationInfoChange}
+          />
+        ) : (
+          <MapWithKMZ
+            kmzFileUrl={kmzFileUrl}
+            currentPosition={currentPosition}
+            completedPoints={completedPoints}
+            onPointComplete={onPointComplete}
+            onTaskNavigationInfoChange={onTaskNavigationInfoChange}
+          />
+        )}
 
         {markerData.map((survey) => (
           <Marker key={survey.id} position={[survey.markerLatitude, survey.markerLongitude]} icon={surveyMarkerIcon}>

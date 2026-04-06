@@ -18,6 +18,7 @@ import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/ut
 function GesaSurveyContent() {
   const { user } = useAuth();
   const router = useRouter();
+  const isSuperAdmin = user?.role === "super-admin";
   const [activeMenu, setActiveMenu] = useState("dashboard");
   const [activeKabupaten, setActiveKabupaten] = useState<string | null>(null);
   const [pendingKabupaten, setPendingKabupaten] = useState<string | null>(null);
@@ -63,14 +64,20 @@ function GesaSurveyContent() {
     setShowKabupatenConfirm(false);
   };
 
+  const primaryReviewLabel = "Verifikasi";
+  const secondaryReviewLabel = "Validasi Data";
+  const validatedDataLabel = isSuperAdmin ? "Data Survey Valid" : "Data Survey Terverifikasi";
+  const rejectedDataLabel = isSuperAdmin ? "Data Survey Valid (TOLAK)" : "Data Survey Terverifikasi (TOLAK)";
+  const validatedMapLabel = isSuperAdmin ? "Maps Valid" : "Maps Terverifikasi";
+
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: "📊" },
     { id: "distribusi-tugas", label: "Distribusi Tugas", icon: "📋" },
-    { id: "validasi-survey", label: "Validasi Survey", icon: "✓" },
-    { id: "data-survey-valid", label: "Data Survey Valid", icon: "📁" },
-    { id: "data-survey-tolak", label: "Data Survey Valid (TOLAK)", icon: "❌" },
-    { id: "data-survey-validasi", label: "Data Survey Validasi", icon: "🔍", superAdminOnly: true },
-    { id: "maps-validasi", label: "Maps Validasi", icon: "🗺️" },
+    { id: "validasi-survey", label: primaryReviewLabel, icon: "✓" },
+    { id: "data-survey-valid", label: validatedDataLabel, icon: "📁" },
+    { id: "data-survey-tolak", label: rejectedDataLabel, icon: "❌" },
+    { id: "data-survey-validasi", label: secondaryReviewLabel, icon: "🔍", superAdminOnly: true },
+    { id: "maps-validasi", label: validatedMapLabel, icon: "🗺️" },
     { id: "tracking-history", label: "Tracking History", icon: "📍" },
   ];
 
@@ -95,8 +102,6 @@ function GesaSurveyContent() {
             {menuItems.map((item) => {
               // Check if super admin only menu
               const isSuperAdminMenu = item.superAdminOnly;
-              const isSuperAdmin = user?.role === 'super-admin';
-              
               // Hide super admin menu if not authorized
               if (isSuperAdminMenu && !isSuperAdmin) {
                 return null;
@@ -164,8 +169,6 @@ function GesaSurveyContent() {
             {menuItems.map((item) => {
               // Check if super admin only menu
               const isSuperAdminMenu = item.superAdminOnly;
-              const isSuperAdmin = user?.role === 'super-admin';
-              
               // Hide super admin menu if not authorized
               if (isSuperAdminMenu && !isSuperAdmin) {
                 return null;
@@ -205,7 +208,7 @@ function GesaSurveyContent() {
               Ganti kabupaten
             </button>
           </div>
-          {activeMenu === "dashboard" && <DashboardContent setActiveMenu={setActiveMenu} />}
+          {activeMenu === "dashboard" && <DashboardContent setActiveMenu={setActiveMenu} isSuperAdmin={isSuperAdmin} />}
           {activeMenu === "distribusi-tugas" && <DistribusiTugas setActiveMenu={setActiveMenu} />}
           {activeMenu === "validasi-survey" && <ValidasiSurvey activeKabupaten={activeKabupaten} />}
           {activeMenu === "data-survey-valid" && <DataSurveyValid activeKabupaten={activeKabupaten} />}
@@ -292,3 +295,4 @@ export default function GesaSurveyPage() {
     </ProtectedRoute>
   );
 }
+

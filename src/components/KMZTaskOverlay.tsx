@@ -37,6 +37,16 @@ export default function KMZTaskOverlay({
   const currentPositionRef = useRef(currentPosition);
   const lastNavigationSignatureRef = useRef("");
 
+  const waitForMapReady = (leafletMap: L.Map) =>
+    new Promise<void>((resolve) => {
+      if ((leafletMap as L.Map & { _loaded?: boolean })._loaded) {
+        resolve();
+        return;
+      }
+
+      leafletMap.whenReady(() => resolve());
+    });
+
   const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
     const R = 6371e3;
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -81,6 +91,8 @@ export default function KMZTaskOverlay({
       setError(null);
 
       try {
+        await waitForMapReady(map);
+
         const proxyUrl = `/api/proxy-kmz?url=${encodeURIComponent(kmzFileUrl)}`;
         const response = await fetch(proxyUrl);
 
@@ -128,7 +140,7 @@ export default function KMZTaskOverlay({
           }
         }
 
-        const nextLayerGroup = L.layerGroup().addTo(map);
+        const nextLayerGroup = L.featureGroup();
         const nextBounds = L.latLngBounds([]);
         const nextGeometries: ParsedTaskGeometries = {
           polygons: [],
@@ -323,6 +335,9 @@ export default function KMZTaskOverlay({
           }
         }
 
+        map.invalidateSize(false);
+        await waitForMapReady(map);
+        nextLayerGroup.addTo(map);
         layerGroupRef.current = nextLayerGroup;
         setParsedGeometries(nextGeometries);
 

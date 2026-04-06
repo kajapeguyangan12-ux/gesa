@@ -35,6 +35,8 @@ interface Survey {
   longitude: number;
   adminLatitude?: number;
   adminLongitude?: number;
+  finalLatitude?: number;
+  finalLongitude?: number;
   accuracy?: number;
   kabupaten?: string;
   kabupatenName?: string;
@@ -120,6 +122,8 @@ export default function SurveyPraExistingDetail({
         longitude: docSnap.data().longitude || 0,
         adminLatitude: docSnap.data().adminLatitude,
         adminLongitude: docSnap.data().adminLongitude,
+        finalLatitude: docSnap.data().finalLatitude,
+        finalLongitude: docSnap.data().finalLongitude,
         accuracy: docSnap.data().accuracy,
         kabupaten: docSnap.data().kabupaten,
         kabupatenName: docSnap.data().kabupatenName,
@@ -196,6 +200,9 @@ export default function SurveyPraExistingDetail({
     window.open(`https://www.google.com/maps?q=${latitude},${longitude}`, "_blank");
   };
 
+  const getDisplayLatitude = (survey: Survey) => survey.finalLatitude ?? survey.adminLatitude ?? survey.latitude;
+  const getDisplayLongitude = (survey: Survey) => survey.finalLongitude ?? survey.adminLongitude ?? survey.longitude;
+
   const handleExportExcel = () => {
     const headers = [
       "No",
@@ -254,8 +261,8 @@ export default function SurveyPraExistingDetail({
         survey.garduStatus || "",
         survey.kodeGardu || "",
         survey.keterangan || "",
-        survey.longitude?.toFixed(7) || "",
-        survey.latitude?.toFixed(7) || "",
+        getDisplayLongitude(survey)?.toFixed(7) || "",
+        getDisplayLatitude(survey)?.toFixed(7) || "",
         survey.adminLongitude?.toFixed(7) || "",
         survey.adminLatitude?.toFixed(7) || "",
         survey.status || "",
@@ -319,6 +326,8 @@ export default function SurveyPraExistingDetail({
     }
   };
 
+  const normalizeCoordinateText = (value: string) => value.replace(/\s+/g, "");
+
   const filteredSurveys = surveys.filter((survey) => {
     // Search query filter
     if (searchQuery) {
@@ -335,8 +344,28 @@ export default function SurveyPraExistingDetail({
         survey.garduStatus,
         survey.kodeGardu,
       ].join(" ").toLowerCase();
-      
-      if (!searchableText.includes(needle)) return false;
+
+      const coordinateTerms = searchQuery
+        .split(/[\s,;]+/)
+        .map((term) => normalizeCoordinateText(term.trim()))
+        .filter(Boolean);
+      const coordinateValues = [
+        survey.latitude,
+        survey.longitude,
+        survey.adminLatitude,
+        survey.adminLongitude,
+        survey.finalLatitude,
+        survey.finalLongitude,
+      ]
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+        .flatMap((value) => [value.toString(), value.toFixed(7)]);
+      const matchesCoordinate =
+        coordinateTerms.length > 0 &&
+        coordinateTerms.every((term) =>
+          coordinateValues.some((value) => normalizeCoordinateText(value).includes(term))
+        );
+
+      if (!searchableText.includes(needle) && !matchesCoordinate) return false;
     }
 
     // Kecamatan filter
@@ -423,7 +452,7 @@ export default function SurveyPraExistingDetail({
             </svg>
             <input
               type="text"
-              placeholder="Cari berdasarkan judul, jenis lampu, atau surveyor..."
+              placeholder="Cari judul, jenis lampu, surveyor, atau koordinat..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all text-gray-900 placeholder:text-gray-500"
@@ -538,7 +567,7 @@ export default function SurveyPraExistingDetail({
                     <td className="px-6 py-4 text-sm text-gray-900">{survey.jumlahLampu || "N/A"}</td>
                     <td className="px-6 py-4">
                       <span className="text-xs text-gray-600 font-mono bg-gray-100 px-2 py-1 rounded">
-                        {survey.latitude.toFixed(6)}, {survey.longitude.toFixed(6)}
+                        {getDisplayLatitude(survey).toFixed(6)}, {getDisplayLongitude(survey).toFixed(6)}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -565,7 +594,7 @@ export default function SurveyPraExistingDetail({
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-center gap-1">
                         <button
-                          onClick={() => handleViewMaps(survey.latitude, survey.longitude)}
+                          onClick={() => handleViewMaps(getDisplayLatitude(survey), getDisplayLongitude(survey))}
                           className="p-2 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-all"
                           title="Lihat di Google Maps"
                         >
@@ -644,17 +673,17 @@ export default function SurveyPraExistingDetail({
                     Lokasi Survey
                   </h3>
                   <DynamicDetailMap
-                    latitude={selectedSurvey.latitude}
-                    longitude={selectedSurvey.longitude}
+                    latitude={getDisplayLatitude(selectedSurvey)}
+                    longitude={getDisplayLongitude(selectedSurvey)}
                     accuracy={selectedSurvey.accuracy}
                     title={selectedSurvey.title}
                   />
                   <div className="mt-3 flex items-center justify-between">
                     <span className="text-sm text-gray-600 font-mono bg-white px-3 py-1.5 rounded-lg border">
-                      {selectedSurvey.latitude.toFixed(7)}, {selectedSurvey.longitude.toFixed(7)}
+                      {getDisplayLatitude(selectedSurvey).toFixed(7)}, {getDisplayLongitude(selectedSurvey).toFixed(7)}
                     </span>
                     <button
-                      onClick={() => handleViewMaps(selectedSurvey.latitude, selectedSurvey.longitude)}
+                      onClick={() => handleViewMaps(getDisplayLatitude(selectedSurvey), getDisplayLongitude(selectedSurvey))}
                       className="flex items-center gap-2 text-sm text-emerald-600 hover:text-emerald-700 font-medium"
                     >
                       <span>Buka di Google Maps</span>
@@ -678,13 +707,13 @@ export default function SurveyPraExistingDetail({
                       <div>
                         <p className="text-sm text-gray-600 mb-1">Latitude</p>
                         <p className="font-mono text-sm font-bold text-gray-900">
-                          {selectedSurvey.latitude.toFixed(7)}
+                          {getDisplayLatitude(selectedSurvey).toFixed(7)}
                         </p>
                       </div>
                       <div>
                         <p className="text-sm text-gray-600 mb-1">Longitude</p>
                         <p className="font-mono text-sm font-bold text-gray-900">
-                          {selectedSurvey.longitude.toFixed(7)}
+                          {getDisplayLongitude(selectedSurvey).toFixed(7)}
                         </p>
                       </div>
                     </div>
@@ -767,7 +796,7 @@ export default function SurveyPraExistingDetail({
                   Tutup
                 </button>
                 <button
-                  onClick={() => handleViewMaps(selectedSurvey.latitude, selectedSurvey.longitude)}
+                  onClick={() => handleViewMaps(getDisplayLatitude(selectedSurvey), getDisplayLongitude(selectedSurvey))}
                   className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-medium rounded-xl transition-colors flex items-center gap-2"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
 import { analyzeTaskNavigation, type ParsedTaskGeometries, type TaskNavigationInfo } from "@/utils/taskNavigation";
 
@@ -172,9 +171,9 @@ export default function SurveyDetailMap({
           maxZoom={20}
         />
 
-        {geometries.polygons.map((polygon) => (
+        {geometries.polygons.map((polygon, index) => (
           <Polygon
-            key={`polygon-${polygon.name}`}
+            key={`polygon-${polygon.name}-${index}-${polygon.coordinates[0]?.lat ?? 0}-${polygon.coordinates[0]?.lng ?? 0}`}
             positions={polygon.coordinates.map((coordinate) => [coordinate.lat, coordinate.lng] as [number, number])}
             pathOptions={{
               color: "#059669",
@@ -189,9 +188,9 @@ export default function SurveyDetailMap({
           </Polygon>
         ))}
 
-        {geometries.polylines.map((polyline) => (
+        {geometries.polylines.map((polyline, index) => (
           <Polyline
-            key={`polyline-${polyline.name}`}
+            key={`polyline-${polyline.name}-${index}-${polyline.coordinates[0]?.lat ?? 0}-${polyline.coordinates[0]?.lng ?? 0}`}
             positions={polyline.coordinates.map((coordinate) => [coordinate.lat, coordinate.lng] as [number, number])}
             pathOptions={{
               color: "#2563eb",

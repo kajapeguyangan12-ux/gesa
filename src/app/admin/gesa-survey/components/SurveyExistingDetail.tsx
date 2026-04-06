@@ -207,12 +207,24 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
   };
 
   const uniqueZones = [...new Set(surveys.map(s => s.zona).filter(Boolean))];
+  const normalizeCoordinateText = (value: string) => value.replace(/\s+/g, "");
 
   const filteredSurveys = surveys.filter(survey => {
-    const matchSearch = searchQuery === "" || 
+    const matchSearch =
+      searchQuery === "" ||
       survey.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       survey.namaJalan?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      survey.surveyorName.toLowerCase().includes(searchQuery.toLowerCase());
+      survey.surveyorName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      searchQuery
+        .split(/[\s,;]+/)
+        .map((term) => normalizeCoordinateText(term.trim()))
+        .filter(Boolean)
+        .every((term) =>
+          [survey.latitude, survey.longitude]
+            .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+            .flatMap((value) => [value.toString(), value.toFixed(7)])
+            .some((value) => normalizeCoordinateText(value).includes(term))
+        );
     
     const matchZona = filterZona === "all" || survey.zona === filterZona;
     
@@ -274,7 +286,7 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
             </svg>
             <input
               type="text"
-              placeholder="Cari berdasarkan judul, nama jalan, atau surveyor..."
+              placeholder="Cari judul, nama jalan, surveyor, atau koordinat..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 placeholder:text-gray-500"
