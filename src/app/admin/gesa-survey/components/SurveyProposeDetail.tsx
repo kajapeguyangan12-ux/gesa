@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { collection, getDocs, query, where, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
+import { useAuth } from "@/hooks/useAuth";
 
 // Dynamic import for Map component
 const DynamicDetailMap = dynamic(
@@ -30,6 +31,8 @@ interface Survey {
   surveyorName: string;
   surveyorEmail?: string;
   createdAt: any;
+  verifiedAt: any;
+  verifiedBy: string;
   validatedAt: any;
   validatedBy: string;
   latitude: number;
@@ -64,6 +67,8 @@ interface SurveyProposeDetailProps {
 }
 
 export default function SurveyProposeDetail({ onBack, statusFilter = "diverifikasi", activeKabupaten }: SurveyProposeDetailProps) {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super-admin";
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
@@ -93,6 +98,8 @@ export default function SurveyProposeDetail({ onBack, statusFilter = "diverifika
         surveyorName: doc.data().surveyorName || "Unknown",
         surveyorEmail: doc.data().surveyorEmail,
         createdAt: doc.data().createdAt,
+        verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
+        verifiedBy: doc.data().verifiedBy || doc.data().editedBy || "Admin",
         validatedAt: doc.data().validatedAt || doc.data().createdAt,
         validatedBy: doc.data().validatedBy || doc.data().editedBy || "Admin",
         latitude: doc.data().latitude || 0,
@@ -144,18 +151,30 @@ export default function SurveyProposeDetail({ onBack, statusFilter = "diverifika
   };
 
   const handleExportExcel = () => {
-    const headers = ["No", "Judul", "Nama Jalan", "Surveyor", "Zona", "Koordinat", "Status", "Divalidasi Oleh", "Tanggal"];
-    const rows = filteredSurveys.map((s, i) => [
-      i + 1,
-      s.title,
-      s.namaJalan || "-",
-      s.surveyorName,
-      s.zona || "-",
-      `${s.latitude}, ${s.longitude}`,
-      s.status,
-      s.validatedBy,
-      formatDate(s.validatedAt)
-    ]);
+    const headers = ["No", "Judul", "Nama Jalan", "Surveyor", "Zona", "Koordinat", "Status", "Diverifikasi Oleh", "Tanggal Verifikasi"];
+    if (statusFilter === "tervalidasi" && isSuperAdmin) {
+      headers.push("Divalidasi Oleh", "Tanggal Validasi");
+    }
+
+    const rows = filteredSurveys.map((s, i) => {
+      const row = [
+        i + 1,
+        s.title,
+        s.namaJalan || "-",
+        s.surveyorName,
+        s.zona || "-",
+        `${s.latitude}, ${s.longitude}`,
+        s.status,
+        s.verifiedBy,
+        formatDate(s.verifiedAt),
+      ];
+
+      if (statusFilter === "tervalidasi" && isSuperAdmin) {
+        row.push(s.validatedBy, formatDate(s.validatedAt));
+      }
+
+      return row;
+    });
     
     const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });

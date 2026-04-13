@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collection, getDocs, query, where, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import * as XLSX from 'xlsx';
+import { useAuth } from "@/hooks/useAuth";
 
 const DynamicDetailMap = dynamic(
   () => import("./SurveyDetailMap"),
@@ -29,6 +30,8 @@ interface Survey {
   surveyorName: string;
   surveyorEmail?: string;
   createdAt: TimestampLike;
+  verifiedAt: TimestampLike;
+  verifiedBy: string;
   validatedAt: TimestampLike;
   validatedBy: string;
   latitude: number;
@@ -80,6 +83,8 @@ export default function SurveyPraExistingDetail({
   statusFilter = "diverifikasi",
   activeKabupaten,
 }: SurveyPraExistingDetailProps) {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super-admin";
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
@@ -87,6 +92,30 @@ export default function SurveyPraExistingDetail({
   const [searchQuery, setSearchQuery] = useState("");
   const [filterKecamatan, setFilterKecamatan] = useState("Semua Kecamatan");
   const [filterDesa, setFilterDesa] = useState("Semua Desa");
+  const [floatingScrollbar, setFloatingScrollbar] = useState({
+    visible: false,
+    left: 0,
+    width: 0,
+  });
+  const tableSectionRef = useRef<HTMLDivElement | null>(null);
+  const topScrollbarRef = useRef<HTMLDivElement | null>(null);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const topScrollbarContentRef = useRef<HTMLDivElement | null>(null);
+  const floatingScrollbarRef = useRef<HTMLDivElement | null>(null);
+  const floatingScrollbarContentRef = useRef<HTMLDivElement | null>(null);
+
+  const tableHeaders = [
+    "No",
+    "Judul",
+    "Surveyor",
+    "Lokasi",
+    "Jenis Lampu",
+    "Jumlah",
+    "Koordinat",
+    "Foto",
+    "Status",
+    "Aksi",
+  ];
 
   const fetchSurveys = useCallback(async () => {
     try {
@@ -116,6 +145,8 @@ export default function SurveyPraExistingDetail({
         surveyorName: docSnap.data().surveyorName || "Unknown",
         surveyorEmail: docSnap.data().surveyorEmail,
         createdAt: docSnap.data().createdAt,
+        verifiedAt: docSnap.data().verifiedAt || docSnap.data().createdAt,
+        verifiedBy: docSnap.data().verifiedBy || docSnap.data().editedBy || "Admin",
         validatedAt: docSnap.data().validatedAt || docSnap.data().createdAt,
         validatedBy: docSnap.data().validatedBy || docSnap.data().editedBy || "Admin",
         latitude: docSnap.data().latitude || 0,
@@ -228,11 +259,15 @@ export default function SurveyPraExistingDetail({
       "Koordinat Admin X",
       "Koordinat Admin Y",
       "Status",
-      "Divalidasi Oleh",
-      "Tanggal Validasi",
+      "Diverifikasi Oleh",
+      "Tanggal Verifikasi",
       "Tanggal Survey",
       "Link Foto Petugas",
     ];
+
+    if (statusFilter === "tervalidasi" && isSuperAdmin) {
+      headers.splice(headers.length - 2, 0, "Divalidasi Oleh", "Tanggal Validasi");
+    }
 
     const rows = filteredSurveys.map((survey, index) => {
       // Collect photo URLs
@@ -242,7 +277,7 @@ export default function SurveyPraExistingDetail({
       
       const fotoLink = fotoUrls.length > 0 ? fotoUrls.join(" | ") : "";
 
-      return [
+      const row = [
         index + 1,
         survey.id || "",
         survey.title || "",
@@ -266,11 +301,17 @@ export default function SurveyPraExistingDetail({
         survey.adminLongitude?.toFixed(7) || "",
         survey.adminLatitude?.toFixed(7) || "",
         survey.status || "",
-        survey.validatedBy || "",
-        formatDate(survey.validatedAt) || "",
-        formatDate(survey.createdAt) || "",
-        fotoLink,
+        survey.verifiedBy || "",
+        formatDate(survey.verifiedAt) || "",
       ];
+
+      if (statusFilter === "tervalidasi" && isSuperAdmin) {
+        row.push(survey.validatedBy || "", formatDate(survey.validatedAt) || "");
+      }
+
+      row.push(formatDate(survey.createdAt) || "", fotoLink);
+
+      return row;
     });
 
     // Create workbook
@@ -412,6 +453,108 @@ export default function SurveyPraExistingDetail({
     }
   };
 
+  useEffect(() => {
+    const topScrollbar = topScrollbarRef.current;
+    const tableScroll = tableScrollRef.current;
+    const topScrollbarContent = topScrollbarContentRef.current;
+    const floatingScrollbarNode = floatingScrollbarRef.current;
+    const floatingScrollbarContent = floatingScrollbarContentRef.current;
+
+    if (!topScrollbar || !tableScroll || !topScrollbarContent) return;
+
+    const syncScrollbarWidth = () => {
+      const scrollWidth = `${tableScroll.scrollWidth}px`;
+      topScrollbarContent.style.width = scrollWidth;
+      if (floatingScrollbarContent) {
+        floatingScrollbarContent.style.width = scrollWidth;
+      }
+    };
+
+    let isSyncingScroll = false;
+
+    const syncScrollLeft = (source: HTMLDivElement) => {
+      if (isSyncingScroll) return;
+
+      isSyncingScroll = true;
+      const nextLeft = source.scrollLeft;
+      const scrollTargets = [topScrollbar, floatingScrollbarNode, tableScroll].filter(
+        (node): node is HTMLDivElement => node instanceof HTMLDivElement
+      );
+
+      scrollTargets.forEach((node) => {
+        if (node !== source && node.scrollLeft !== nextLeft) {
+          node.scrollLeft = nextLeft;
+        }
+      });
+      isSyncingScroll = false;
+    };
+
+    const handleTopScroll = () => {
+      syncScrollLeft(topScrollbar);
+    };
+
+    const handleFloatingScroll = () => {
+      if (floatingScrollbarNode) {
+        syncScrollLeft(floatingScrollbarNode);
+      }
+    };
+
+    const handleTableScroll = () => {
+      syncScrollLeft(tableScroll);
+    };
+
+    const updateFloatingScrollbar = () => {
+      const tableSection = tableSectionRef.current;
+      if (!tableSection) return;
+
+      const sectionRect = tableSection.getBoundingClientRect();
+      const scrollRect = tableScroll.getBoundingClientRect();
+      const topOffset = 16;
+      const shouldFloat = sectionRect.top < topOffset && sectionRect.bottom > topOffset + 72;
+
+      setFloatingScrollbar((current) => {
+        const next = {
+          visible: shouldFloat,
+          left: scrollRect.left,
+          width: scrollRect.width,
+        };
+
+        if (
+          current.visible === next.visible &&
+          current.left === next.left &&
+          current.width === next.width
+        ) {
+          return current;
+        }
+
+        return next;
+      });
+    };
+
+    const scrollHost = tableSectionRef.current?.closest("main");
+
+    syncScrollbarWidth();
+    updateFloatingScrollbar();
+
+    topScrollbar.addEventListener("scroll", handleTopScroll);
+    floatingScrollbarNode?.addEventListener("scroll", handleFloatingScroll);
+    tableScroll.addEventListener("scroll", handleTableScroll);
+    window.addEventListener("resize", syncScrollbarWidth);
+    window.addEventListener("resize", updateFloatingScrollbar);
+    window.addEventListener("scroll", updateFloatingScrollbar, true);
+    scrollHost?.addEventListener("scroll", updateFloatingScrollbar);
+
+    return () => {
+      topScrollbar.removeEventListener("scroll", handleTopScroll);
+      floatingScrollbarNode?.removeEventListener("scroll", handleFloatingScroll);
+      tableScroll.removeEventListener("scroll", handleTableScroll);
+      window.removeEventListener("resize", syncScrollbarWidth);
+      window.removeEventListener("resize", updateFloatingScrollbar);
+      window.removeEventListener("scroll", updateFloatingScrollbar, true);
+      scrollHost?.removeEventListener("scroll", updateFloatingScrollbar);
+    };
+  }, [filteredSurveys.length, floatingScrollbar.visible]);
+
   return (
     <div className="space-y-6">
       <div className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-2xl shadow-xl p-6 text-white">
@@ -493,7 +636,7 @@ export default function SurveyPraExistingDetail({
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="w-16 h-16 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mb-4"></div>
@@ -512,20 +655,46 @@ export default function SurveyPraExistingDetail({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div ref={tableSectionRef} className="relative rounded-2xl overflow-hidden bg-white">
+            {floatingScrollbar.visible && (
+              <div
+                className="fixed z-40 rounded-full border border-gray-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur"
+                style={{
+                  top: 16,
+                  left: floatingScrollbar.left,
+                  width: floatingScrollbar.width,
+                }}
+              >
+                <div
+                  ref={floatingScrollbarRef}
+                  className="overflow-x-auto overflow-y-hidden rounded-full bg-gray-100"
+                >
+                  <div ref={floatingScrollbarContentRef} className="h-3 min-w-full" />
+                </div>
+              </div>
+            )}
+            <div className="border-b border-gray-200 bg-white/95 px-6 py-3 shadow-sm backdrop-blur rounded-t-2xl">
+              <div
+                ref={topScrollbarRef}
+                className="overflow-x-auto overflow-y-hidden rounded-full bg-gray-100"
+              >
+                <div ref={topScrollbarContentRef} className="h-3 min-w-full" />
+              </div>
+            </div>
+            <div ref={tableScrollRef} className="overflow-x-auto rounded-b-2xl">
+              <table className="w-full min-w-[1400px]">
               <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">No</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Judul</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Surveyor</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Lokasi</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Jenis Lampu</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Jumlah</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Koordinat</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Foto</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Aksi</th>
+                  {tableHeaders.map((header) => (
+                    <th
+                      key={header}
+                      className={`bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-gray-600 ${
+                        header === "Aksi" ? "text-center" : ""
+                      }`}
+                    >
+                      {header}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -628,6 +797,7 @@ export default function SurveyPraExistingDetail({
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>

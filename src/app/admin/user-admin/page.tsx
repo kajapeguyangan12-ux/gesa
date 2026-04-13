@@ -90,6 +90,7 @@ const UserCard = memo(({ user, classes, onViewDetail, onDelete, isSuperAdmin }: 
 UserCard.displayName = "UserCard";
 
 function UserAdminContent() {
+  const DEFAULT_VISIBLE_USERS = 4;
   const { user } = useAuth();
   const router = useRouter();
   const [superAdmins, setSuperAdmins] = useState<User[]>([]);
@@ -116,6 +117,7 @@ function UserAdminContent() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
   const isSuperAdmin = user?.role === "super-admin";
 
@@ -337,8 +339,7 @@ function UserAdminContent() {
   const renderUserSection = (
     title: string,
     users: User[],
-    color: string,
-    badgeLabel: string
+    color: string
   ) => {
     const colorClasses: Record<string, any> = {
       red: {
@@ -425,6 +426,10 @@ function UserAdminContent() {
     };
 
     const classes = colorClasses[color] || colorClasses.blue;
+    const sectionKey = `${title}-${color}`;
+    const isExpanded = expandedSections[sectionKey] || false;
+    const visibleUsers = isExpanded ? users : users.slice(0, DEFAULT_VISIBLE_USERS);
+    const hasMoreUsers = users.length > DEFAULT_VISIBLE_USERS;
 
     return (
       <div className="mb-8">
@@ -448,18 +453,49 @@ function UserAdminContent() {
             <p className="text-gray-600">Belum ada {title.toLowerCase()} terdaftar</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {users.map((user) => (
-              <UserCard 
-                key={user.id} 
-                user={user} 
-                classes={classes}
-                onViewDetail={handleViewDetail}
-                onDelete={handleDeleteClick}
-                isSuperAdmin={isSuperAdmin}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {visibleUsers.map((user) => (
+                <UserCard 
+                  key={user.id} 
+                  user={user} 
+                  classes={classes}
+                  onViewDetail={handleViewDetail}
+                  onDelete={handleDeleteClick}
+                  isSuperAdmin={isSuperAdmin}
+                />
+              ))}
+            </div>
+
+            {hasMoreUsers && (
+              <div className="mt-4 flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedSections((current) => ({
+                      ...current,
+                      [sectionKey]: !isExpanded,
+                    }))
+                  }
+                  className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-all ${
+                    isExpanded
+                      ? "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                      : `border-transparent bg-gradient-to-r ${classes.badge} text-white hover:opacity-95`
+                  }`}
+                >
+                  <span>{isExpanded ? "Lihat lebih sedikit" : `Lihat lebih banyak (${users.length - DEFAULT_VISIBLE_USERS} lagi)`}</span>
+                  <svg
+                    className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     );
@@ -529,15 +565,15 @@ function UserAdminContent() {
           </div>
         ) : (
           <div className="space-y-6">
-            {renderUserSection("Super Administrator", superAdmins, "red", "Super Admin")}
-            {renderUserSection("Administrator", administrators, "purple", "Admin Survey")}
-            {renderUserSection("Petugas Survey Existing", surveyExisting, "blue", "Survey Existing")}
-            {renderUserSection("Petugas Survey APJ Propose", surveyAPJ, "green", "Survey APJ")}
-            {renderUserSection("Petugas Survey Pra Existing", surveyPraExisting, "emerald", "Pra Existing")}
-            {renderUserSection("Petugas Survey Cahaya", surveyCahaya, "orange", "Survey Cahaya")}
-            {renderUserSection("Petugas Kontruksi", kontruksi, "teal", "Kontruksi")}
-            {renderUserSection("Petugas O&M", om, "indigo", "O&M")}
-            {renderUserSection("Petugas BMD & Gudang Project", bmdGudang, "pink", "BMD & Gudang")}
+            {renderUserSection("Super Administrator", superAdmins, "red")}
+            {renderUserSection("Administrator", administrators, "purple")}
+            {renderUserSection("Petugas Survey Existing", surveyExisting, "blue")}
+            {renderUserSection("Petugas Survey APJ Propose", surveyAPJ, "green")}
+            {renderUserSection("Petugas Survey Pra Existing", surveyPraExisting, "emerald")}
+            {renderUserSection("Petugas Survey Cahaya", surveyCahaya, "orange")}
+            {renderUserSection("Petugas Kontruksi", kontruksi, "teal")}
+            {renderUserSection("Petugas O&M", om, "indigo")}
+            {renderUserSection("Petugas BMD & Gudang Project", bmdGudang, "pink")}
           </div>
         )}
       </main>

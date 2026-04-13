@@ -15,6 +15,8 @@ interface Survey {
   status: string;
   surveyorName: string;
   createdAt: { toDate?: () => Date } | Date | string | number | null;
+  verifiedAt?: { toDate?: () => Date } | Date | string | number | null;
+  validatedAt?: { toDate?: () => Date } | Date | string | number | null;
   taskId?: string;
   taskTitle?: string;
   kabupaten?: string;
@@ -99,6 +101,8 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
           status: doc.data().status || targetStatus,
           surveyorName: doc.data().surveyorName || "Unknown",
           createdAt: doc.data().createdAt,
+          verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
+          validatedAt: doc.data().validatedAt || null,
           taskId: doc.data().taskId || "",
           taskTitle: doc.data().taskTitle || "",
           kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
@@ -113,6 +117,8 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
           status: doc.data().status || targetStatus,
           surveyorName: doc.data().surveyorName || "Unknown",
           createdAt: doc.data().createdAt,
+          verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
+          validatedAt: doc.data().validatedAt || null,
           taskId: doc.data().taskId || "",
           taskTitle: doc.data().taskTitle || "",
           kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
@@ -127,6 +133,8 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
           status: doc.data().status || targetStatus,
           surveyorName: doc.data().surveyorName || "Unknown",
           createdAt: doc.data().createdAt,
+          verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
+          validatedAt: doc.data().validatedAt || null,
           taskId: doc.data().taskId || "",
           taskTitle: doc.data().taskTitle || "",
           kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
@@ -188,19 +196,31 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
   };
 
   const handleExportCsv = () => {
-    const headers = ["No", "Judul", "Tipe", "Status", "Surveyor", "Kabupaten", "Kecamatan", "Desa", "Banjar", "Tanggal"];
-    const rows = surveys.map((survey, index) => [
-      index + 1,
-      survey.title,
-      survey.type,
-      survey.status,
-      survey.surveyorName,
-      survey.kabupaten || "-",
-      survey.kecamatan || "-",
-      survey.desa || "-",
-      survey.banjar || "-",
-      formatDate(survey.createdAt),
-    ]);
+    const headers = ["No", "Judul", "Tipe", "Status", "Surveyor", "Kabupaten", "Kecamatan", "Desa", "Banjar", "Tanggal Verifikasi"];
+    if (isSuperAdmin) {
+      headers.push("Tanggal Validasi");
+    }
+
+    const rows = surveys.map((survey, index) => {
+      const row = [
+        index + 1,
+        survey.title,
+        survey.type,
+        survey.status,
+        survey.surveyorName,
+        survey.kabupaten || "-",
+        survey.kecamatan || "-",
+        survey.desa || "-",
+        survey.banjar || "-",
+        formatDate(survey.verifiedAt || survey.createdAt),
+      ];
+
+      if (isSuperAdmin) {
+        row.push(formatDate(survey.validatedAt));
+      }
+
+      return row;
+    });
     const csvContent = [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -210,7 +230,7 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
     link.click();
   };
 
-  const formatDate = (timestamp: Survey["createdAt"]) => {
+  const formatDate = (timestamp: Survey["createdAt"] | Survey["verifiedAt"] | Survey["validatedAt"]) => {
     if (!timestamp) return "-";
     if (typeof timestamp === "object" && timestamp !== null && "toDate" in timestamp && typeof timestamp.toDate === "function") {
       return timestamp.toDate().toLocaleString("id-ID");

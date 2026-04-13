@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { collection, getDocs, doc, updateDoc, deleteDoc, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
@@ -135,9 +135,14 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFormData, setEditFormData] = useState<Survey | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isBulkValidating, setIsBulkValidating] = useState(false);
   const [filterType, setFilterType] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterSurveyor, setFilterSurveyor] = useState<string>("all");
+  const [filterKecamatan, setFilterKecamatan] = useState<string>("all");
+  const [filterDesa, setFilterDesa] = useState<string>("all");
   const [coordinateSearch, setCoordinateSearch] = useState("");
+  const [selectedSurveyIds, setSelectedSurveyIds] = useState<string[]>([]);
   const [stats, setStats] = useState({
     total: 0,
     existing: 0,
@@ -148,6 +153,10 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   useEffect(() => {
     fetchAllSurveys();
   }, [activeKabupaten]);
+
+  useEffect(() => {
+    setSelectedSurveyIds([]);
+  }, [filterType, filterStatus, filterSurveyor, filterKecamatan, filterDesa, coordinateSearch]);
 
   const fetchAllSurveys = async () => {
     try {
@@ -398,6 +407,95 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     }
   };
 
+  const handleBulkValidasi = async () => {
+    const selectedSurveys = filteredSurveys.filter((survey) => selectedSurveyIds.includes(survey.id));
+    if (selectedSurveys.length === 0) {
+      alert("Pilih minimal satu data untuk divalidasi.");
+      return;
+    }
+
+    if (!confirm(`Validasi ${selectedSurveys.length} data terpilih dan pindahkan ke Data Survey Valid?`)) return;
+
+    try {
+      setIsBulkValidating(true);
+      const storedUser = localStorage.getItem("gesa_user");
+      const currentUser = storedUser ? JSON.parse(storedUser) : null;
+
+      await Promise.all(
+        selectedSurveys.map(async (survey) => {
+          const collectionName =
+            survey.type === "existing"
+              ? "survey-existing"
+              : survey.type === "propose"
+              ? "survey-apj-propose"
+              : "survey-pra-existing";
+          const surveyDoc = doc(db, collectionName, survey.id);
+          const normalizedAdminLatitude = Number(survey.adminLatitude);
+          const normalizedAdminLongitude = Number(survey.adminLongitude);
+          const shouldUseAdminCoordinate =
+            survey.type === "pra-existing" &&
+            Number.isFinite(normalizedAdminLatitude) &&
+            Number.isFinite(normalizedAdminLongitude);
+
+          await updateDoc(surveyDoc, {
+            status: "tervalidasi",
+            ...(shouldUseAdminCoordinate
+              ? {
+                  latitude: normalizedAdminLatitude,
+                  longitude: normalizedAdminLongitude,
+                  finalLatitude: normalizedAdminLatitude,
+                  finalLongitude: normalizedAdminLongitude,
+                  coordinateSource: "admin",
+                }
+              : {}),
+            validatedBy: currentUser?.name || currentUser?.email || "Admin",
+            validatedAt: new Date(),
+          });
+        })
+      );
+
+      setSelectedSurveyIds([]);
+      await fetchAllSurveys();
+      alert(`${selectedSurveys.length} data berhasil divalidasi.`);
+    } catch (error) {
+      console.error("Error bulk validating surveys:", error);
+      alert("Gagal memvalidasi data terpilih: " + error);
+    } finally {
+      setIsBulkValidating(false);
+    }
+  };
+
+  const handleExportSelected = () => {
+    const selectedSurveys = filteredSurveys.filter((survey) => selectedSurveyIds.includes(survey.id));
+    if (selectedSurveys.length === 0) {
+      alert("Pilih minimal satu data untuk diunduh.");
+      return;
+    }
+
+    const headers = ["No", "Nama Jalan", "Tipe", "Surveyor", "Kecamatan", "Desa", "Latitude", "Longitude", "Status", "Tanggal"];
+    const rows = selectedSurveys.map((survey, index) => [
+      index + 1,
+      survey.namaJalan || survey.title || "",
+      survey.type,
+      survey.surveyorName || "",
+      survey.kecamatan || "",
+      survey.desa || "",
+      getResolvedLatitude(survey) ?? "",
+      getResolvedLongitude(survey) ?? "",
+      survey.status || "",
+      formatDate(survey.createdAt),
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `validasi-data-terpilih-${new Date().toISOString().split("T")[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleTolak = async (survey: Survey) => {
     const alasan = prompt('Masukkan alasan penolakan:');
     if (!alasan) return;
@@ -500,10 +598,40 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   };
 
   const normalizeCoordinateText = (value: string) => value.replace(/\s+/g, "");
+  const getResolvedLatitude = (survey: Survey) =>
+    typeof survey.finalLatitude === "number" && Number.isFinite(survey.finalLatitude)
+      ? survey.finalLatitude
+      : typeof survey.adminLatitude === "number" && Number.isFinite(survey.adminLatitude)
+        ? survey.adminLatitude
+        : survey.latitude;
+  const getResolvedLongitude = (survey: Survey) =>
+    typeof survey.finalLongitude === "number" && Number.isFinite(survey.finalLongitude)
+      ? survey.finalLongitude
+      : typeof survey.adminLongitude === "number" && Number.isFinite(survey.adminLongitude)
+        ? survey.adminLongitude
+        : survey.longitude;
+
+  const surveyorOptions = useMemo(
+    () => ["all", ...new Set(surveys.map((survey) => survey.surveyorName).filter(Boolean))],
+    [surveys]
+  );
+
+  const kecamatanOptions = useMemo(
+    () => ["all", ...new Set(surveys.map((survey) => survey.kecamatan).filter(Boolean))],
+    [surveys]
+  );
+
+  const desaOptions = useMemo(() => {
+    const base = filterKecamatan === "all" ? surveys : surveys.filter((survey) => survey.kecamatan === filterKecamatan);
+    return ["all", ...new Set(base.map((survey) => survey.desa).filter(Boolean))];
+  }, [filterKecamatan, surveys]);
 
   const filteredSurveys = surveys.filter(survey => {
     if (filterType !== "all" && survey.type !== filterType) return false;
     if (filterStatus !== "all" && survey.status !== filterStatus) return false;
+    if (filterSurveyor !== "all" && survey.surveyorName !== filterSurveyor) return false;
+    if (filterKecamatan !== "all" && survey.kecamatan !== filterKecamatan) return false;
+    if (filterDesa !== "all" && survey.desa !== filterDesa) return false;
 
     if (coordinateSearch.trim()) {
       const searchTerms = coordinateSearch
@@ -511,10 +639,12 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         .map((term) => normalizeCoordinateText(term.trim()))
         .filter(Boolean);
       const coordinateValues = [
-        survey.latitude,
-        survey.longitude,
+        getResolvedLatitude(survey),
+        getResolvedLongitude(survey),
         survey.adminLatitude,
         survey.adminLongitude,
+        survey.finalLatitude,
+        survey.finalLongitude,
       ]
         .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
         .flatMap((value) => [value.toString(), value.toFixed(7)]);
@@ -528,6 +658,22 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
 
     return true;
   });
+
+  const allFilteredSelected = filteredSurveys.length > 0 && filteredSurveys.every((survey) => selectedSurveyIds.includes(survey.id));
+
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedSurveyIds((prev) => prev.filter((id) => !filteredSurveys.some((survey) => survey.id === id)));
+      return;
+    }
+    setSelectedSurveyIds((prev) => Array.from(new Set([...prev, ...filteredSurveys.map((survey) => survey.id)])));
+  };
+
+  const toggleSelectSurvey = (surveyId: string) => {
+    setSelectedSurveyIds((prev) =>
+      prev.includes(surveyId) ? prev.filter((id) => id !== surveyId) : [...prev, surveyId]
+    );
+  };
 
   return (
     <>
@@ -545,7 +691,8 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
 
         {/* Filters */}
         <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
-          <div className="flex flex-col lg:flex-row items-start lg:items-center gap-3">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col lg:flex-row items-start lg:items-center gap-3">
             <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
@@ -573,6 +720,45 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
               <option value="tervalidasi">Tervalidasi</option>
               <option value="ditolak">Ditolak</option>
             </select>
+            <select
+              value={filterSurveyor}
+              onChange={(e) => setFilterSurveyor(e.target.value)}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">Semua Petugas</option>
+              {surveyorOptions.filter((option) => option !== "all").map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <select
+              value={filterKecamatan}
+              onChange={(e) => {
+                setFilterKecamatan(e.target.value);
+                setFilterDesa("all");
+              }}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">Semua Kecamatan</option>
+              {kecamatanOptions.filter((option) => option !== "all").map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <select
+              value={filterDesa}
+              onChange={(e) => setFilterDesa(e.target.value)}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">Semua Desa</option>
+              {desaOptions.filter((option) => option !== "all").map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
             <div className="w-full lg:w-80">
               <input
                 type="text"
@@ -584,6 +770,35 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
             </div>
             <div className="ml-auto text-sm text-gray-600 font-medium">
               Total: {filteredSurveys.length} dari {surveys.length} survey
+            </div>
+          </div>
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+              <div className="text-sm text-gray-600">
+                Terpilih: <span className="font-semibold text-gray-900">{selectedSurveyIds.length}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={toggleSelectAll}
+                  disabled={filteredSurveys.length === 0}
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {allFilteredSelected ? "Batal Pilih Semua" : "Pilih Semua"}
+                </button>
+                <button
+                  onClick={handleExportSelected}
+                  disabled={selectedSurveyIds.length === 0}
+                  className="px-4 py-2 bg-white border border-blue-300 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-50 disabled:opacity-50"
+                >
+                  Download Terpilih
+                </button>
+                <button
+                  onClick={handleBulkValidasi}
+                  disabled={selectedSurveyIds.length === 0 || isBulkValidating}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+                >
+                  {isBulkValidating ? "Memvalidasi..." : "Validasi Terpilih"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -609,10 +824,20 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
             <table className="w-full text-left">
               <thead className="bg-gray-50 border-b-2 border-gray-200">
                 <tr>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-900 text-center">
+                    <input
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-900">No</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-900">Nama Jalan</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-900">Tipe</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-900">Surveyor</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-900">Kecamatan</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-900">Desa</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-900">Tanggal</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-900">Status</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-900 text-center">Aksi</th>
@@ -621,6 +846,14 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
               <tbody className="divide-y divide-gray-200">
                 {filteredSurveys.map((survey, index) => (
                   <tr key={survey.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedSurveyIds.includes(survey.id)}
+                        onChange={() => toggleSelectSurvey(survey.id)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-900">{index + 1}</td>
                     <td className="px-4 py-3 text-sm text-gray-900 font-medium">
                       {survey.namaJalan || survey.title || "N/A"}
@@ -635,6 +868,8 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900">{survey.surveyorName || "N/A"}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{survey.kecamatan || "N/A"}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{survey.desa || "N/A"}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{formatDate(survey.createdAt)}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusBadge(survey.status)}`}>
@@ -662,7 +897,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                         </button>
-                        {survey.status === "menunggu" && (
+                        {survey.status === "diverifikasi" && (
                           <button 
                             onClick={() => handleValidasi(survey)}
                             className="p-2 hover:bg-green-100 rounded-lg transition-all" 

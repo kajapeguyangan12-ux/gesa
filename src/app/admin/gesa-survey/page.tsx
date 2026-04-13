@@ -208,7 +208,13 @@ function GesaSurveyContent() {
               Ganti kabupaten
             </button>
           </div>
-          {activeMenu === "dashboard" && <DashboardContent setActiveMenu={setActiveMenu} isSuperAdmin={isSuperAdmin} />}
+          {activeMenu === "dashboard" && (
+            <DashboardContent
+              setActiveMenu={setActiveMenu}
+              isSuperAdmin={isSuperAdmin}
+              activeKabupaten={activeKabupaten}
+            />
+          )}
           {activeMenu === "distribusi-tugas" && <DistribusiTugas setActiveMenu={setActiveMenu} />}
           {activeMenu === "validasi-survey" && <ValidasiSurvey activeKabupaten={activeKabupaten} />}
           {activeMenu === "data-survey-valid" && <DataSurveyValid activeKabupaten={activeKabupaten} />}
