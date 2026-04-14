@@ -55,6 +55,7 @@ interface DashboardReportState {
   loading: boolean;
   error: string;
   allRows: SurveyReportRow[];
+  allRowsRaw: SurveyReportRow[];
   totalUniqueSurveyors: number;
   propose: ReportSummary;
   existing: ReportSummary;
@@ -77,6 +78,7 @@ const initialReportState: DashboardReportState = {
   loading: true,
   error: "",
   allRows: [],
+  allRowsRaw: [],
   totalUniqueSurveyors: 0,
   propose: emptySummary,
   existing: emptySummary,
@@ -456,12 +458,16 @@ export default function DashboardContent({
         const filteredExistingRows = filterByAdminTask(existingRows);
         const filteredPraExistingRows = filterByAdminTask(praExistingRows);
 
+        const rawRows = [...proposeRows, ...existingRows, ...praExistingRows];
+        const filteredRows = [...filteredProposeRows, ...filteredExistingRows, ...filteredPraExistingRows];
+
         setReportState({
           loading: false,
           error: "",
-          allRows: [...filteredProposeRows, ...filteredExistingRows, ...filteredPraExistingRows],
+          allRows: filteredRows,
+          allRowsRaw: rawRows,
           totalUniqueSurveyors: new Set(
-            [...filteredProposeRows, ...filteredExistingRows, ...filteredPraExistingRows]
+            filteredRows
               .map((row) => row.surveyorName?.trim().toLowerCase())
               .filter((value): value is string => Boolean(value))
           ).size,
@@ -564,14 +570,15 @@ export default function DashboardContent({
   const adminOwnVerifiedRows = useMemo(() => {
     if (isSuperAdmin || !adminIdentityKeys.length) return [];
 
-    return reportState.allRows
+    const rawRows = reportState.allRowsRaw ?? [];
+    return rawRows
       .filter((row) => row.status?.toLowerCase() === "diverifikasi")
       .filter((row) => {
         const verifiedBy = row.verifiedBy?.trim().toLowerCase();
         return Boolean(verifiedBy && adminIdentityKeys.includes(verifiedBy));
       })
       .sort((a, b) => (resolveTimestamp(b.verifiedAt)?.getTime() || 0) - (resolveTimestamp(a.verifiedAt)?.getTime() || 0));
-  }, [adminIdentityKeys, isSuperAdmin, reportState.allRows]);
+  }, [adminIdentityKeys, isSuperAdmin, reportState.allRowsRaw]);
 
   const adminDailyVerificationRows = useMemo(
     () => buildDailyVerificationSummary(adminOwnVerifiedRows),

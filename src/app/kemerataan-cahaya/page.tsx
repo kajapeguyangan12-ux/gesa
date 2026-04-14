@@ -56,6 +56,7 @@ export function KemeratanCahayaContent() {
   const [pendingKabupaten, setPendingKabupaten] = useState<string | null>(null);
   const [showKabupatenPicker, setShowKabupatenPicker] = useState(false);
   const [showKabupatenConfirm, setShowKabupatenConfirm] = useState(false);
+  const useKabupatenFilter = false; // khusus kemerataan: gunakan data report tanpa wajib pilih kabupaten
 
   const [jenisJalan, setJenisJalan] = useState<JenisJalan>("");
   const [jarakTiang, setJarakTiang] = useState("");
@@ -107,6 +108,11 @@ export function KemeratanCahayaContent() {
 
   useEffect(() => {
     if (!user) return;
+    if (!useKabupatenFilter) {
+      setActiveKabupaten(null);
+      setShowKabupatenPicker(false);
+      return;
+    }
     const key = getKabupatenStorageKey();
     const stored = key ? localStorage.getItem(key) : null;
     const allowedIds = availableKabupaten.map((k) => k.id);
@@ -261,11 +267,7 @@ export function KemeratanCahayaContent() {
     setIsGridReady(true);
     // Autoload reports list so petugas can pick immediately
     try {
-      if (!activeKabupaten) {
-        setShowKabupatenPicker(true);
-      } else {
-        fetchReportsList();
-      }
+      fetchReportsList();
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn("Autofetch reports failed:", e);
@@ -289,11 +291,6 @@ export function KemeratanCahayaContent() {
 
   const handleLoadDataFromTop = useCallback(() => {
     (async () => {
-      if (!activeKabupaten) {
-        alert("Pilih kabupaten terlebih dahulu!");
-        setShowKabupatenPicker(true);
-        return;
-      }
       // Prioritize selected report for Load Data Pertama
       if (selectedReportTopData) {
         if (selectedReportTopId && lastLoadedTopId === selectedReportTopId) return;
@@ -303,12 +300,12 @@ export function KemeratanCahayaContent() {
 
       // Fallback: fetch latest report
       try {
-        const q = query(
-          collection(db, "reports"),
-          where("kabupaten", "==", activeKabupaten),
-          orderBy("createdAt", "desc"),
-          limit(1)
-        );
+        const constraints: any[] = [];
+        if (useKabupatenFilter && activeKabupaten) {
+          constraints.push(where("kabupaten", "==", activeKabupaten));
+        }
+        constraints.push(orderBy("createdAt", "desc"), limit(1));
+        const q = query(collection(db, "reports"), ...constraints);
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
           const data = snapshot.docs[0].data();
@@ -324,11 +321,6 @@ export function KemeratanCahayaContent() {
 
   const handleLoadDataFromBottom = useCallback(() => {
     (async () => {
-      if (!activeKabupaten) {
-        alert("Pilih kabupaten terlebih dahulu!");
-        setShowKabupatenPicker(true);
-        return;
-      }
       // Prioritize selected report for Load Data Kedua
       if (selectedReportBottomData) {
         if (selectedReportBottomId && lastLoadedBottomId === selectedReportBottomId) return;
@@ -338,12 +330,12 @@ export function KemeratanCahayaContent() {
 
       // Fallback: fetch oldest report
       try {
-        const q = query(
-          collection(db, "reports"),
-          where("kabupaten", "==", activeKabupaten),
-          orderBy("createdAt", "asc"),
-          limit(1)
-        );
+        const constraints: any[] = [];
+        if (useKabupatenFilter && activeKabupaten) {
+          constraints.push(where("kabupaten", "==", activeKabupaten));
+        }
+        constraints.push(orderBy("createdAt", "asc"), limit(1));
+        const q = query(collection(db, "reports"), ...constraints);
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
           const data = snapshot.docs[0].data();
@@ -359,11 +351,6 @@ export function KemeratanCahayaContent() {
 
   const handleLoadDataFromMiddle = useCallback(() => {
     (async () => {
-      if (!activeKabupaten) {
-        alert("Pilih kabupaten terlebih dahulu!");
-        setShowKabupatenPicker(true);
-        return;
-      }
       if (selectedReportMiddleData) {
         if (selectedReportMiddleId && lastLoadedMiddleId === selectedReportMiddleId) return;
         const ok = applyReportToGrid(selectedReportMiddleData, "middle", selectedReportMiddleId || undefined);
@@ -371,12 +358,12 @@ export function KemeratanCahayaContent() {
       }
 
       try {
-        const q = query(
-          collection(db, "reports"),
-          where("kabupaten", "==", activeKabupaten),
-          orderBy("createdAt", "desc"),
-          limit(1)
-        );
+        const constraints: any[] = [];
+        if (useKabupatenFilter && activeKabupaten) {
+          constraints.push(where("kabupaten", "==", activeKabupaten));
+        }
+        constraints.push(orderBy("createdAt", "desc"), limit(1));
+        const q = query(collection(db, "reports"), ...constraints);
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
           const data = snapshot.docs[0].data();
@@ -663,17 +650,13 @@ export function KemeratanCahayaContent() {
 
   const fetchReportsList = async () => {
     try {
-      if (!activeKabupaten) {
-        setReportsList([]);
-        return;
-      }
       setReportsLoading(true);
-      const q = query(
-        collection(db, "reports"),
-        where("kabupaten", "==", activeKabupaten),
-        orderBy("createdAt", "desc"),
-        limit(100)
-      );
+      const constraints: any[] = [];
+      if (useKabupatenFilter && activeKabupaten) {
+        constraints.push(where("kabupaten", "==", activeKabupaten));
+      }
+      constraints.push(orderBy("createdAt", "desc"), limit(100));
+      const q = query(collection(db, "reports"), ...constraints);
       const snapshot = await getDocs(q);
       const list = snapshot.docs.map((d) => ({ id: d.id, label: deriveReportLabel(d.data()), data: d.data() }));
       setReportsList(list);
@@ -844,7 +827,7 @@ export function KemeratanCahayaContent() {
     () => kabupatenOptions.find((k) => k.id === activeKabupaten)?.name ?? "-",
     [kabupatenOptions, activeKabupaten]
   );
-  const isKabupatenReady = Boolean(activeKabupaten);
+  const isKabupatenReady = !useKabupatenFilter || Boolean(activeKabupaten);
 
   const pendingKabupatenName = useMemo(
     () => kabupatenOptions.find((k) => k.id === pendingKabupaten)?.name ?? "-",
@@ -908,7 +891,7 @@ export function KemeratanCahayaContent() {
                   <p className="text-xs sm:text-sm text-gray-600 font-medium">
                     Perhitungan Uniformity Ratio
                   </p>
-                  {user && (
+                  {useKabupatenFilter && user && (
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <span className="text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
                         Kabupaten aktif: {activeKabupatenName}
@@ -1620,7 +1603,7 @@ export function KemeratanCahayaContent() {
         </div>
       </main>
     </div>
-    {showKabupatenPicker && (
+    {showKabupatenPicker && useKabupatenFilter && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
           <div className="p-5 border-b border-gray-200">
