@@ -4,8 +4,9 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { collection, getDocs, query, where, doc, updateDoc } from "firebase/firestore";
+import { collection, getDocs, query, where, doc, updateDoc, limit, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { fetchWithCache } from "@/utils/firestoreCache";
 import dynamic from "next/dynamic";
 
 // Dynamic import for KMZ Map Preview
@@ -64,19 +65,29 @@ function TugasSurveyContent() {
     try {
       setLoading(true);
       
-      // Fetch tasks assigned to current user
-      const tasksRef = collection(db, "tasks");
-      const q = query(tasksRef, where("surveyorId", "==", user?.uid));
-      const snapshot = await getDocs(q);
-      
-      const tasksData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Task[];
+      const tasksData = await fetchWithCache<Task[]>(
+        `tasks_${user?.uid}`,
+        async () => {
+          const tasksRef = collection(db, "tasks");
+          const q = query(
+            tasksRef,
+            where("surveyorId", "==", user?.uid),
+            orderBy("createdAt", "desc"),
+            limit(100)
+          );
+          const snapshot = await getDocs(q);
+          return snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as Task[];
+        },
+        120_000
+      );
       
       setTasks(tasksData);
     } catch (error) {
       console.error("Error fetching tasks:", error);
+      setTasks([]);
     } finally {
       setLoading(false);
     }

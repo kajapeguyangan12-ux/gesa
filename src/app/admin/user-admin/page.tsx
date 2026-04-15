@@ -4,8 +4,9 @@ import { useState, useEffect, memo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { collection, getDocs, query, where, orderBy, addDoc, serverTimestamp, doc, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, query, where, orderBy, limit, addDoc, serverTimestamp, doc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
@@ -130,114 +131,184 @@ function UserAdminContent() {
       setLoading(true);
       
       // Fetch super administrators
-      const superAdminQuery = query(
-        collection(db, "User-Admin"),
-        where("role", "==", "super-admin"),
-        orderBy("createdAt", "desc")
+      const superAdminData = await fetchWithCache<User[]>(
+        "user-admin_super-admin",
+        async () => {
+          const superAdminQuery = query(
+            collection(db, "User-Admin"),
+            where("role", "==", "super-admin"),
+            orderBy("createdAt", "desc"),
+            limit(100)
+          );
+          const superAdminSnapshot = await getDocs(superAdminQuery);
+          return superAdminSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as User[];
+        },
+        300_000
       );
-      const superAdminSnapshot = await getDocs(superAdminQuery);
-      const superAdminData = superAdminSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as User[];
       setSuperAdmins(superAdminData);
       
       // Fetch administrators
-      const adminQuery = query(
-        collection(db, "User-Admin"),
-        where("role", "==", "admin"),
-        orderBy("createdAt", "desc")
+      const adminData = await fetchWithCache<User[]>(
+        "user-admin_admin",
+        async () => {
+          const adminQuery = query(
+            collection(db, "User-Admin"),
+            where("role", "==", "admin"),
+            orderBy("createdAt", "desc"),
+            limit(100)
+          );
+          const adminSnapshot = await getDocs(adminQuery);
+          return adminSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as User[];
+        },
+        300_000
       );
-      const adminSnapshot = await getDocs(adminQuery);
-      const adminData = adminSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as User[];
       setAdministrators(adminData);
 
       // Fetch Survey Existing
-      const existingQuery = query(
-        collection(db, "User-Admin"),
-        where("role", "==", "petugas-existing"),
-        orderBy("createdAt", "desc")
+      const existingData = await fetchWithCache<User[]>(
+        "user-admin_petugas-existing",
+        async () => {
+          const existingQuery = query(
+            collection(db, "User-Admin"),
+            where("role", "==", "petugas-existing"),
+            orderBy("createdAt", "desc"),
+            limit(100)
+          );
+          const existingSnapshot = await getDocs(existingQuery);
+          return existingSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as User[];
+        },
+        300_000
       );
-      const existingSnapshot = await getDocs(existingQuery);
-      setSurveyExisting(existingSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as User[]);
+      setSurveyExisting(existingData);
 
       // Fetch Survey APJ Propose
-      const apjQuery = query(
-        collection(db, "User-Admin"),
-        where("role", "==", "petugas-apj-propose"),
-        orderBy("createdAt", "desc")
+      const apjData = await fetchWithCache<User[]>(
+        "user-admin_petugas-apj-propose",
+        async () => {
+          const apjQuery = query(
+            collection(db, "User-Admin"),
+            where("role", "==", "petugas-apj-propose"),
+            orderBy("createdAt", "desc"),
+            limit(100)
+          );
+          const apjSnapshot = await getDocs(apjQuery);
+          return apjSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as User[];
+        },
+        300_000
       );
-      const apjSnapshot = await getDocs(apjQuery);
-      setSurveyAPJ(apjSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as User[]);
+      setSurveyAPJ(apjData);
 
       // Fetch Survey Pra Existing
-      const praExistingQuery = query(
-        collection(db, "User-Admin"),
-        where("role", "==", "petugas-pra-existing"),
-        orderBy("createdAt", "desc")
+      const praExistingData = await fetchWithCache<User[]>(
+        "user-admin_petugas-pra-existing",
+        async () => {
+          const praExistingQuery = query(
+            collection(db, "User-Admin"),
+            where("role", "==", "petugas-pra-existing"),
+            orderBy("createdAt", "desc"),
+            limit(100)
+          );
+          const praExistingSnapshot = await getDocs(praExistingQuery);
+          return praExistingSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as User[];
+        },
+        300_000
       );
-      const praExistingSnapshot = await getDocs(praExistingQuery);
-      setSurveyPraExisting(praExistingSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as User[]);
+      setSurveyPraExisting(praExistingData);
 
       // Fetch Survey Cahaya
-      const cahayaQuery = query(
-        collection(db, "User-Admin"),
-        where("role", "==", "petugas-survey-cahaya"),
-        orderBy("createdAt", "desc")
+      const cahayaData = await fetchWithCache<User[]>(
+        "user-admin_petugas-survey-cahaya",
+        async () => {
+          const cahayaQuery = query(
+            collection(db, "User-Admin"),
+            where("role", "==", "petugas-survey-cahaya"),
+            orderBy("createdAt", "desc"),
+            limit(100)
+          );
+          const cahayaSnapshot = await getDocs(cahayaQuery);
+          return cahayaSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as User[];
+        },
+        300_000
       );
-      const cahayaSnapshot = await getDocs(cahayaQuery);
-      setSurveyCahaya(cahayaSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as User[]);
+      setSurveyCahaya(cahayaData);
 
       // Fetch Kontruksi
-      const kontruksiQuery = query(
-        collection(db, "User-Admin"),
-        where("role", "==", "petugas-kontruksi"),
-        orderBy("createdAt", "desc")
+      const kontruksiData = await fetchWithCache<User[]>(
+        "user-admin_petugas-kontruksi",
+        async () => {
+          const kontruksiQuery = query(
+            collection(db, "User-Admin"),
+            where("role", "==", "petugas-kontruksi"),
+            orderBy("createdAt", "desc"),
+            limit(100)
+          );
+          const kontruksiSnapshot = await getDocs(kontruksiQuery);
+          return kontruksiSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as User[];
+        },
+        300_000
       );
-      const kontruksiSnapshot = await getDocs(kontruksiQuery);
-      setKontruksi(kontruksiSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as User[]);
+      setKontruksi(kontruksiData);
 
       // Fetch O&M
-      const omQuery = query(
-        collection(db, "User-Admin"),
-        where("role", "==", "petugas-om"),
-        orderBy("createdAt", "desc")
+      const omData = await fetchWithCache<User[]>(
+        "user-admin_petugas-om",
+        async () => {
+          const omQuery = query(
+            collection(db, "User-Admin"),
+            where("role", "==", "petugas-om"),
+            orderBy("createdAt", "desc"),
+            limit(100)
+          );
+          const omSnapshot = await getDocs(omQuery);
+          return omSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as User[];
+        },
+        300_000
       );
-      const omSnapshot = await getDocs(omQuery);
-      setOm(omSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as User[]);
+      setOm(omData);
 
       // Fetch BMD & Gudang
-      const bmdQuery = query(
-        collection(db, "User-Admin"),
-        where("role", "==", "petugas-bmd-gudang"),
-        orderBy("createdAt", "desc")
+      const bmdData = await fetchWithCache<User[]>(
+        "user-admin_petugas-bmd-gudang",
+        async () => {
+          const bmdQuery = query(
+            collection(db, "User-Admin"),
+            where("role", "==", "petugas-bmd-gudang"),
+            orderBy("createdAt", "desc"),
+            limit(100)
+          );
+          const bmdSnapshot = await getDocs(bmdQuery);
+          return bmdSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as User[];
+        },
+        300_000
       );
-      const bmdSnapshot = await getDocs(bmdQuery);
-      setBmdGudang(bmdSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as User[]);
+      setBmdGudang(bmdData);
     } catch (error) {
       console.error("Error fetching users:", error);
     } finally {

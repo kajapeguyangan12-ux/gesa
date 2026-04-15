@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, orderBy, getDocs, deleteDoc, doc } from "firebase/firestore";
+import { collection, query, orderBy, getDocs, limit, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { fetchWithCache } from "@/utils/firestoreCache";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
@@ -261,14 +262,21 @@ function AdminPanelContent() {
   const fetchSurveys = async () => {
     try {
       setIsLoading(true);
-      const surveysRef = collection(db, FIREBASE_COLLECTIONS.SURVEYS);
-      const q = query(surveysRef, orderBy("createdAt", "desc"));
-      const querySnapshot = await getDocs(q);
-      
-      const surveysData: SurveyData[] = [];
-      querySnapshot.forEach((doc) => {
-        surveysData.push(mapReportToSurvey(doc.id, doc.data()));
-      });
+      const cacheKey = filters.kabupaten && filters.kabupaten !== "Semua" ? filters.kabupaten : "all";
+      const surveysData = await fetchWithCache<SurveyData[]>(
+        `admin_surveys_${cacheKey}`,
+        async () => {
+          const surveysRef = collection(db, FIREBASE_COLLECTIONS.SURVEYS);
+          const q = query(surveysRef, orderBy("createdAt", "desc"), limit(300));
+          const querySnapshot = await getDocs(q);
+          const result: SurveyData[] = [];
+          querySnapshot.forEach((doc) => {
+            result.push(mapReportToSurvey(doc.id, doc.data()));
+          });
+          return result;
+        },
+        120_000
+      );
       
       setSurveys(surveysData);
       setFilteredSurveys(surveysData);

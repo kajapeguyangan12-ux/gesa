@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, getDoc, getDocs, addDoc, serverTimestamp, query, orderBy, deleteDoc, doc, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, getDoc, getDocs, addDoc, serverTimestamp, query, orderBy, limit, deleteDoc, doc, setDoc, updateDoc, where } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
+import { fetchWithCache } from "@/utils/firestoreCache";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import dynamic from "next/dynamic";
 import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
@@ -259,23 +260,34 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
     try {
       setLoadingPetugas(true);
       
-      // Fetch all users and filter by multiple roles
-      const usersRef = collection(db, "User-Admin");
-      const snapshot = await getDocs(usersRef);
-      
-      const data = snapshot.docs
-        .filter((doc) => {
-          const role = doc.data().role;
-          // Filter all petugas roles
-          return role && role.startsWith("petugas-");
-        })
-        .map((doc) => ({
-          id: doc.id,
-          name: doc.data().name,
-          email: doc.data().email,
-          role: doc.data().role,
-          uid: doc.data().uid || doc.id, // Fallback ke document ID jika uid tidak ada
-        })) as (Petugas & { role: string; uid: string })[];
+      const data = await fetchWithCache<(Petugas & { role: string; uid: string })[]>(
+        "distribusi_tugas_petugas_list",
+        async () => {
+          const usersRef = collection(db, "User-Admin");
+          const petsQuery = query(
+            usersRef,
+            where("role", "in", [
+              "petugas-existing",
+              "petugas-apj-propose",
+              "petugas-pra-existing",
+              "petugas-survey-cahaya",
+              "petugas-kontruksi",
+              "petugas-om",
+              "petugas-bmd-gudang",
+            ]),
+            limit(200)
+          );
+          const snapshot = await getDocs(petsQuery);
+          return snapshot.docs.map((doc) => ({
+            id: doc.id,
+            name: doc.data().name,
+            email: doc.data().email,
+            role: doc.data().role,
+            uid: doc.data().uid || doc.id,
+          })) as (Petugas & { role: string; uid: string })[];
+        },
+        300_000
+      );
       
       setPetugasList(data);
     } catch (error) {

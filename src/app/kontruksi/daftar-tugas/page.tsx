@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
-import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
+import { collection, getDocs, orderBy, query, where, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { fetchWithCache } from "@/utils/firestoreCache";
 
 type DesignTask = {
   id: string;
@@ -49,13 +50,21 @@ function DaftarTugasContent() {
   const loadTasks = async () => {
     try {
       setLoading(true);
-      const q = query(
-        collection(db, "design_tasks"),
-        where("assigneeId", "==", user?.uid || ""),
-        orderBy("createdAt", "desc")
+      const tasksData = await fetchWithCache<DesignTask[]>(
+        `design_tasks_${user?.uid}`,
+        async () => {
+          const q = query(
+            collection(db, "design_tasks"),
+            where("assigneeId", "==", user?.uid || ""),
+            orderBy("createdAt", "desc"),
+            limit(100)
+          );
+          const snapshot = await getDocs(q);
+          return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as DesignTask));
+        },
+        120_000
       );
-      const snapshot = await getDocs(q);
-      setTasks(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as DesignTask)));
+      setTasks(tasksData);
     } catch (e) {
       console.error("Failed to load kontruksi tasks:", e);
       setTasks([]);

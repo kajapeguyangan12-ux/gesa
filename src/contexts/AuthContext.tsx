@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 interface User {
@@ -66,12 +66,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const usersRef = collection(db, "User-Admin");
       
       // Coba cari berdasarkan email dulu
-      let q = query(usersRef, where("email", "==", identifier.toLowerCase()));
+      let q = query(usersRef, where("email", "==", identifier.toLowerCase()), limit(1));
       let querySnapshot = await getDocs(q);
       
       // Jika tidak ketemu, coba cari berdasarkan username
       if (querySnapshot.empty) {
-        q = query(usersRef, where("username", "==", identifier.toLowerCase()));
+        q = query(usersRef, where("username", "==", identifier.toLowerCase()), limit(1));
         querySnapshot = await getDocs(q);
       }
 

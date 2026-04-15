@@ -5,8 +5,9 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
-import { collection, doc, getDocs, orderBy, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDocs, orderBy, query, updateDoc, where, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { fetchWithCache } from "@/utils/firestoreCache";
 
 const RemoteKMZMapPreview = dynamic(() => import("@/components/RemoteKMZMapPreview"), {
   ssr: false,
@@ -52,18 +53,25 @@ function TugasSurveyPraExistingContent() {
   const fetchTasks = useCallback(async () => {
     try {
       setLoading(true);
-      const tasksRef = collection(db, "tasks");
-      const q = query(
-        tasksRef,
-        where("surveyorId", "==", user?.uid),
-        where("type", "==", "pra-existing"),
-        orderBy("createdAt", "desc")
+      const tasksData = await fetchWithCache<Task[]>(
+        `pra_existing_tasks_${user?.uid}`,
+        async () => {
+          const tasksRef = collection(db, "tasks");
+          const q = query(
+            tasksRef,
+            where("surveyorId", "==", user?.uid),
+            where("type", "==", "pra-existing"),
+            orderBy("createdAt", "desc"),
+            limit(100)
+          );
+          const snapshot = await getDocs(q);
+          return snapshot.docs.map((entry) => ({
+            id: entry.id,
+            ...(entry.data() as Omit<Task, "id">),
+          }));
+        },
+        120_000
       );
-      const snapshot = await getDocs(q);
-      const tasksData = snapshot.docs.map((entry) => ({
-        id: entry.id,
-        ...(entry.data() as Omit<Task, "id">),
-      }));
       setTasks(tasksData);
 
       const storedTask = localStorage.getItem("activeTask");

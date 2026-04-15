@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, orderBy, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { fetchWithCache } from "@/utils/firestoreCache";
 import { useAuth } from "@/hooks/useAuth";
 
 interface DashboardContentProps {
@@ -177,32 +178,37 @@ function buildKecamatanSummary(rows: SurveyReportRow[]) {
 }
 
 async function fetchCollectionRows(collectionName: string, activeKabupaten?: string | null) {
-  const surveysRef = collection(db, collectionName);
-  const snapshot = activeKabupaten
-    ? await getDocs(query(surveysRef, where("kabupaten", "==", activeKabupaten)))
-    : await getDocs(surveysRef);
+  return await fetchWithCache<SurveyReportRow[]>(
+    `dashboard_rows_${collectionName}_${activeKabupaten || "all"}`,
+    async () => {
+      const surveysRef = collection(db, collectionName);
+      const snapshot = activeKabupaten
+        ? await getDocs(query(surveysRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc"), limit(300)))
+        : await getDocs(query(surveysRef, orderBy("createdAt", "desc"), limit(300)));
 
-  return snapshot.docs.map((item) => {
-    const data = item.data();
-    return {
-      id: item.id,
-      taskId: typeof data.taskId === "string" ? data.taskId : "",
-      status: typeof data.status === "string" ? data.status : "",
-      title: typeof data.title === "string" ? data.title : "",
-      type: collectionName.replace("survey-", ""),
-      surveyorName: typeof data.surveyorName === "string" ? data.surveyorName : "",
-      verifiedBy:
-        typeof data.verifiedBy === "string"
-          ? data.verifiedBy
-          : typeof data.editedBy === "string"
-            ? data.editedBy
-            : "",
-      verifiedAt: data.verifiedAt ?? data.createdAt ?? null,
-      kabupaten: typeof data.kabupatenName === "string" ? data.kabupatenName : typeof data.kabupaten === "string" ? data.kabupaten : "",
-      kecamatan: typeof data.kecamatan === "string" ? data.kecamatan : "",
-      jumlahLampu: normalizeLampCount(data.jumlahLampu),
-    } satisfies SurveyReportRow;
-  });
+      return snapshot.docs.map((item) => {
+        const data = item.data();
+        return {
+          id: item.id,
+          taskId: typeof data.taskId === "string" ? data.taskId : "",
+          status: typeof data.status === "string" ? data.status : "",
+          title: typeof data.title === "string" ? data.title : "",
+          type: collectionName.replace("survey-", ""),
+          surveyorName: typeof data.surveyorName === "string" ? data.surveyorName : "",
+          verifiedBy:
+            typeof data.verifiedBy === "string"
+              ? data.verifiedBy
+              : "",
+          kabupaten: typeof data.kabupaten === "string" ? data.kabupaten : "",
+          kecamatan: typeof data.kecamatan === "string" ? data.kecamatan : "",
+          desa: typeof data.desa === "string" ? data.desa : "",
+          createdAt: data.createdAt,
+          category: collectionName,
+        };
+      });
+    },
+    120_000
+  );
 }
 
 interface VerifierSummaryRow {

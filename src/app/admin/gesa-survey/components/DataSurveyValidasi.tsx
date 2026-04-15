@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs, doc, updateDoc, deleteDoc, query, where } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, deleteDoc, query, where, orderBy, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { fetchWithCache } from "@/utils/firestoreCache";
 import dynamic from "next/dynamic";
 
 // Dynamic import for Map
@@ -170,27 +171,31 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       setCurrentAdminId(adminId);
       
       // Fetch tasks first to get list of assigned surveyors by THIS admin
-      const tasksRef = collection(db, "tasks");
-      const tasksSnapshot = await getDocs(tasksRef);
-      const tasksData = tasksSnapshot.docs
-        .filter((doc) => {
-          // Filter tasks yang dibuat oleh admin yang sedang login
-          const taskAdminId = doc.data().createdByAdminId;
-          // Jika task tidak punya createdByAdminId (data lama), tampilkan untuk semua admin
-          // Jika ada, hanya tampilkan jika sesuai dengan admin yang login
-          return !taskAdminId || taskAdminId === adminId;
-        })
-        .map((doc) => ({
-          id: doc.id,
-          surveyorId: doc.data().surveyorId,
-          surveyorName: doc.data().surveyorName,
-          surveyorEmail: doc.data().surveyorEmail,
-          type: doc.data().type,
-          status: doc.data().status,
-          createdByAdminId: doc.data().createdByAdminId,
-          createdByAdminName: doc.data().createdByAdminName,
-          createdByAdminEmail: doc.data().createdByAdminEmail,
-        })) as Task[];
+      const tasksData = await fetchWithCache<Task[]>(
+        `validasi_tasks_${adminId || "all"}`,
+        async () => {
+          const tasksRef = collection(db, "tasks");
+          const tasksQuery = query(tasksRef, orderBy("createdAt", "desc"), limit(300));
+          const tasksSnapshot = await getDocs(tasksQuery);
+          return tasksSnapshot.docs
+            .filter((doc) => {
+              const taskAdminId = doc.data().createdByAdminId;
+              return !taskAdminId || taskAdminId === adminId;
+            })
+            .map((doc) => ({
+              id: doc.id,
+              surveyorId: doc.data().surveyorId,
+              surveyorName: doc.data().surveyorName,
+              surveyorEmail: doc.data().surveyorEmail,
+              type: doc.data().type,
+              status: doc.data().status,
+              createdByAdminId: doc.data().createdByAdminId,
+              createdByAdminName: doc.data().createdByAdminName,
+              createdByAdminEmail: doc.data().createdByAdminEmail,
+            })) as Task[];
+        },
+        120_000
+      );
       setTasks(tasksData);
       
       // Get list of assigned surveyor UIDs (only from tasks created by this admin)
@@ -201,14 +206,14 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       const proposeRef = collection(db, "survey-apj-propose");
       const praExistingRef = collection(db, "survey-pra-existing");
       const existingQuery = activeKabupaten
-        ? query(existingRef, where("kabupaten", "==", activeKabupaten))
-        : existingRef;
+        ? query(existingRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc"), limit(300))
+        : query(existingRef, orderBy("createdAt", "desc"), limit(300));
       const proposeQuery = activeKabupaten
-        ? query(proposeRef, where("kabupaten", "==", activeKabupaten))
-        : proposeRef;
+        ? query(proposeRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc"), limit(300))
+        : query(proposeRef, orderBy("createdAt", "desc"), limit(300));
       const praExistingQuery = activeKabupaten
-        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten))
-        : praExistingRef;
+        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc"), limit(300))
+        : query(praExistingRef, orderBy("createdAt", "desc"), limit(300));
       
       const [existingSnapshot, proposeSnapshot, praExistingSnapshot] = await Promise.all([
         getDocs(existingQuery),

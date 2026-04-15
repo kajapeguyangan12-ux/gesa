@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { collection, getDocs, query, where, doc, updateDoc } from "firebase/firestore";
+import { collection, getDocs, query, where, orderBy, limit, doc, updateDoc } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
+import { fetchWithCache } from "@/utils/firestoreCache";
 import { ref, getDownloadURL } from "firebase/storage";
 import dynamic from "next/dynamic";
 
@@ -95,49 +96,41 @@ function TasksContent() {
   const fetchTasks = async () => {
     try {
       setLoading(true);
-      
-      console.log("=== FETCHING TASKS ===");
-      console.log("Current user UID:", user?.uid);
-      console.log("Current user Email:", user?.email);
-      
-      const tasksRef = collection(db, "tasks");
-      
-      // Get all tasks to see what's in the database
-      const allTasksSnapshot = await getDocs(tasksRef);
-      console.log("Total tasks in database:", allTasksSnapshot.size);
-      
-      allTasksSnapshot.forEach((doc) => {
-        console.log("Task:", doc.id, {
-          title: doc.data().title,
-          surveyorId: doc.data().surveyorId,
-          surveyorEmail: doc.data().surveyorEmail,
-          status: doc.data().status
-        });
-      });
-      
-      // Try with UID first
-      let q = query(tasksRef, where("surveyorId", "==", user?.uid));
-      let snapshot = await getDocs(q);
-      
-      console.log(`Tasks found with UID (${user?.uid}):`, snapshot.size);
-      
-      // If no tasks found with UID, try with email as fallback
-      if (snapshot.empty && user?.email) {
-        console.log("No tasks found with UID, trying with email...");
-        q = query(tasksRef, where("surveyorEmail", "==", user.email));
-        snapshot = await getDocs(q);
-        console.log(`Tasks found with email (${user.email}):`, snapshot.size);
-      }
-      
-      const tasksData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Task[];
-      
-      console.log("Tasks data loaded:", tasksData);
+
+      const tasksData = await fetchWithCache<Task[]>(
+        `tasks_${user?.uid}`,
+        async () => {
+          const tasksRef = collection(db, "tasks");
+          let q = query(
+            tasksRef,
+            where("surveyorId", "==", user?.uid),
+            orderBy("createdAt", "desc"),
+            limit(100)
+          );
+          let snapshot = await getDocs(q);
+
+          if (snapshot.empty && user?.email) {
+            q = query(
+              tasksRef,
+              where("surveyorEmail", "==", user.email),
+              orderBy("createdAt", "desc"),
+              limit(100)
+            );
+            snapshot = await getDocs(q);
+          }
+
+          return snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as Task[];
+        },
+        120_000
+      );
+
       setTasks(tasksData);
     } catch (error) {
       console.error("Error fetching tasks:", error);
+      setTasks([]);
     } finally {
       setLoading(false);
     }

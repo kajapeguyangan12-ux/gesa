@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, orderBy, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 
 type TaskNotification = {
   id: string;
@@ -19,27 +20,73 @@ type TaskNotification = {
   createdByName?: string;
 };
 
+type NotificationItem = {
+  id: string;
+  title: string;
+  message: string;
+  createdAt?: any;
+  category?: string;
+  source?: string;
+};
+
 function NotificationsContent() {
   const router = useRouter();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [items, setItems] = useState<TaskNotification[]>([]);
+  const [items, setItems] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
     if (user?.uid) {
       loadNotifications();
     }
-  }, [user?.uid]);
+  }, [user?.uid, user?.role]);
 
   const loadNotifications = async () => {
     try {
       setLoading(true);
-      const q = query(
-        collection(db, "design_tasks"),
-        where("assigneeId", "==", user?.uid || "")
-      );
-      const snapshot = await getDocs(q);
-      setItems(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as TaskNotification)));
+      if (user?.role === "admin" || user?.role === "super-admin") {
+        const cachedItems = await fetchWithCache<NotificationItem[]>(
+          `notifications_${user.role}`,
+          async () => {
+            const q = query(
+              collection(db, "notifications"),
+              where("targetRoles", "array-contains", user.role),
+              orderBy("createdAt", "desc"),
+              limit(30)
+            );
+            const snapshot = await getDocs(q);
+            return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as NotificationItem));
+          },
+          60_000
+        );
+        setItems(cachedItems);
+      } else {
+        const cachedItems = await fetchWithCache<NotificationItem[]>(
+          `design_tasks_${user?.uid}`,
+          async () => {
+            const q = query(
+              collection(db, "design_tasks"),
+              where("assigneeId", "==", user?.uid || ""),
+              orderBy("createdAt", "desc"),
+              limit(30)
+            );
+            const snapshot = await getDocs(q);
+            return snapshot.docs.map((doc) => {
+              const data = doc.data();
+              return {
+                id: doc.id,
+                title: `Tugas baru dari ${data.createdByName || "Admin"}`,
+                message: `Design: ${data.designUploadId || "-"} • Zona: ${data.zones?.length || 0}`,
+                createdAt: data.createdAt,
+                category: "Design Task",
+                source: "design_task",
+              } as NotificationItem;
+            });
+          },
+          60_000
+        );
+        setItems(cachedItems);
+      }
     } catch (e) {
       console.error("Failed to load notifications:", e);
       setItems([]);
@@ -81,10 +128,17 @@ function NotificationsContent() {
 
         <div className="mt-4 flex items-center justify-between">
           <div className="text-xs text-gray-500">
-            Notifikasi muncul ketika admin memberikan tugas ke petugas.
+            Notifikasi muncul untuk tugas dan laporan O&M.
           </div>
           <button
-            onClick={loadNotifications}
+            onClick={() => {
+              if (user?.role === "admin" || user?.role === "super-admin") {
+                clearCachedData(`notifications_${user.role}`);
+              } else {
+                clearCachedData(`design_tasks_${user?.uid}`);
+              }
+              loadNotifications();
+            }}
             className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 hover:bg-gray-50"
           >
             Muat Ulang
@@ -97,7 +151,7 @@ function NotificationsContent() {
             <div className="text-sm text-gray-500">Memuat notifikasi...</div>
           ) : items.length === 0 ? (
             <div className="border border-gray-200 rounded-xl p-6 text-center text-xs text-gray-500">
-              Belum ada notifikasi tugas.
+              Belum ada notifikasi.
             </div>
           ) : (
             items.map((item) => (
@@ -105,12 +159,8 @@ function NotificationsContent() {
                 key={item.id}
                 className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-left shadow-sm"
               >
-                <div className="text-sm font-semibold text-gray-900">
-                  Tugas baru dari {item.createdByName || "Admin"}
-                </div>
-                <div className="text-xs text-gray-600 mt-1">
-                  Design: {item.designUploadId || "-"} â€¢ Zona: {item.zones?.length || 0}
-                </div>
+                <div className="text-sm font-semibold text-gray-900">{item.title}</div>
+                <div className="text-xs text-gray-600 mt-1">{item.message}</div>
                 <div className="text-xs text-gray-500 text-right mt-1">
                   {formatDate(item.createdAt)}
                 </div>
