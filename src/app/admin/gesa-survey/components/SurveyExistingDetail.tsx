@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, getCountFromServer, getDocs, query, where, deleteDoc, doc, orderBy, limit, startAfter, QueryConstraint, QueryDocumentSnapshot } from "firebase/firestore";
+import { collection, getDocs, query, where, deleteDoc, doc, orderBy, limit, startAfter, QueryConstraint, QueryDocumentSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/hooks/useAuth";
@@ -82,13 +82,13 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
   const [loading, setLoading] = useState(true);
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showDetailMap, setShowDetailMap] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterZona, setFilterZona] = useState<string>("all");
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [showAll, setShowAll] = useState(false);
   const [totalItems, setTotalItems] = useState(0);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [pageCursors, setPageCursors] = useState<QueryDocumentSnapshot[]>([]);
@@ -107,11 +107,6 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
   const fetchSurveys = async () => {
     try {
       setLoading(true);
-      const surveysRef = collection(db, "survey-existing");
-      const countConstraints: QueryConstraint[] = [where("status", "==", statusFilter)];
-      if (activeKabupaten) countConstraints.unshift(where("kabupaten", "==", activeKabupaten));
-      const countSnapshot = await getCountFromServer(query(surveysRef, ...countConstraints));
-      setTotalItems(countSnapshot.data().count);
       await fetchPage(1);
     } catch (error) {
       console.error("Error fetching surveys:", error);
@@ -124,13 +119,18 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
     try {
       setLoading(true);
       const surveysRef = collection(db, "survey-existing");
-      const constraints: QueryConstraint[] = [where("status", "==", statusFilter), orderBy("createdAt", "desc"), limit(itemsPerPage + 1)];
+      const constraints: QueryConstraint[] = [where("status", "==", statusFilter), orderBy("createdAt", "desc"), limit(itemsPerPage)];
       if (activeKabupaten) constraints.unshift(where("kabupaten", "==", activeKabupaten));
       const previousCursor = page > 1 ? pageCursors[page - 2] : null;
       if (previousCursor) constraints.push(startAfter(previousCursor));
       const snapshot = await getDocs(query(surveysRef, ...constraints));
-      const hasMore = snapshot.docs.length > itemsPerPage;
-      const visibleDocs = hasMore ? snapshot.docs.slice(0, itemsPerPage) : snapshot.docs;
+      const visibleDocs = snapshot.docs;
+      const hasMore = visibleDocs.length === itemsPerPage;
+
+      if (page > 1 && visibleDocs.length === 0) {
+        setHasNextPage(false);
+        return;
+      }
       
       const data = visibleDocs.map((doc) => ({
         id: doc.id,
@@ -181,7 +181,7 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
       setSurveys(data);
       setCurrentPage(page);
       setHasNextPage(hasMore);
-      setShowAll(false);
+      setTotalItems(0);
       setPageCursors((current) => {
         const next = current.slice(0, Math.max(page - 1, 0));
         const lastVisible = visibleDocs[visibleDocs.length - 1];
@@ -190,69 +190,6 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
       });
     } catch (error) {
       console.error("Error fetching surveys:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchAllSurveys = async () => {
-    try {
-      setLoading(true);
-      const surveysRef = collection(db, "survey-existing");
-      const constraints: QueryConstraint[] = [where("status", "==", statusFilter), orderBy("createdAt", "desc")];
-      if (activeKabupaten) constraints.unshift(where("kabupaten", "==", activeKabupaten));
-      const snapshot = await getDocs(query(surveysRef, ...constraints));
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        title: doc.data().title || `Survey Existing - ${doc.data().namaJalan || "Untitled"}`,
-        namaJalan: doc.data().namaJalan,
-        namaGang: doc.data().namaGang,
-        lokasiJalan: doc.data().lokasiJalan,
-        type: "existing",
-        status: doc.data().status || statusFilter,
-        surveyorName: doc.data().surveyorName || "Unknown",
-        surveyorEmail: doc.data().surveyorEmail,
-        createdAt: doc.data().createdAt,
-        verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
-        verifiedBy: doc.data().verifiedBy || doc.data().editedBy || "Admin",
-        validatedAt: doc.data().validatedAt || doc.data().createdAt,
-        validatedBy: doc.data().validatedBy || doc.data().editedBy || "Admin",
-        latitude: doc.data().latitude || 0,
-        longitude: doc.data().longitude || 0,
-        accuracy: doc.data().accuracy,
-        kepemilikan: doc.data().kepemilikan || doc.data().keteranganTiang,
-        keteranganTiang: doc.data().keteranganTiang,
-        jenis: doc.data().jenis || doc.data().jenisTitik,
-        jenisTitik: doc.data().jenisTitik,
-        jenisExisting: doc.data().jenisExisting,
-        tinggiArm: doc.data().tinggiArm || doc.data().tinggiARM,
-        tinggiARM: doc.data().tinggiARM,
-        tinggiAPM: doc.data().tinggiAPM,
-        kategori: doc.data().kategori || "Survey Existing",
-        zona: doc.data().zona || "N/A",
-        photoUrl: doc.data().photoUrl,
-        fotoTiangAPM: doc.data().fotoTiangAPM,
-        fotoTitikActual: doc.data().fotoTitikActual,
-        palet: doc.data().palet,
-        lumina: doc.data().lumina,
-        metodeUkur: doc.data().metodeUkur,
-        tinggiMedian: doc.data().tinggiMedian,
-        lebarMedian: doc.data().lebarMedian,
-        lebarJalan1: doc.data().lebarJalan1,
-        lebarJalan2: doc.data().lebarJalan2,
-        lebarTrotoar: doc.data().lebarTrotoar,
-        lamnyaBerdekatan: doc.data().lamnyaBerdekatan,
-        lebarBahuBertiang: doc.data().lebarBahuBertiang,
-        lebarTrotoarBertiang: doc.data().lebarTrotoarBertiang,
-        lainnyaBertiang: doc.data().lainnyaBertiang,
-        keterangan: doc.data().keterangan,
-      })) as Survey[];
-      setSurveys(data);
-      setShowAll(true);
-      setCurrentPage(1);
-      setHasNextPage(false);
-    } catch (error) {
-      console.error("Error fetching all surveys:", error);
     } finally {
       setLoading(false);
     }
@@ -315,6 +252,7 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
 
   const handleViewDetail = (survey: Survey) => {
     setSelectedSurvey(survey);
+    setShowDetailMap(false);
     setShowDetailModal(true);
   };
 
@@ -346,11 +284,11 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
   });
 
   // Pagination logic
-  const effectiveTotalItems = totalItems > 0 ? totalItems : filteredSurveys.length;
-  const totalPages = showAll ? 1 : Math.ceil(effectiveTotalItems / itemsPerPage);
+  const effectiveTotalItems = totalItems > 0 ? totalItems : (hasNextPage ? currentPage * itemsPerPage + 1 : ((currentPage - 1) * itemsPerPage) + surveys.length);
+  const totalPages = Math.max(1, totalItems > 0 ? Math.ceil(effectiveTotalItems / itemsPerPage) : currentPage + (hasNextPage ? 1 : 0));
   const startIndex = filteredSurveys.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
-  const endIndex = filteredSurveys.length === 0 ? 0 : Math.min(startIndex + (showAll ? filteredSurveys.length : itemsPerPage) - 1, effectiveTotalItems);
-  const paginatedSurveys = showAll ? filteredSurveys : filteredSurveys.slice(0, itemsPerPage);
+  const endIndex = filteredSurveys.length === 0 ? 0 : Math.min(startIndex + itemsPerPage - 1, effectiveTotalItems);
+  const paginatedSurveys = filteredSurveys.slice(0, itemsPerPage);
 
   const handlePageChange = (page: number) => {
     if (page < 1 || page > totalPages || page === currentPage) return;
@@ -583,80 +521,72 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <div className="text-sm text-gray-600">
-                    <span>Menampilkan {showAll ? effectiveTotalItems : paginatedSurveys.length} dari {effectiveTotalItems} data</span>
+                    <span>Menampilkan {paginatedSurveys.length} dari {totalItems > 0 ? effectiveTotalItems : "?"} data</span>
                   </div>
                   
                   <div className="flex items-center gap-2">
                     <label className="text-sm text-gray-600">Tampilkan:</label>
                     <select
-                      value={showAll ? "all" : itemsPerPage}
+                      value={itemsPerPage}
                       onChange={(e) => {
-                        if (e.target.value === "all") {
-                          void fetchAllSurveys();
-                        } else {
-                          setItemsPerPage(Number(e.target.value));
-                          setCurrentPage(1);
-                          setShowAll(false);
-                        }
+                        setItemsPerPage(Number(e.target.value));
+                        setCurrentPage(1);
                       }}
                       className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value={10}>10</option>
                       <option value={25}>25</option>
                       <option value={100}>100</option>
-                      <option value="all">Semua</option>
                     </select>
                   </div>
                 </div>
 
-                {!showAll && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handlePageChange(currentPage - 1)}
-                      disabled={currentPage === 1}
-                      className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Previous
-                    </button>
-                    
-                    <div className="flex items-center gap-1">
-                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                        let pageNum;
-                        if (totalPages <= 5) {
-                          pageNum = i + 1;
-                        } else if (currentPage <= 3) {
-                          pageNum = i + 1;
-                        } else if (currentPage >= totalPages - 2) {
-                          pageNum = totalPages - 4 + i;
-                        } else {
-                          pageNum = currentPage - 2 + i;
-                        }
-                        
-                        return (
-                          <button
-                            key={pageNum}
-                            onClick={() => handlePageChange(pageNum)}
-                            className={`px-3 py-1 text-sm border rounded ${
-                              currentPage === pageNum
-                                ? "bg-blue-500 text-white border-blue-500"
-                                : "bg-white border-gray-300 hover:bg-gray-50"
-                            }`}
-                          >
-                            {pageNum}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    
-                    <button
-                      onClick={() => handlePageChange(currentPage + 1)}
-                      disabled={currentPage === totalPages || !hasNextPage}
-                      className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Next
-                    </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => handlePageChange(pageNum)}
+                          className={`px-3 py-1 text-sm border rounded ${
+                            currentPage === pageNum
+                              ? "bg-blue-500 text-white border-blue-500"
+                              : "bg-white border-gray-300 hover:bg-gray-50"
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
                   </div>
-                )}
+                  
+                  <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages || !hasNextPage}
+                    className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
             </div>
           </>
@@ -666,7 +596,10 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
       {/* Detail Modal */}
       {showDetailModal && selectedSurvey && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowDetailModal(false)} />
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => {
+            setShowDetailModal(false);
+            setShowDetailMap(false);
+          }} />
           <div className="flex items-center justify-center min-h-screen p-4">
             <div className="relative bg-white rounded-3xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
               {/* Modal Header */}
@@ -677,7 +610,10 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
                     <p className="text-blue-100 text-sm mt-1">{selectedSurvey.title}</p>
                   </div>
                   <button
-                    onClick={() => setShowDetailModal(false)}
+                    onClick={() => {
+                      setShowDetailModal(false);
+                      setShowDetailMap(false);
+                    }}
                     className="p-2 hover:bg-white/20 rounded-xl transition-colors"
                   >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -707,12 +643,27 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
                     </svg>
                     Lokasi Survey
                   </h3>
-                  <DynamicDetailMap
-                    latitude={selectedSurvey.latitude}
-                    longitude={selectedSurvey.longitude}
-                    accuracy={selectedSurvey.accuracy}
-                    title={selectedSurvey.title}
-                  />
+                  {!showDetailMap ? (
+                    <div className="rounded-xl border border-dashed border-blue-200 bg-white px-4 py-6 text-center">
+                      <p className="text-sm text-gray-600">
+                        Peta belum dimuat untuk menghemat loading. Klik tombol berikut jika perlu melihat lokasi.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowDetailMap(true)}
+                        className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-blue-700"
+                      >
+                        Tampilkan Peta
+                      </button>
+                    </div>
+                  ) : (
+                    <DynamicDetailMap
+                      latitude={selectedSurvey.latitude}
+                      longitude={selectedSurvey.longitude}
+                      accuracy={selectedSurvey.accuracy}
+                      title={selectedSurvey.title}
+                    />
+                  )}
                   <div className="mt-3 flex items-center justify-between">
                     <span className="text-sm text-gray-600 font-mono bg-white px-3 py-1.5 rounded-lg border">
                       {selectedSurvey.latitude.toFixed(7)}, {selectedSurvey.longitude.toFixed(7)}

@@ -482,7 +482,8 @@ export default function DashboardContent({
   const { user } = useAuth();
   const [reportState, setReportState] = useState<DashboardReportState>(initialReportState);
   const [reportsVisible, setReportsVisible] = useState(false);
-  const [reportsLoaded, setReportsLoaded] = useState(false);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [detailLoaded, setDetailLoaded] = useState(false);
   const [summaryRefreshing, setSummaryRefreshing] = useState(false);
   const [taskExporting, setTaskExporting] = useState(false);
   const [startDate, setStartDate] = useState(() => {
@@ -535,7 +536,7 @@ export default function DashboardContent({
 
   useEffect(() => {
     if (!isSuperAdmin) return;
-    if (!reportsVisible) return;
+    if (!detailVisible) return;
     let cancelled = false;
 
     const loadReports = async () => {
@@ -561,7 +562,7 @@ export default function DashboardContent({
                   loading: false,
                   error: "",
                 });
-                setReportsLoaded(true);
+                setDetailLoaded(true);
                 return;
               }
 
@@ -674,7 +675,7 @@ export default function DashboardContent({
         });
       } finally {
         if (!cancelled) {
-          setReportsLoaded(true);
+          setDetailLoaded(true);
         }
       }
     };
@@ -684,7 +685,7 @@ export default function DashboardContent({
     return () => {
       cancelled = true;
     };
-  }, [activeKabupaten, isSuperAdmin, reportCacheKey, reportsVisible, user?.uid]);
+  }, [activeKabupaten, detailVisible, isSuperAdmin, reportCacheKey, user?.uid]);
 
   const waitingReviewCount = useMemo(
     () =>
@@ -961,10 +962,26 @@ export default function DashboardContent({
     }
   };
 
+  const handleToggleReports = () => {
+    setReportsVisible((current) => {
+      const nextVisible = !current;
+      if (!nextVisible) {
+        setDetailVisible(false);
+      }
+      return nextVisible;
+    });
+  };
+
+  const handleLoadDetail = () => {
+    if (!isSuperAdmin) return;
+    setReportsVisible(true);
+    setDetailVisible(true);
+  };
+
   const handleExportTaskExcel = async () => {
     if (!isSuperAdmin) return;
-    if (!reportsLoaded || !reportState.allRowsRaw.length) {
-      alert("Klik 'Muat Laporan' terlebih dahulu agar data survey per tugas bisa dihitung tanpa read tambahan yang besar.");
+    if (!detailLoaded || !reportState.allRowsRaw.length) {
+      alert("Klik 'Muat Detail' terlebih dahulu agar data survey per tugas bisa dihitung tanpa scan besar dari tombol laporan utama.");
       return;
     }
 
@@ -1117,20 +1134,28 @@ export default function DashboardContent({
                   {isSuperAdmin && (
                     <button
                       type="button"
-                      onClick={() => void handleRefreshSummary()}
-                      disabled={summaryRefreshing}
-                      className="rounded-xl border border-white/20 bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-300"
-                    >
-                      {summaryRefreshing ? "Memperbarui Summary..." : "Refresh Summary"}
-                    </button>
-                  )}
-                  {isSuperAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => setReportsVisible((current) => !current)}
+                      onClick={handleToggleReports}
                       className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-100"
                     >
-                      {reportsVisible ? "Sembunyikan Laporan" : reportsLoaded ? "Tampilkan Laporan" : "Muat Laporan"}
+                      {reportsVisible ? "Sembunyikan Laporan" : "Muat Laporan"}
+                    </button>
+                  )}
+                  {isSuperAdmin && reportsVisible && (
+                    <button
+                      type="button"
+                      onClick={handleLoadDetail}
+                      disabled={detailVisible && reportState.loading}
+                      className="rounded-xl border border-white/20 bg-slate-800/60 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-slate-700/70 disabled:cursor-not-allowed disabled:bg-slate-700/40"
+                    >
+                      {detailVisible
+                        ? reportState.loading
+                          ? "Memuat Detail..."
+                          : detailLoaded
+                            ? "Detail Aktif"
+                            : "Muat Detail"
+                        : detailLoaded
+                          ? "Tampilkan Detail"
+                          : "Muat Detail"}
                     </button>
                   )}
                 </div>
@@ -1146,7 +1171,8 @@ export default function DashboardContent({
             <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-8 text-sm text-gray-600 shadow-sm">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  Laporan dashboard sedang disembunyikan. Klik `{reportsLoaded ? "Tampilkan Laporan" : "Muat Laporan"}` untuk menghitung dan menampilkan data saat diperlukan.
+                  Ringkasan dashboard sedang disembunyikan. Klik `Muat Laporan` untuk menampilkan summary hemat read. Detail besar tetap terpisah di tombol `Muat Detail`.
+                  Summary saat ini tidak bisa di-refresh dari dashboard agar Firestore reads tetap stabil.
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div className="rounded-xl bg-slate-50 px-4 py-3">
@@ -1167,17 +1193,6 @@ export default function DashboardContent({
                   </div>
                 </div>
               </div>
-            </div>
-          ) : reportState.loading ? (
-                <div className="rounded-2xl border border-gray-200 bg-white p-10 shadow-sm">
-              <div className="flex flex-col items-center justify-center">
-                <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-600" />
-                <p className="mt-4 text-sm font-medium text-gray-600">Memuat laporan dashboard...</p>
-              </div>
-            </div>
-          ) : reportState.error ? (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 shadow-sm">
-              Gagal memuat laporan: {reportState.error}
             </div>
           ) : (
             <>
@@ -1202,7 +1217,22 @@ export default function DashboardContent({
                 />
               </div>
 
-              {isSuperAdmin && (
+              {!detailVisible ? (
+                <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-8 text-sm text-gray-600 shadow-sm">
+                  Summary ringan sudah tampil dari dokumen ringkasan. Klik `Muat Detail` jika super admin ingin membuka tabel verifikasi, detail per admin, dan data export yang membaca data survey lebih besar. Refresh summary manual dari dashboard sengaja dimatikan untuk menekan reads.
+                </div>
+              ) : reportState.loading ? (
+                <div className="rounded-2xl border border-gray-200 bg-white p-10 shadow-sm">
+                  <div className="flex flex-col items-center justify-center">
+                    <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-600" />
+                    <p className="mt-4 text-sm font-medium text-gray-600">Memuat detail laporan dashboard...</p>
+                  </div>
+                </div>
+              ) : reportState.error ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 shadow-sm">
+                  Gagal memuat detail laporan: {reportState.error}
+                </div>
+              ) : isSuperAdmin && (
                 <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
                   <div className="flex flex-col gap-4 border-b border-gray-200 px-6 py-5 xl:flex-row xl:items-end xl:justify-between">
                     <div>

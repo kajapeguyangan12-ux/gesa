@@ -12,6 +12,7 @@ import {
   query,
   QueryConstraint,
   QueryDocumentSnapshot,
+  runTransaction,
   startAfter,
   where,
   updateDoc,
@@ -859,29 +860,40 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
         Number.isFinite(normalizedAdminLatitude) &&
         Number.isFinite(normalizedAdminLongitude);
       
-      // Update status to diverifikasi
-      await updateDoc(surveyDoc, {
-        status: "diverifikasi",
-        ...(shouldUseAdminCoordinate
-          ? {
-              originalLatitude: Number.isFinite(survey.originalLatitude) ? survey.originalLatitude : survey.latitude,
-              originalLongitude: Number.isFinite(survey.originalLongitude) ? survey.originalLongitude : survey.longitude,
-              latitude: normalizedAdminLatitude,
-              longitude: normalizedAdminLongitude,
-              finalLatitude: normalizedAdminLatitude,
-              finalLongitude: normalizedAdminLongitude,
-              coordinateSource: "admin",
-              coordinateValidatedAt: new Date(),
-            }
-          : survey.type === "pra-existing"
+      await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(surveyDoc);
+        if (!snapshot.exists()) {
+          throw new Error("Data survey sudah tidak ditemukan. Kemungkinan sudah diproses admin lain.");
+        }
+
+        const latestStatus = typeof snapshot.data()?.status === "string" ? snapshot.data().status : "";
+        if (latestStatus !== "menunggu") {
+          throw new Error("Data ini sudah diproses admin lain. Silakan refresh daftar verifikasi.");
+        }
+
+        transaction.update(surveyDoc, {
+          status: "diverifikasi",
+          ...(shouldUseAdminCoordinate
             ? {
-                finalLatitude: survey.latitude,
-                finalLongitude: survey.longitude,
-                coordinateSource: "petugas",
+                originalLatitude: Number.isFinite(survey.originalLatitude) ? survey.originalLatitude : survey.latitude,
+                originalLongitude: Number.isFinite(survey.originalLongitude) ? survey.originalLongitude : survey.longitude,
+                latitude: normalizedAdminLatitude,
+                longitude: normalizedAdminLongitude,
+                finalLatitude: normalizedAdminLatitude,
+                finalLongitude: normalizedAdminLongitude,
+                coordinateSource: "admin",
+                coordinateValidatedAt: new Date(),
               }
-            : {}),
-        verifiedBy: currentUser?.name || currentUser?.email || 'Admin',
-        verifiedAt: new Date()
+            : survey.type === "pra-existing"
+              ? {
+                  finalLatitude: survey.latitude,
+                  finalLongitude: survey.longitude,
+                  coordinateSource: "petugas",
+                }
+              : {}),
+          verifiedBy: currentUser?.name || currentUser?.email || 'Admin',
+          verifiedAt: new Date()
+        });
       });
       
       // Refresh surveys
