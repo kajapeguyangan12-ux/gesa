@@ -38,7 +38,8 @@ interface FilterState {
 
 
 function AdminPanelContent() {
-  const REPORTS_CACHE_KEY = "admin_reports_dataset_v2";
+  const REPORT_FETCH_LIMIT = 10;
+  const REPORTS_CACHE_KEY = "admin_reports_dataset_v3";
   const REPORTS_CACHE_TTL_MS = 15 * 60 * 1000;
   const { user, signOut } = useAuth();
   const router = useRouter();
@@ -275,7 +276,7 @@ function AdminPanelContent() {
         REPORTS_CACHE_KEY,
         async () => {
           const surveysRef = collection(db, FIREBASE_COLLECTIONS.SURVEYS);
-          const q = query(surveysRef, orderBy("createdAt", "desc"), limit(300));
+          const q = query(surveysRef, orderBy("createdAt", "desc"), limit(REPORT_FETCH_LIMIT));
           const querySnapshot = await getDocs(q);
           const result: SurveyData[] = [];
           querySnapshot.forEach((doc) => {

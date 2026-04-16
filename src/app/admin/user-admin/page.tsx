@@ -4,7 +4,7 @@ import { useState, useEffect, memo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { collection, getDocs, query, orderBy, limit, addDoc, serverTimestamp, doc, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, limit, addDoc, serverTimestamp, doc, deleteDoc, startAfter, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import { createUserWithEmailAndPassword } from "firebase/auth";
@@ -19,6 +19,11 @@ interface User {
   role: string;
   department?: string;
   createdAt: any;
+}
+
+interface UsersPagePayload {
+  hasMore: boolean;
+  users: User[];
 }
 
 type UserRole = "super-admin" | "admin" | "petugas-existing" | "petugas-apj-propose" | "petugas-pra-existing" | "petugas-survey-cahaya" | "petugas-kontruksi" | "petugas-om" | "petugas-bmd-gudang";
@@ -92,10 +97,12 @@ UserCard.displayName = "UserCard";
 
 function UserAdminContent() {
   const DEFAULT_VISIBLE_USERS = 4;
-  const USERS_CACHE_KEY = "user-admin_dataset_v2";
+  const USER_FETCH_LIMIT = 10;
+  const USERS_CACHE_KEY = "user-admin_dataset_v4";
   const USERS_CACHE_TTL_MS = 15 * 60 * 1000;
   const { user } = useAuth();
   const router = useRouter();
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [superAdmins, setSuperAdmins] = useState<User[]>([]);
   const [administrators, setAdministrators] = useState<User[]>([]);
   const [surveyExisting, setSurveyExisting] = useState<User[]>([]);
@@ -122,6 +129,9 @@ function UserAdminContent() {
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const [hasMoreUsers, setHasMoreUsers] = useState(false);
+  const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
+  const [lastVisibleCreatedAt, setLastVisibleCreatedAt] = useState<any>(null);
 
   const isSuperAdmin = user?.role === "super-admin";
 
@@ -130,6 +140,7 @@ function UserAdminContent() {
   }, []);
 
   const applyUserBuckets = (users: User[]) => {
+    setAllUsers(users);
     setSuperAdmins(users.filter((item) => item.role === "super-admin"));
     setAdministrators(users.filter((item) => item.role === "admin"));
     setSurveyExisting(users.filter((item) => item.role === "petugas-existing"));
@@ -141,6 +152,16 @@ function UserAdminContent() {
     setBmdGudang(users.filter((item) => item.role === "petugas-bmd-gudang"));
   };
 
+  const normalizeCreatedAtCursor = (value: any) => {
+    if (!value) return null;
+    if (value instanceof Timestamp) return value;
+    if (typeof value?.toDate === "function") return value;
+    if (typeof value?.seconds === "number") {
+      return new Timestamp(value.seconds, value.nanoseconds ?? 0);
+    }
+    return value;
+  };
+
   const fetchUsers = async (forceRefresh = false) => {
     try {
       if (forceRefresh) {
@@ -149,29 +170,75 @@ function UserAdminContent() {
       } else {
         setLoading(true);
       }
+      setExpandedSections({});
 
-      const usersData = await fetchWithCache<User[]>(
+      const pagePayload = await fetchWithCache<UsersPagePayload>(
         USERS_CACHE_KEY,
         async () => {
           const usersQuery = query(
             collection(db, "User-Admin"),
             orderBy("createdAt", "desc"),
-            limit(300)
+            limit(USER_FETCH_LIMIT)
           );
           const usersSnapshot = await getDocs(usersQuery);
-          return usersSnapshot.docs.map((doc) => ({
+          const users = usersSnapshot.docs.map((doc) => ({
             id: doc.id,
             ...doc.data(),
           })) as User[];
+          return {
+            users,
+            hasMore: usersSnapshot.docs.length === USER_FETCH_LIMIT,
+          };
         },
         USERS_CACHE_TTL_MS
       );
-      applyUserBuckets(usersData);
+      applyUserBuckets(pagePayload.users);
+      setHasMoreUsers(pagePayload.hasMore);
+      setLastVisibleCreatedAt(
+        pagePayload.users.length > 0
+          ? normalizeCreatedAtCursor(pagePayload.users[pagePayload.users.length - 1].createdAt)
+          : null
+      );
     } catch (error) {
       console.error("Error fetching users:", error);
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const handleLoadMoreUsers = async () => {
+    if (!hasMoreUsers || !lastVisibleCreatedAt || loadingMoreUsers) return;
+
+    setLoadingMoreUsers(true);
+    try {
+      const usersQuery = query(
+        collection(db, "User-Admin"),
+        orderBy("createdAt", "desc"),
+        startAfter(lastVisibleCreatedAt),
+        limit(USER_FETCH_LIMIT)
+      );
+      const usersSnapshot = await getDocs(usersQuery);
+      const nextUsers = usersSnapshot.docs.map((snapshotDoc) => ({
+        id: snapshotDoc.id,
+        ...snapshotDoc.data(),
+      })) as User[];
+
+      if (nextUsers.length === 0) {
+        setHasMoreUsers(false);
+        return;
+      }
+
+      const mergedUsers = [...allUsers, ...nextUsers];
+      applyUserBuckets(mergedUsers);
+      setHasMoreUsers(usersSnapshot.docs.length === USER_FETCH_LIMIT);
+      setLastVisibleCreatedAt(
+        normalizeCreatedAtCursor(nextUsers[nextUsers.length - 1]?.createdAt)
+      );
+    } catch (error) {
+      console.error("Error loading more users:", error);
+    } finally {
+      setLoadingMoreUsers(false);
     }
   };
 
@@ -472,6 +539,9 @@ function UserAdminContent() {
                 <p className="text-sm lg:text-base text-purple-100">
                   Kelola dan pantau aktivitas pengguna sistem
                 </p>
+                <p className="mt-2 text-xs lg:text-sm text-purple-100/90">
+                  Memuat {USER_FETCH_LIMIT} pengguna per halaman untuk mengurangi read Firestore.
+                </p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -506,17 +576,46 @@ function UserAdminContent() {
             </div>
           </div>
         ) : (
-          <div className="space-y-6">
-            {renderUserSection("Super Administrator", superAdmins, "red")}
-            {renderUserSection("Administrator", administrators, "purple")}
-            {renderUserSection("Petugas Survey Existing", surveyExisting, "blue")}
-            {renderUserSection("Petugas Survey APJ Propose", surveyAPJ, "green")}
-            {renderUserSection("Petugas Survey Pra Existing", surveyPraExisting, "emerald")}
-            {renderUserSection("Petugas Survey Cahaya", surveyCahaya, "orange")}
-            {renderUserSection("Petugas Kontruksi", kontruksi, "teal")}
-            {renderUserSection("Petugas O&M", om, "indigo")}
-            {renderUserSection("Petugas BMD & Gudang Project", bmdGudang, "pink")}
-          </div>
+          <>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-purple-100 bg-white px-4 py-3 shadow-sm">
+              <p className="text-sm font-medium text-gray-700">
+                Total pengguna yang sudah dimuat: <span className="font-bold text-purple-700">{allUsers.length}</span>
+              </p>
+              <p className="text-xs text-gray-500">
+                Data dimuat bertahap per {USER_FETCH_LIMIT} item.
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              {renderUserSection("Super Administrator", superAdmins, "red")}
+              {renderUserSection("Administrator", administrators, "purple")}
+              {renderUserSection("Petugas Survey Existing", surveyExisting, "blue")}
+              {renderUserSection("Petugas Survey APJ Propose", surveyAPJ, "green")}
+              {renderUserSection("Petugas Survey Pra Existing", surveyPraExisting, "emerald")}
+              {renderUserSection("Petugas Survey Cahaya", surveyCahaya, "orange")}
+              {renderUserSection("Petugas Kontruksi", kontruksi, "teal")}
+              {renderUserSection("Petugas O&M", om, "indigo")}
+              {renderUserSection("Petugas BMD & Gudang Project", bmdGudang, "pink")}
+            </div>
+
+            {hasMoreUsers && (
+              <div className="mt-8 flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={() => void handleLoadMoreUsers()}
+                  disabled={loadingMoreUsers}
+                  className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-400"
+                >
+                  <span>{loadingMoreUsers ? "Memuat..." : `Muat ${USER_FETCH_LIMIT} pengguna berikutnya`}</span>
+                  {!loadingMoreUsers && (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </main>
 

@@ -20,6 +20,7 @@ function GesaSurveyContent() {
   const router = useRouter();
   const isSuperAdmin = user?.role === "super-admin";
   const [activeMenu, setActiveMenu] = useState("dashboard");
+  const [visitedMenus, setVisitedMenus] = useState<string[]>(["dashboard"]);
   const [activeKabupaten, setActiveKabupaten] = useState<string | null>(null);
   const [pendingKabupaten, setPendingKabupaten] = useState<string | null>(null);
   const [showKabupatenPicker, setShowKabupatenPicker] = useState(false);
@@ -35,6 +36,12 @@ function GesaSurveyContent() {
       setShowKabupatenPicker(true);
     }
   }, [user?.uid]);
+
+  useEffect(() => {
+    setVisitedMenus((current) =>
+      current.includes(activeMenu) ? current : [...current, activeMenu]
+    );
+  }, [activeMenu]);
 
   const activeKabupatenName =
     KABUPATEN_OPTIONS.find((k) => k.id === activeKabupaten)?.name || "-";
@@ -208,20 +215,50 @@ function GesaSurveyContent() {
               Ganti kabupaten
             </button>
           </div>
-          {activeMenu === "dashboard" && (
-            <DashboardContent
-              setActiveMenu={setActiveMenu}
-              isSuperAdmin={isSuperAdmin}
-              activeKabupaten={activeKabupaten}
-            />
+          {visitedMenus.includes("dashboard") && (
+            <section className={activeMenu === "dashboard" ? "block" : "hidden"} aria-hidden={activeMenu !== "dashboard"}>
+              <DashboardContent
+                setActiveMenu={setActiveMenu}
+                isSuperAdmin={isSuperAdmin}
+                activeKabupaten={activeKabupaten}
+              />
+            </section>
           )}
-          {activeMenu === "distribusi-tugas" && <DistribusiTugas setActiveMenu={setActiveMenu} />}
-          {activeMenu === "validasi-survey" && <ValidasiSurvey activeKabupaten={activeKabupaten} />}
-          {activeMenu === "data-survey-valid" && <DataSurveyValid activeKabupaten={activeKabupaten} />}
-          {activeMenu === "data-survey-tolak" && <DataSurveyTolak activeKabupaten={activeKabupaten} />}
-          {activeMenu === "data-survey-validasi" && <DataSurveyValidasi activeKabupaten={activeKabupaten} />}
-          {activeMenu === "maps-validasi" && <MapsValidasi activeKabupaten={activeKabupaten} />}
-          {activeMenu === "tracking-history" && <TrackingHistory />}
+          {visitedMenus.includes("distribusi-tugas") && (
+            <section className={activeMenu === "distribusi-tugas" ? "block" : "hidden"} aria-hidden={activeMenu !== "distribusi-tugas"}>
+              <DistribusiTugas setActiveMenu={setActiveMenu} />
+            </section>
+          )}
+          {visitedMenus.includes("validasi-survey") && (
+            <section className={activeMenu === "validasi-survey" ? "block" : "hidden"} aria-hidden={activeMenu !== "validasi-survey"}>
+              <ValidasiSurvey activeKabupaten={activeKabupaten} />
+            </section>
+          )}
+          {visitedMenus.includes("data-survey-valid") && (
+            <section className={activeMenu === "data-survey-valid" ? "block" : "hidden"} aria-hidden={activeMenu !== "data-survey-valid"}>
+              <DataSurveyValid activeKabupaten={activeKabupaten} />
+            </section>
+          )}
+          {visitedMenus.includes("data-survey-tolak") && (
+            <section className={activeMenu === "data-survey-tolak" ? "block" : "hidden"} aria-hidden={activeMenu !== "data-survey-tolak"}>
+              <DataSurveyTolak activeKabupaten={activeKabupaten} />
+            </section>
+          )}
+          {visitedMenus.includes("data-survey-validasi") && isSuperAdmin && (
+            <section className={activeMenu === "data-survey-validasi" ? "block" : "hidden"} aria-hidden={activeMenu !== "data-survey-validasi"}>
+              <DataSurveyValidasi activeKabupaten={activeKabupaten} />
+            </section>
+          )}
+          {visitedMenus.includes("maps-validasi") && (
+            <section className={activeMenu === "maps-validasi" ? "block" : "hidden"} aria-hidden={activeMenu !== "maps-validasi"}>
+              <MapsValidasi activeKabupaten={activeKabupaten} />
+            </section>
+          )}
+          {visitedMenus.includes("tracking-history") && (
+            <section className={activeMenu === "tracking-history" ? "block" : "hidden"} aria-hidden={activeMenu !== "tracking-history"}>
+              <TrackingHistory />
+            </section>
+          )}
         </div>
 
         {showKabupatenPicker && (

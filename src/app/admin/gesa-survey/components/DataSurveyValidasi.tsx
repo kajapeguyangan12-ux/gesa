@@ -127,7 +127,10 @@ interface Task {
 }
 
 export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupaten?: string | null }) {
-  const VALIDASI_CACHE_PREFIX = "data_survey_validasi";
+  const VALIDASI_CACHE_PREFIX = "data_survey_validasi_v2";
+  const TASK_FETCH_LIMIT = 10;
+  const DEFAULT_FETCH_LIMIT = 10;
+  const LOAD_MORE_BATCH = 10;
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
@@ -157,7 +160,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [showAll, setShowAll] = useState(false);
+  const [loadedLimit, setLoadedLimit] = useState(DEFAULT_FETCH_LIMIT);
 
   useEffect(() => {
     setSelectedSurveyIds([]);
@@ -167,7 +170,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     setSurveys([]);
     setTasks([]);
     setCurrentPage(1);
-    setShowAll(false);
+    setLoadedLimit(DEFAULT_FETCH_LIMIT);
     setDataLoaded(false);
     setStats({
       total: 0,
@@ -177,7 +180,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     });
   }, [activeKabupaten]);
 
-  const fetchAllSurveys = async (requestedLimit?: number | null, forceRefresh = false) => {
+  const fetchAllSurveys = async (requestedLimit: number = loadedLimit, forceRefresh = false) => {
     try {
       if (forceRefresh) {
         setRefreshing(true);
@@ -194,7 +197,8 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       
       // Fetch tasks first to get list of assigned surveyors by THIS admin
       const tasksCacheKey = `${VALIDASI_CACHE_PREFIX}_tasks_${adminId || "all"}`;
-      const surveysCacheKey = `${VALIDASI_CACHE_PREFIX}_surveys_${adminId || "all"}_${activeKabupaten || "all"}_${requestedLimit ?? "all"}`;
+      const normalizedLimit = Math.max(requestedLimit, DEFAULT_FETCH_LIMIT);
+      const surveysCacheKey = `${VALIDASI_CACHE_PREFIX}_surveys_${adminId || "all"}_${activeKabupaten || "all"}_${normalizedLimit}`;
       if (forceRefresh) {
         clearCachedData(tasksCacheKey);
         clearCachedData(surveysCacheKey);
@@ -204,7 +208,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         tasksCacheKey,
         async () => {
           const tasksRef = collection(db, "tasks");
-          const tasksQuery = query(tasksRef, orderBy("createdAt", "desc"), limit(300));
+          const tasksQuery = query(tasksRef, orderBy("createdAt", "desc"), limit(TASK_FETCH_LIMIT));
           const tasksSnapshot = await getDocs(tasksQuery);
           return tasksSnapshot.docs
             .filter((doc) => {
@@ -241,29 +245,17 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
           const existingRef = collection(db, "survey-existing");
           const proposeRef = collection(db, "survey-apj-propose");
           const praExistingRef = collection(db, "survey-pra-existing");
-          const safeLimit = requestedLimit ? Math.max(requestedLimit * 5, 50) : null;
+          const safeLimit = Math.max(normalizedLimit * 3, 50);
 
           const existingQuery = activeKabupaten
-            ? (requestedLimit
-                ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit!))
-                : query(existingRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc")))
-            : (requestedLimit
-                ? query(existingRef, where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit!))
-                : query(existingRef, orderBy("createdAt", "desc")));
+            ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit))
+            : query(existingRef, where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit));
           const proposeQuery = activeKabupaten
-            ? (requestedLimit
-                ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit!))
-                : query(proposeRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc")))
-            : (requestedLimit
-                ? query(proposeRef, where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit!))
-                : query(proposeRef, orderBy("createdAt", "desc")));
+            ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit))
+            : query(proposeRef, where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit));
           const praExistingQuery = activeKabupaten
-            ? (requestedLimit
-                ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit!))
-                : query(praExistingRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc")))
-            : (requestedLimit
-                ? query(praExistingRef, where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit!))
-                : query(praExistingRef, orderBy("createdAt", "desc")));
+            ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit))
+            : query(praExistingRef, where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit));
           
           const [existingSnapshot, proposeSnapshot, praExistingSnapshot] = await Promise.all([
             getDocs(existingQuery),
@@ -340,14 +332,16 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         5 * 60_000
       );
       
-      setSurveys(requestedLimit ? allSurveys.slice(0, requestedLimit) : allSurveys);
+      const limitedSurveys = allSurveys.slice(0, normalizedLimit);
+      setLoadedLimit(normalizedLimit);
+      setSurveys(limitedSurveys);
       setDataLoaded(true);
       
       setStats({
-        total: requestedLimit ? allSurveys.slice(0, requestedLimit).length : allSurveys.length,
-        existing: requestedLimit ? allSurveys.slice(0, requestedLimit).filter((survey) => survey.type === "existing").length : existingData.length,
-        propose: requestedLimit ? allSurveys.slice(0, requestedLimit).filter((survey) => survey.type === "propose").length : proposeData.length,
-        praExisting: requestedLimit ? allSurveys.slice(0, requestedLimit).filter((survey) => survey.type === "pra-existing").length : praExistingData.length,
+        total: limitedSurveys.length,
+        existing: limitedSurveys.filter((survey) => survey.type === "existing").length,
+        propose: limitedSurveys.filter((survey) => survey.type === "propose").length,
+        praExisting: limitedSurveys.filter((survey) => survey.type === "pra-existing").length,
       });
     } catch (error) {
       console.error("Error fetching surveys:", error);
@@ -359,8 +353,9 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
 
   const clearValidasiCaches = () => {
     clearCachedData(`${VALIDASI_CACHE_PREFIX}_tasks_${currentAdminId || "all"}`);
-    clearCachedData(`${VALIDASI_CACHE_PREFIX}_surveys_${currentAdminId || "all"}_${activeKabupaten || "all"}_10`);
-    clearCachedData(`${VALIDASI_CACHE_PREFIX}_surveys_${currentAdminId || "all"}_${activeKabupaten || "all"}_all`);
+    clearCachedData(`${VALIDASI_CACHE_PREFIX}_surveys_${currentAdminId || "all"}_${activeKabupaten || "all"}_${DEFAULT_FETCH_LIMIT}`);
+    clearCachedData(`${VALIDASI_CACHE_PREFIX}_surveys_${currentAdminId || "all"}_${activeKabupaten || "all"}_${loadedLimit}`);
+    clearCachedData(`${VALIDASI_CACHE_PREFIX}_surveys_${currentAdminId || "all"}_${activeKabupaten || "all"}_${loadedLimit + LOAD_MORE_BATCH}`);
   };
 
   const handleViewDetail = (survey: Survey) => {
@@ -431,7 +426,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       });
       
       clearValidasiCaches();
-      await fetchAllSurveys();
+      await fetchAllSurveys(loadedLimit, true);
       setShowEditModal(false);
       setEditFormData(null);
       
@@ -481,7 +476,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       });
       
       clearValidasiCaches();
-      await fetchAllSurveys();
+      await fetchAllSurveys(loadedLimit, true);
       
       alert('Survey berhasil divalidasi! Survey dipindahkan ke Data Survey Valid.');
     } catch (error) {
@@ -539,7 +534,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
 
       setSelectedSurveyIds([]);
       clearValidasiCaches();
-      await fetchAllSurveys();
+      await fetchAllSurveys(loadedLimit, true);
       alert(`${selectedSurveys.length} data berhasil divalidasi.`);
     } catch (error) {
       console.error("Error bulk validating surveys:", error);
@@ -604,7 +599,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       });
       
       clearValidasiCaches();
-      await fetchAllSurveys();
+      await fetchAllSurveys(loadedLimit, true);
       setShowDetailModal(false);
       setSelectedSurvey(null);
       
@@ -629,7 +624,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       
       await deleteDoc(surveyDoc);
       clearValidasiCaches();
-      await fetchAllSurveys();
+      await fetchAllSurveys(loadedLimit, true);
       
       alert('Survey berhasil dihapus!');
     } catch (error) {
@@ -747,10 +742,10 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
 
   // Pagination logic
   const totalItems = filteredSurveys.length;
-  const totalPages = showAll ? 1 : Math.ceil(totalItems / itemsPerPage);
-  const startIndex = showAll ? 0 : (currentPage - 1) * itemsPerPage;
-  const endIndex = showAll ? totalItems : startIndex + itemsPerPage;
-  const paginatedSurveys = showAll ? filteredSurveys : filteredSurveys.slice(startIndex, endIndex);
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedSurveys = filteredSurveys.slice(startIndex, endIndex);
 
   // Debug pagination values
   console.log("=== DATA VERIFIKASI PAGINATION DEBUG ===");
@@ -759,7 +754,6 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   console.log("totalPages:", totalPages);
   console.log("currentPage:", currentPage);
   console.log("itemsPerPage:", itemsPerPage);
-  console.log("showAll:", showAll);
   console.log("paginatedSurveys.length:", paginatedSurveys.length);
   console.log("========================================");
 
@@ -777,16 +771,13 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   const handleItemsPerPageChange = (value: number) => {
     setItemsPerPage(value);
     setCurrentPage(1);
-    setShowAll(false);
     if (dataLoaded && surveys.length < value) {
       void fetchAllSurveys(value);
     }
   };
 
-  // Handle show all toggle
-  const handleShowAllToggle = () => {
-    setShowAll(!showAll);
-    setCurrentPage(1);
+  const handleLoadMore = () => {
+    void fetchAllSurveys(loadedLimit + LOAD_MORE_BATCH);
   };
 
   const allFilteredSelected = filteredSurveys.length > 0 && filteredSurveys.every((survey) => selectedSurveyIds.includes(survey.id));
@@ -814,80 +805,70 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-gray-50 border-t">
         <div className="flex items-center gap-4">
           <div className="text-sm text-gray-600">
-            <span>Menampilkan {showAll ? totalItems : paginatedSurveys.length} dari {totalItems} data</span>
+            <span>Menampilkan {paginatedSurveys.length} dari {totalItems} data yang sudah dimuat</span>
           </div>
           
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600">Tampilkan:</label>
             <select
-              value={showAll ? "all" : itemsPerPage}
-              onChange={(e) => {
-                if (e.target.value === "all") {
-                  handleShowAllToggle();
-                } else {
-                  handleItemsPerPageChange(Number(e.target.value));
-                }
-              }}
+              value={itemsPerPage}
+              onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
               className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value={10}>10</option>
               <option value={25}>25</option>
-              <option value={50}>50</option>
               <option value={100}>100</option>
-              <option value="all">Semua</option>
             </select>
           </div>
         </div>
 
         {/* Always show pagination controls when there's data */}
-        {!showAll && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-              className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            
-            <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let pageNum;
-                if (totalPages <= 5) {
-                  pageNum = i + 1;
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
-                } else {
-                  pageNum = currentPage - 2 + i;
-                }
-                
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => handlePageChange(pageNum)}
-                    className={`px-3 py-1 text-sm border rounded ${
-                      currentPage === pageNum
-                        ? "bg-blue-500 text-white border-blue-500"
-                        : "bg-white border-gray-300 hover:bg-gray-50"
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              })}
-            </div>
-            
-            <button
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next
-            </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Previous
+          </button>
+          
+          <div className="flex items-center gap-1">
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNum;
+              if (totalPages <= 5) {
+                pageNum = i + 1;
+              } else if (currentPage <= 3) {
+                pageNum = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNum = totalPages - 4 + i;
+              } else {
+                pageNum = currentPage - 2 + i;
+              }
+              
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => handlePageChange(pageNum)}
+                  className={`px-3 py-1 text-sm border rounded ${
+                    currentPage === pageNum
+                      ? "bg-blue-500 text-white border-blue-500"
+                      : "bg-white border-gray-300 hover:bg-gray-50"
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
           </div>
-        )}
+          
+          <button
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
+        </div>
       </div>
     );
   };
@@ -906,21 +887,21 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
           </div>
           <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
             <button
-              onClick={() => void fetchAllSurveys(10)}
+              onClick={() => void fetchAllSurveys(DEFAULT_FETCH_LIMIT)}
               disabled={loading}
               className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold rounded-xl transition-colors"
             >
-              {loading ? "Memuat..." : "Muat 10 Data"}
+              {loading ? "Memuat..." : `Muat ${DEFAULT_FETCH_LIMIT} Data`}
             </button>
             <button
-              onClick={() => void fetchAllSurveys(null)}
-              disabled={loading}
+              onClick={handleLoadMore}
+              disabled={loading || !dataLoaded}
               className="px-4 py-3 bg-slate-700 hover:bg-slate-800 disabled:bg-slate-400 text-white font-semibold rounded-xl transition-colors"
             >
-              Muat Semua
+              Muat {LOAD_MORE_BATCH} Lagi
             </button>
             <button
-              onClick={() => void fetchAllSurveys(showAll ? null : 10, true)}
+              onClick={() => void fetchAllSurveys(loadedLimit, true)}
               disabled={loading || refreshing || !dataLoaded}
               className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-semibold rounded-xl transition-colors"
             >
@@ -1009,7 +990,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
               />
             </div>
             <div className="ml-auto text-sm text-gray-600 font-medium">
-              Total: {filteredSurveys.length} dari {surveys.length} survey
+              Total: {filteredSurveys.length} dari {surveys.length} survey yang sudah dimuat
             </div>
           </div>
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">

@@ -97,6 +97,17 @@ interface DashboardSummaryDocument {
   praExistingByKecamatan?: Array<Partial<KecamatanSummary> & { kecamatan?: string }>;
 }
 
+interface TaskExportRecord {
+  id: string;
+  title: string;
+  status: string;
+  type: string;
+  surveyorName: string;
+  createdByAdminName: string;
+  createdByAdminEmail: string;
+  createdAt?: TimestampLike;
+}
+
 function resolveTimestamp(value: TimestampLike) {
   if (!value) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -248,6 +259,31 @@ async function fetchCollectionRows(collectionName: string, activeKabupaten?: str
       });
     },
     120_000
+  );
+}
+
+async function fetchTaskExportRecords() {
+  return await fetchWithCache<TaskExportRecord[]>(
+    "dashboard_task_export_records_v1",
+    async () => {
+      const tasksRef = collection(db, "tasks");
+      const snapshot = await getDocs(query(tasksRef, orderBy("createdAt", "desc")));
+
+      return snapshot.docs.map((item) => {
+        const data = item.data();
+        return {
+          id: item.id,
+          title: typeof data.title === "string" ? data.title : "Tanpa Judul",
+          status: typeof data.status === "string" ? data.status : "-",
+          type: typeof data.type === "string" ? data.type : "-",
+          surveyorName: typeof data.surveyorName === "string" ? data.surveyorName : "-",
+          createdByAdminName: typeof data.createdByAdminName === "string" ? data.createdByAdminName : "Admin",
+          createdByAdminEmail: typeof data.createdByAdminEmail === "string" ? data.createdByAdminEmail : "-",
+          createdAt: data.createdAt,
+        } satisfies TaskExportRecord;
+      });
+    },
+    5 * 60 * 1000
   );
 }
 
@@ -448,6 +484,7 @@ export default function DashboardContent({
   const [reportsVisible, setReportsVisible] = useState(false);
   const [reportsLoaded, setReportsLoaded] = useState(false);
   const [summaryRefreshing, setSummaryRefreshing] = useState(false);
+  const [taskExporting, setTaskExporting] = useState(false);
   const [startDate, setStartDate] = useState(() => {
     const today = new Date();
     return formatDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -497,6 +534,7 @@ export default function DashboardContent({
   }, [activeKabupaten, isSuperAdmin]);
 
   useEffect(() => {
+    if (!isSuperAdmin) return;
     if (!reportsVisible) return;
     let cancelled = false;
 
@@ -923,6 +961,67 @@ export default function DashboardContent({
     }
   };
 
+  const handleExportTaskExcel = async () => {
+    if (!isSuperAdmin) return;
+    if (!reportsLoaded || !reportState.allRowsRaw.length) {
+      alert("Klik 'Muat Laporan' terlebih dahulu agar data survey per tugas bisa dihitung tanpa read tambahan yang besar.");
+      return;
+    }
+
+    try {
+      setTaskExporting(true);
+
+      const tasks = await fetchTaskExportRecords();
+      const surveyCountByTaskId = reportState.allRowsRaw.reduce<Map<string, number>>((accumulator, row) => {
+        const taskId = row.taskId?.trim();
+        if (!taskId) return accumulator;
+        accumulator.set(taskId, (accumulator.get(taskId) || 0) + 1);
+        return accumulator;
+      }, new Map<string, number>());
+
+      const headers = [
+        "No",
+        "Judul Tugas",
+        "Admin Pembuat",
+        "Email Admin",
+        "Surveyor",
+        "Tipe Tugas",
+        "Status Tugas",
+        "Jumlah Data Survey Masuk",
+        "Tanggal Dibuat",
+      ];
+
+      const rows = tasks.map((task, index) => [
+        index + 1,
+        task.title,
+        task.createdByAdminName,
+        task.createdByAdminEmail,
+        task.surveyorName,
+        task.type,
+        task.status,
+        surveyCountByTaskId.get(task.id) || 0,
+        formatDateTime(task.createdAt),
+      ]);
+
+      const workbook = XLSX.utils.book_new();
+      const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      sheet["!cols"] = headers.map((header, columnIndex) => ({
+        wch: Math.min(
+          36,
+          Math.max(header.length, ...rows.map((row) => String(row[columnIndex] ?? "").length)) + 2
+        ),
+      }));
+
+      XLSX.utils.book_append_sheet(workbook, sheet, "Rekap Tugas Admin");
+      XLSX.writeFile(workbook, `rekap-tugas-admin-${activeKabupaten || "semua-kabupaten"}.xlsx`);
+    } catch (error) {
+      console.error("Failed to export task excel:", error);
+      alert("Gagal export Excel tugas admin.");
+    } finally {
+      setTaskExporting(false);
+    }
+  };
+
   return (
     <>
       <div className="mb-6 bg-gradient-to-r from-green-600 to-green-700 rounded-2xl shadow-lg p-4 lg:p-6">
@@ -1008,6 +1107,16 @@ export default function DashboardContent({
                   {isSuperAdmin && (
                     <button
                       type="button"
+                      onClick={() => void handleExportTaskExcel()}
+                      disabled={taskExporting}
+                      className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-white/20 disabled:cursor-not-allowed disabled:bg-white/5"
+                    >
+                      {taskExporting ? "Exporting..." : "Export Tugas Excel"}
+                    </button>
+                  )}
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
                       onClick={() => void handleRefreshSummary()}
                       disabled={summaryRefreshing}
                       className="rounded-xl border border-white/20 bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-300"
@@ -1015,19 +1124,25 @@ export default function DashboardContent({
                       {summaryRefreshing ? "Memperbarui Summary..." : "Refresh Summary"}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setReportsVisible((current) => !current)}
-                    className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-100"
-                  >
-                    {reportsVisible ? "Sembunyikan Laporan" : reportsLoaded ? "Tampilkan Laporan" : "Muat Laporan"}
-                  </button>
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => setReportsVisible((current) => !current)}
+                      className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-100"
+                    >
+                      {reportsVisible ? "Sembunyikan Laporan" : reportsLoaded ? "Tampilkan Laporan" : "Muat Laporan"}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          {!reportsVisible ? (
+          {!isSuperAdmin ? (
+            <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-8 text-sm text-gray-600 shadow-sm">
+              Laporan dashboard dikunci untuk admin biasa agar read Firestore tetap hemat. Monitoring rekap, laporan detail, dan export hanya tersedia di akun super admin.
+            </div>
+          ) : !reportsVisible ? (
             <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-8 text-sm text-gray-600 shadow-sm">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
@@ -1197,72 +1312,6 @@ export default function DashboardContent({
                             <td className="px-6 py-4 text-sm font-bold text-amber-200">{verifierGrandTotal.praExistingCount}</td>
                             <td className="px-6 py-4 text-sm font-bold">{formatDateTime(verifierGrandTotal.firstVerifiedAt)}</td>
                             <td className="px-6 py-4 text-sm font-bold">{formatDateTime(verifierGrandTotal.lastVerifiedAt)}</td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {!isSuperAdmin && (
-                <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-                  <div className="flex flex-col gap-2 border-b border-gray-200 px-6 py-5 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                      <h4 className="text-xl font-bold text-gray-900">Laporan Verifikasi Harian Admin</h4>
-                      <p className="mt-1 text-sm text-gray-500">
-                        Ringkasan verifikasi per hari untuk admin yang sedang login. Fitur ini hanya untuk melihat laporan, tanpa download.
-                      </p>
-                    </div>
-                    <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                      {adminDailyVerificationRows.length} hari tercatat
-                    </div>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="min-w-[1080px] w-full">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          {[
-                            "Tanggal",
-                            "Total Verifikasi",
-                            "Jumlah Titik",
-                            "Jumlah Lampu",
-                            "Existing",
-                            "APJ Propose",
-                            "Pra Existing",
-                            "Jam Pertama",
-                            "Jam Terakhir",
-                          ].map((header) => (
-                            <th
-                              key={header}
-                              className="px-6 py-4 text-left text-xs font-bold uppercase tracking-[0.18em] text-gray-500"
-                            >
-                              {header}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {adminDailyVerificationRows.length ? (
-                          adminDailyVerificationRows.map((row) => (
-                            <tr key={row.dateKey} className="hover:bg-blue-50/40 transition-colors">
-                              <td className="px-6 py-4 font-semibold text-gray-900">{row.dateLabel}</td>
-                              <td className="px-6 py-4 text-sm font-semibold text-gray-900">{row.totalVerifikasi}</td>
-                              <td className="px-6 py-4 text-sm text-gray-700">{row.totalTitik}</td>
-                              <td className="px-6 py-4 text-sm text-gray-700">{row.totalLampu}</td>
-                              <td className="px-6 py-4 text-sm text-blue-700">{row.existingCount}</td>
-                              <td className="px-6 py-4 text-sm text-emerald-700">{row.proposeCount}</td>
-                              <td className="px-6 py-4 text-sm text-amber-700">{row.praExistingCount}</td>
-                              <td className="px-6 py-4 text-sm text-gray-700">{formatDateTime(row.firstVerifiedAt)}</td>
-                              <td className="px-6 py-4 text-sm text-gray-700">{formatDateTime(row.lastVerifiedAt)}</td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan={9} className="px-6 py-8 text-center text-sm text-gray-500">
-                              Belum ada data verifikasi admin ini.
-                            </td>
                           </tr>
                         )}
                       </tbody>

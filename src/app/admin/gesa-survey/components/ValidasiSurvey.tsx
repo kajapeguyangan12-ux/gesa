@@ -196,11 +196,14 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     propose: 0,
     praExisting: 0,
   });
+  const [statsLoaded, setStatsLoaded] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [selectedTaskNavigationInfo, setSelectedTaskNavigationInfo] = useState<TaskNavigationInfo | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showDetailMap, setShowDetailMap] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFormData, setEditFormData] = useState<Survey | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -222,7 +225,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showAll, setShowAll] = useState(false);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [pageCursors, setPageCursors] = useState<QueryDocumentSnapshot[]>([]);
@@ -275,41 +278,47 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   };
 
   const fetchStatistics = async (forceRefresh = false) => {
-    if (forceRefresh) {
-      clearCachedData(validasiStatsCacheKey);
+    try {
+      setStatsLoading(true);
+      if (forceRefresh) {
+        clearCachedData(validasiStatsCacheKey);
+      }
+
+      const cachedStats = await fetchWithCache(
+        validasiStatsCacheKey,
+        async () => {
+          const buildCountQuery = (collectionName: string) => {
+            const ref = collection(db, collectionName);
+            const constraints: QueryConstraint[] = [where("status", "==", "menunggu")];
+            if (activeKabupaten) constraints.unshift(where("kabupaten", "==", activeKabupaten));
+            return query(ref, ...constraints);
+          };
+
+          const countResults = await Promise.allSettled([
+            getCountFromServer(buildCountQuery("survey-existing")),
+            getCountFromServer(buildCountQuery("survey-apj-propose")),
+            getCountFromServer(buildCountQuery("survey-pra-existing")),
+          ]);
+
+          const existingCount = countResults[0].status === "fulfilled" ? countResults[0].value.data().count : 0;
+          const proposeCount = countResults[1].status === "fulfilled" ? countResults[1].value.data().count : 0;
+          const praExistingCount = countResults[2].status === "fulfilled" ? countResults[2].value.data().count : 0;
+
+          return {
+            existing: existingCount,
+            propose: proposeCount,
+            praExisting: praExistingCount,
+            total: existingCount + proposeCount + praExistingCount,
+          };
+        },
+        5 * 60 * 1000
+      );
+
+      setStats(cachedStats);
+      setStatsLoaded(true);
+    } finally {
+      setStatsLoading(false);
     }
-
-    const cachedStats = await fetchWithCache(
-      validasiStatsCacheKey,
-      async () => {
-        const buildCountQuery = (collectionName: string) => {
-          const ref = collection(db, collectionName);
-          const constraints: QueryConstraint[] = [where("status", "==", "menunggu")];
-          if (activeKabupaten) constraints.unshift(where("kabupaten", "==", activeKabupaten));
-          return query(ref, ...constraints);
-        };
-
-        const countResults = await Promise.allSettled([
-          getCountFromServer(buildCountQuery("survey-existing")),
-          getCountFromServer(buildCountQuery("survey-apj-propose")),
-          getCountFromServer(buildCountQuery("survey-pra-existing")),
-        ]);
-
-        const existingCount = countResults[0].status === "fulfilled" ? countResults[0].value.data().count : 0;
-        const proposeCount = countResults[1].status === "fulfilled" ? countResults[1].value.data().count : 0;
-        const praExistingCount = countResults[2].status === "fulfilled" ? countResults[2].value.data().count : 0;
-
-        return {
-          existing: existingCount,
-          propose: proposeCount,
-          praExisting: praExistingCount,
-          total: existingCount + proposeCount + praExistingCount,
-        };
-      },
-      5 * 60 * 1000
-    );
-
-    setStats(cachedStats);
   };
 
   const fetchSurveys = async (page = 1, forceRefresh = false) => {
@@ -320,7 +329,6 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
         setLoading(true);
       }
       await fetchPage(page, forceRefresh);
-      await fetchStatistics(forceRefresh);
     } catch (error) {
       console.error("Error fetching surveys:", error);
     } finally {
@@ -339,7 +347,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
 
     const loadLivePage = async () => {
       const ref = collection(db, collectionName);
-      const constraints: QueryConstraint[] = [where("status", "==", "menunggu"), orderBy("createdAt", "desc"), limit(itemsPerPage + 1)];
+      const constraints: QueryConstraint[] = [where("status", "==", "menunggu"), orderBy("createdAt", "desc"), limit(itemsPerPage)];
       if (activeKabupaten) constraints.unshift(where("kabupaten", "==", activeKabupaten));
 
       const previousCursor = page > 1 ? pageCursors[page - 2] : null;
@@ -348,8 +356,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
       }
 
       const snapshot = await getDocs(query(ref, ...constraints));
-      const hasMore = snapshot.docs.length > itemsPerPage;
-      const visibleDocs = hasMore ? snapshot.docs.slice(0, itemsPerPage) : snapshot.docs;
+      const visibleDocs = snapshot.docs;
 
       setPageCursors((current) => {
         const next = current.slice(0, Math.max(page - 1, 0));
@@ -362,7 +369,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
 
       return {
         surveys: visibleDocs.map((docSnap) => mapSurveyDoc(docSnap, activeTab)),
-        hasMore,
+        hasMore: visibleDocs.length === itemsPerPage,
       };
     };
 
@@ -381,6 +388,10 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     }
 
     const livePage = await loadLivePage();
+    if (page > 1 && livePage.surveys.length === 0) {
+      setHasNextPage(false);
+      return;
+    }
     setSurveys(livePage.surveys);
     setCurrentPage(page);
     setHasNextPage(livePage.hasMore);
@@ -431,6 +442,13 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     setSurveys([]);
     setHasNextPage(false);
     setPageCursors([]);
+    setStatsLoaded(false);
+    setStats({
+      total: 0,
+      existing: 0,
+      propose: 0,
+      praExisting: 0,
+    });
   }, [activeTab, activeKabupaten, itemsPerPage, filterSort]);
 
   useEffect(() => {
@@ -480,23 +498,31 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   });
 
   const displayedStats = useMemo(() => {
-    const fallbackActiveCount = filteredSurveys.length;
-    const existing = activeTab === "existing" && stats.existing === 0 ? fallbackActiveCount : stats.existing;
-    const propose = activeTab === "propose" && stats.propose === 0 ? fallbackActiveCount : stats.propose;
-    const praExisting = activeTab === "pra-existing" && stats.praExisting === 0 ? fallbackActiveCount : stats.praExisting;
-    const total = stats.total > 0 ? stats.total : existing + propose + praExisting;
+    if (!statsLoaded) {
+      return {
+        total: null,
+        existing: null,
+        propose: null,
+        praExisting: null,
+      };
+    }
 
-    return { total, existing, propose, praExisting };
-  }, [activeTab, filteredSurveys.length, stats.existing, stats.praExisting, stats.propose, stats.total]);
+    return {
+      total: stats.total,
+      existing: stats.existing,
+      propose: stats.propose,
+      praExisting: stats.praExisting,
+    };
+  }, [statsLoaded, stats.existing, stats.praExisting, stats.propose, stats.total]);
 
   // Pagination logic
   const totalItems =
     activeTab === "existing"
-      ? displayedStats.existing
+      ? displayedStats.existing ?? (hasNextPage ? currentPage * itemsPerPage + 1 : filteredSurveys.length)
       : activeTab === "propose"
-      ? displayedStats.propose
-      : displayedStats.praExisting;
-  const totalPages = showAll ? 1 : Math.max(1, Math.ceil(totalItems / itemsPerPage));
+      ? displayedStats.propose ?? (hasNextPage ? currentPage * itemsPerPage + 1 : filteredSurveys.length)
+      : displayedStats.praExisting ?? (hasNextPage ? currentPage * itemsPerPage + 1 : filteredSurveys.length);
+  const totalPages = showAll ? 1 : Math.max(1, statsLoaded ? Math.ceil(totalItems / itemsPerPage) : currentPage + (hasNextPage ? 1 : 0));
   const startIndex = filteredSurveys.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
   const endIndex = filteredSurveys.length === 0 ? 0 : Math.min(startIndex + (showAll ? filteredSurveys.length : itemsPerPage) - 1, totalItems);
   const paginatedSurveys = showAll ? filteredSurveys : filteredSurveys.slice(0, itemsPerPage);
@@ -526,27 +552,19 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-gray-50 border-t">
         <div className="flex items-center gap-4">
           <div className="text-sm text-gray-600">
-            <span>Menampilkan {startIndex}-{endIndex} dari {totalItems} data</span>
+            <span>Menampilkan {startIndex}-{endIndex} dari {statsLoaded ? totalItems : "?"} data</span>
           </div>
           
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600">Tampilkan:</label>
             <select
-              value={showAll ? "all" : itemsPerPage}
-              onChange={(e) => {
-                if (e.target.value === "all") {
-                  void fetchAllTabData();
-                } else {
-                  handleItemsPerPageChange(Number(e.target.value));
-                }
-              }}
+              value={itemsPerPage}
+              onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
               className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value={10}>10</option>
               <option value={25}>25</option>
-              <option value={50}>50</option>
               <option value={100}>100</option>
-              <option value="all">Semua</option>
             </select>
           </div>
         </div>
@@ -729,6 +747,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   const handleViewDetail = (survey: Survey) => {
     setSelectedSurvey(survey);
     setSelectedTaskNavigationInfo(null);
+    setShowDetailMap(false);
     setShowDetailModal(true);
   };
 
@@ -1003,40 +1022,49 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
               Data survey dari petugas yang menunggu verifikasi awal. Setelah diverifikasi, data akan pindah ke Validasi Data.
             </p>
           </div>
-          <button
-            onClick={() => void fetchSurveys(1, true)}
-            disabled={loading || refreshing}
-            className="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-          >
-            {refreshing ? "Memuat ulang..." : "Refresh Data"}
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => void fetchStatistics(true)}
+              disabled={statsLoading}
+              className="px-4 py-2 rounded-xl bg-slate-700 text-white font-semibold hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+              {statsLoading ? "Menghitung..." : "Hitung Statistik"}
+            </button>
+            <button
+              onClick={() => void fetchSurveys(1, true)}
+              disabled={loading || refreshing}
+              className="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+              {refreshing ? "Memuat ulang..." : "Refresh Data"}
+            </button>
+          </div>
         </div>
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
             <p className="text-sm font-medium text-blue-900 mb-1">Total Survey</p>
-            <h3 className="text-4xl font-bold text-blue-600">{totalSurveys}</h3>
+            <h3 className="text-4xl font-bold text-blue-600">{totalSurveys ?? "-"}</h3>
           </div>
 
           <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-4 border border-orange-200">
             <p className="text-sm font-medium text-orange-900 mb-1">Total Survey Existing</p>
-            <h3 className="text-4xl font-bold text-orange-600">{totalExisting}</h3>
+            <h3 className="text-4xl font-bold text-orange-600">{totalExisting ?? "-"}</h3>
           </div>
 
           <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
             <p className="text-sm font-medium text-purple-900 mb-1">Total Survey APJ Propose</p>
-            <h3 className="text-4xl font-bold text-purple-600">{totalPropose}</h3>
+            <h3 className="text-4xl font-bold text-purple-600">{totalPropose ?? "-"}</h3>
           </div>
 
           <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
             <p className="text-sm font-medium text-emerald-900 mb-1">Total Survey Pra Existing</p>
-            <h3 className="text-4xl font-bold text-emerald-600">{totalPraExisting}</h3>
+            <h3 className="text-4xl font-bold text-emerald-600">{totalPraExisting ?? "-"}</h3>
           </div>
 
           <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
             <p className="text-sm font-medium text-green-900 mb-1">Menunggu Verifikasi</p>
-            <h3 className="text-4xl font-bold text-green-600">{diverifikasiCount}</h3>
+            <h3 className="text-4xl font-bold text-green-600">{diverifikasiCount ?? "-"}</h3>
           </div>
         </div>
       </div>
@@ -1224,7 +1252,6 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
               >
                 <option value={10}>10</option>
                 <option value={25}>25</option>
-                <option value={50}>50</option>
                 <option value={100}>100</option>
                 <option value="all">Semua</option>
               </select>
@@ -1490,7 +1517,11 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                   </div>
                 </div>
                 <button
-                  onClick={() => setShowDetailModal(false)}
+                  onClick={() => {
+                    setShowDetailModal(false);
+                    setShowDetailMap(false);
+                    setSelectedTaskNavigationInfo(null);
+                  }}
                   className="p-2 hover:bg-gray-100 rounded-lg transition-all flex-shrink-0"
                   title="Tutup"
                 >
@@ -1512,14 +1543,32 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                   </svg>
                   Lokasi Survey
                 </h3>
-                <DynamicDetailMap 
-                  latitude={selectedSurvey.latitude} 
-                  longitude={selectedSurvey.longitude}
-                  accuracy={selectedSurvey.accuracy || 0}
-                  title={selectedSurvey.title}
-                  kmzFileUrl={selectedSurvey.type === "pra-existing" ? selectedSurvey.kmzFileUrl : undefined}
-                  onTaskNavigationInfoChange={setSelectedTaskNavigationInfo}
-                />
+                {!showDetailMap ? (
+                  <div className="rounded-xl border border-dashed border-blue-200 bg-white/70 px-4 py-6 text-center">
+                    <p className="text-sm text-gray-600">
+                      Peta belum dimuat untuk menghemat loading. Klik tombol di bawah jika perlu melihat lokasi.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowDetailMap(true)}
+                      className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-blue-700"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 01.553-.894l6-3a1 1 0 01.894 0l6 3a1 1 0 01.553.894v10.764a1 1 0 01-.553.894L9 20zm0 0v-8" />
+                      </svg>
+                      Tampilkan Peta
+                    </button>
+                  </div>
+                ) : (
+                  <DynamicDetailMap 
+                    latitude={selectedSurvey.latitude} 
+                    longitude={selectedSurvey.longitude}
+                    accuracy={selectedSurvey.accuracy || 0}
+                    title={selectedSurvey.title}
+                    kmzFileUrl={selectedSurvey.type === "pra-existing" ? selectedSurvey.kmzFileUrl : undefined}
+                    onTaskNavigationInfoChange={setSelectedTaskNavigationInfo}
+                  />
+                )}
                 <div className="mt-3 lg:mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 lg:gap-3 text-xs lg:text-sm">
                   <div className="bg-white/70 backdrop-blur px-3 lg:px-4 py-2 lg:py-3 rounded-lg border border-blue-200">
                     <p className="text-gray-600 mb-1">Latitude</p>
