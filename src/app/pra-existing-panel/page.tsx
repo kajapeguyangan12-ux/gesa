@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, query, Timestamp, where } from "firebase/firestore";
+import { fetchWithCache } from "@/utils/firestoreCache";
+import { collection, getCountFromServer, query, Timestamp, where } from "firebase/firestore";
 
 interface PanelStats {
   totalSurvey: number;
@@ -22,6 +23,8 @@ const initialStats: PanelStats = {
   tugasSelesai: 0,
   menungguValidasi: 0,
 };
+
+const PANEL_STATS_TTL_MS = 60_000;
 
 const cardColorMap = {
   blue: {
@@ -57,28 +60,36 @@ function PraExistingPanelContent() {
       setLoading(true);
 
       try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const startOfToday = Timestamp.fromDate(today);
+        const statsData = await fetchWithCache<PanelStats>(
+          `pra_existing_panel_stats_${user.uid}`,
+          async () => {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const startOfToday = Timestamp.fromDate(today);
 
-        const surveysRef = collection(db, "survey-pra-existing");
-        const tasksRef = collection(db, "tasks");
+            const surveysRef = collection(db, "survey-pra-existing");
+            const tasksRef = collection(db, "tasks");
 
-        const [surveySnapshot, surveyTodaySnapshot, menungguValidasiSnapshot, tugasSnapshot, tugasSelesaiSnapshot] = await Promise.all([
-          getDocs(query(surveysRef, where("surveyorUid", "==", user.uid))),
-          getDocs(query(surveysRef, where("surveyorUid", "==", user.uid), where("createdAt", ">=", startOfToday))),
-          getDocs(query(surveysRef, where("surveyorUid", "==", user.uid), where("status", "==", "menunggu"))),
-          getDocs(query(tasksRef, where("surveyorId", "==", user.uid), where("type", "==", "pra-existing"))),
-          getDocs(query(tasksRef, where("surveyorId", "==", user.uid), where("type", "==", "pra-existing"), where("status", "==", "completed"))),
-        ]);
+            const [surveySnapshot, surveyTodaySnapshot, menungguValidasiSnapshot, tugasSnapshot, tugasSelesaiSnapshot] = await Promise.all([
+              getCountFromServer(query(surveysRef, where("surveyorUid", "==", user.uid))),
+              getCountFromServer(query(surveysRef, where("surveyorUid", "==", user.uid), where("createdAt", ">=", startOfToday))),
+              getCountFromServer(query(surveysRef, where("surveyorUid", "==", user.uid), where("status", "==", "menunggu"))),
+              getCountFromServer(query(tasksRef, where("surveyorId", "==", user.uid), where("type", "==", "pra-existing"))),
+              getCountFromServer(query(tasksRef, where("surveyorId", "==", user.uid), where("type", "==", "pra-existing"), where("status", "==", "completed"))),
+            ]);
 
-        setStats({
-          totalSurvey: surveySnapshot.size,
-          surveyHariIni: surveyTodaySnapshot.size,
-          menungguValidasi: menungguValidasiSnapshot.size,
-          totalTugas: tugasSnapshot.size,
-          tugasSelesai: tugasSelesaiSnapshot.size,
-        });
+            return {
+              totalSurvey: surveySnapshot.data().count,
+              surveyHariIni: surveyTodaySnapshot.data().count,
+              menungguValidasi: menungguValidasiSnapshot.data().count,
+              totalTugas: tugasSnapshot.data().count,
+              tugasSelesai: tugasSelesaiSnapshot.data().count,
+            };
+          },
+          PANEL_STATS_TTL_MS
+        );
+
+        setStats(statsData);
       } catch (error) {
         console.error("Error fetching pra-existing dashboard stats:", error);
       } finally {
@@ -197,4 +208,3 @@ export default function PraExistingPanelPage() {
     </ProtectedRoute>
   );
 }
-
