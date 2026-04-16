@@ -4,11 +4,12 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } fro
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, serverTimestamp, where } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
 import { db, storage } from "@/lib/firebase";
+import { setupPolling } from "@/utils/firestoreCache";
 import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
 import { prepareOfflineBasemapForTask } from "@/utils/offlineBasemap";
 import {
@@ -311,34 +312,34 @@ function SurveyPraExistingContent() {
   }, [isOnline, syncPendingSurveys]);
 
   useEffect(() => {
+    // Use polling instead of onSnapshot to reduce Firestore reads
     const settingsRef = doc(
       db,
       PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION,
       PRA_EXISTING_OFFLINE_SETTINGS_DOC
     );
 
-    const unsubscribe = onSnapshot(
-      settingsRef,
-      (snapshot) => {
+    const cleanup = setupPolling(
+      `pra_existing_settings_${PRA_EXISTING_OFFLINE_SETTINGS_DOC}`,
+      async () => {
+        const snapshot = await getDoc(settingsRef);
         if (!snapshot.exists()) {
-          setOfflineSettings(DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS);
-          return;
+          return DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS;
         }
-
         const data = snapshot.data() as { globalEnabled?: unknown };
-        setOfflineSettings({
+        return {
           globalEnabled:
             typeof data.globalEnabled === "boolean"
               ? data.globalEnabled
               : DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS.globalEnabled,
-        });
+        };
       },
-      (error) => {
-        console.error("Gagal memantau pengaturan offline pra-existing:", error);
-      }
+      (settings) => setOfflineSettings(settings),
+      60_000, // 1 minute TTL
+      30_000 // poll every 30 seconds
     );
 
-    return () => unsubscribe();
+    return cleanup;
   }, []);
 
   useEffect(() => {
@@ -393,11 +394,19 @@ function SurveyPraExistingContent() {
       return;
     }
 
+    // Use polling instead of onSnapshot to reduce Firestore reads
     const taskRef = doc(db, "tasks", activeTask.id);
-    const unsubscribe = onSnapshot(
-      taskRef,
-      (snapshot) => {
+    const cleanup = setupPolling(
+      `pra_existing_task_${activeTask.id}`,
+      async () => {
+        const snapshot = await getDoc(taskRef);
         if (!snapshot.exists()) {
+          return null;
+        }
+        return snapshot.data() as ActiveTask | null;
+      },
+      (taskData) => {
+        if (!taskData) {
           window.localStorage.removeItem("activeTask");
           setActiveTask(null);
           setCompletedPoints([]);
@@ -407,7 +416,6 @@ function SurveyPraExistingContent() {
           return;
         }
 
-        const taskData = snapshot.data() as ActiveTask;
         setActiveTask((previous) =>
           previous
             ? {
@@ -425,12 +433,11 @@ function SurveyPraExistingContent() {
             : previous
         );
       },
-      (error) => {
-        console.error("Gagal memantau perubahan tugas aktif:", error);
-      }
+      120_000, // 2 minute TTL
+      60_000 // poll every 60 seconds (less aggressive than settings)
     );
 
-    return () => unsubscribe();
+    return cleanup;
   }, [activeTask?.id]);
 
   useEffect(() => {

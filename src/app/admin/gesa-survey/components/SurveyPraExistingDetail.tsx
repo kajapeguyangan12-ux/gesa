@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { collection, getDocs, query, where, deleteDoc, doc } from "firebase/firestore";
+import { collection, getCountFromServer, getDocs, limit, orderBy, query, where, deleteDoc, doc, startAfter, QueryConstraint, QueryDocumentSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import * as XLSX from 'xlsx';
@@ -92,6 +92,15 @@ export default function SurveyPraExistingDetail({
   const [searchQuery, setSearchQuery] = useState("");
   const [filterKecamatan, setFilterKecamatan] = useState("Semua Kecamatan");
   const [filterDesa, setFilterDesa] = useState("Semua Desa");
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [showAll, setShowAll] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [pageCursors, setPageCursors] = useState<QueryDocumentSnapshot[]>([]);
+  const [kabupatenField, setKabupatenField] = useState<"kabupaten" | "kabupatenName" | null>(null);
   const [floatingScrollbar, setFloatingScrollbar] = useState({
     visible: false,
     left: 0,
@@ -117,27 +126,71 @@ export default function SurveyPraExistingDetail({
     "Aksi",
   ];
 
-  const fetchSurveys = useCallback(async () => {
+  const buildConstraints = (selectedKabupatenField: "kabupaten" | "kabupatenName" | null, page: number, pageSize: number, includeExtraRow = false) => {
+    const constraints: QueryConstraint[] = [where("status", "==", statusFilter), orderBy("createdAt", "desc")];
+
+    if (activeKabupaten && selectedKabupatenField) {
+      constraints.unshift(where(selectedKabupatenField, "==", activeKabupaten));
+    }
+
+    if (includeExtraRow) {
+      constraints.push(limit(pageSize + 1));
+    } else {
+      constraints.push(limit(pageSize));
+    }
+
+    const previousCursor = page > 1 ? pageCursors[page - 2] : null;
+    if (previousCursor) {
+      constraints.push(startAfter(previousCursor));
+    }
+
+    return constraints;
+  };
+
+  const fetchSurveys = async () => {
     try {
       setLoading(true);
       const surveysRef = collection(db, "survey-pra-existing");
-      const q = query(surveysRef, where("status", "==", statusFilter));
-      
-      console.log("🔍 Debug Detail - Status Filter:", statusFilter);
-      console.log("🔍 Debug Detail - Query:", q);
-      
-      const snapshot = await getDocs(q);
-      
-      console.log("🔍 Debug Detail - Snapshot Size:", snapshot.size);
-      console.log("🔍 Debug Detail - All Docs:", snapshot.docs.map(docSnap => ({
-        id: docSnap.id,
-        status: docSnap.data().status,
-        kabupaten: docSnap.data().kabupaten,
-        kabupatenName: docSnap.data().kabupatenName,
-        title: docSnap.data().title
-      })));
+      const candidateFields: Array<"kabupaten" | "kabupatenName" | null> = activeKabupaten
+        ? ["kabupaten", "kabupatenName"]
+        : [null];
 
-      const data = snapshot.docs.map((docSnap) => ({
+      let selectedField: "kabupaten" | "kabupatenName" | null = candidateFields[0];
+      let visibleDocs: QueryDocumentSnapshot[] = [];
+      let hasMore = false;
+
+      for (const field of candidateFields) {
+        const snapshot = await getDocs(query(surveysRef, ...buildConstraints(field, 1, itemsPerPage, true)));
+        hasMore = snapshot.docs.length > itemsPerPage;
+        visibleDocs = hasMore ? snapshot.docs.slice(0, itemsPerPage) : snapshot.docs;
+
+        if (visibleDocs.length > 0 || field === candidateFields[candidateFields.length - 1]) {
+          selectedField = field;
+          break;
+        }
+      }
+
+      setKabupatenField(selectedField);
+      setSurveys(visibleDocs.map(mapDoc));
+      setCurrentPage(1);
+      setShowAll(false);
+      setHasNextPage(hasMore);
+      setPageCursors(visibleDocs.length > 0 ? [visibleDocs[visibleDocs.length - 1]] : []);
+
+      const countConstraints: QueryConstraint[] = [where("status", "==", statusFilter)];
+      if (activeKabupaten && selectedField) {
+        countConstraints.unshift(where(selectedField, "==", activeKabupaten));
+      }
+      const countSnapshot = await getCountFromServer(query(surveysRef, ...countConstraints));
+      setTotalCount(countSnapshot.data().count);
+    } catch (error) {
+      console.error("Error fetching pra existing surveys:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const mapDoc = (docSnap: QueryDocumentSnapshot) => ({
         id: docSnap.id,
         title: docSnap.data().title || `Survey Pra Existing - ${docSnap.data().jenisLampu || "Untitled"}`,
         type: "pra-existing",
@@ -177,19 +230,39 @@ export default function SurveyPraExistingDetail({
         keterangan: docSnap.data().keterangan,
         fotoAktual: docSnap.data().fotoAktual,
         fotoKemerataan: docSnap.data().fotoKemerataan,
-      })) as Survey[];
+      }) as Survey;
 
-      setSurveys(data);
+  const fetchAllSurveys = async () => {
+    try {
+      setLoading(true);
+      const surveysRef = collection(db, "survey-pra-existing");
+      const constraints: QueryConstraint[] = [where("status", "==", statusFilter), orderBy("createdAt", "desc")];
+      if (activeKabupaten && kabupatenField) {
+        constraints.unshift(where(kabupatenField, "==", activeKabupaten));
+      }
+      const snapshot = await getDocs(query(surveysRef, ...constraints));
+      setSurveys(snapshot.docs.map(mapDoc));
+      setShowAll(true);
+      setCurrentPage(1);
+      setHasNextPage(false);
     } catch (error) {
-      console.error("Error fetching pra existing surveys:", error);
+      console.error("Error fetching all pra existing surveys:", error);
     } finally {
       setLoading(false);
     }
-  }, [activeKabupaten, statusFilter]);
+  };
 
   useEffect(() => {
-    fetchSurveys();
-  }, [fetchSurveys]);
+    setSurveys([]);
+    setCurrentPage(1);
+    setHasNextPage(false);
+    setPageCursors([]);
+    setKabupatenField(null);
+  }, [statusFilter, activeKabupaten, itemsPerPage]);
+
+  useEffect(() => {
+    void fetchSurveys();
+  }, [statusFilter, activeKabupaten, itemsPerPage]);
 
   const formatDate = (timestamp: TimestampLike) => {
     if (!timestamp) return "N/A";
@@ -421,6 +494,47 @@ export default function SurveyPraExistingDetail({
 
     return true;
   });
+
+  // Pagination logic
+  const totalItems = totalCount > 0 ? totalCount : filteredSurveys.length;
+  const totalPages = showAll ? 1 : Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const startIndex = filteredSurveys.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
+  const endIndex = filteredSurveys.length === 0 ? 0 : Math.min(startIndex + (showAll ? filteredSurveys.length : itemsPerPage) - 1, totalItems);
+  const paginatedSurveys = filteredSurveys;
+
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > totalPages || page === currentPage) return;
+    if (showAll) {
+      setCurrentPage(page);
+      return;
+    }
+
+    void (async () => {
+      try {
+        setLoading(true);
+        const surveysRef = collection(db, "survey-pra-existing");
+        const snapshot = await getDocs(query(surveysRef, ...buildConstraints(kabupatenField, page, itemsPerPage, true)));
+        const nextHasMore = snapshot.docs.length > itemsPerPage;
+        const visibleDocs = nextHasMore ? snapshot.docs.slice(0, itemsPerPage) : snapshot.docs;
+
+        setSurveys(visibleDocs.map(mapDoc));
+        setCurrentPage(page);
+        setHasNextPage(nextHasMore);
+        setPageCursors((current) => {
+          const next = current.slice(0, Math.max(page - 1, 0));
+          const lastVisible = visibleDocs[visibleDocs.length - 1];
+          if (lastVisible) {
+            next[page - 1] = lastVisible;
+          }
+          return next;
+        });
+      } catch (error) {
+        console.error("Error changing pra existing page:", error);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  };
 
   // Get unique kecamatans from surveys
   const kecamatanOptions = useMemo(() => {
@@ -698,11 +812,11 @@ export default function SurveyPraExistingDetail({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredSurveys.map((survey, index) => (
+                {paginatedSurveys.map((survey, index) => (
                   <tr key={survey.id} className="hover:bg-emerald-50/50 transition-colors group">
                     <td className="px-6 py-4">
                       <span className="w-8 h-8 flex items-center justify-center bg-emerald-100 text-emerald-700 font-bold rounded-lg text-sm">
-                        {index + 1}
+                        {startIndex + index}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -797,6 +911,89 @@ export default function SurveyPraExistingDetail({
                 ))}
               </tbody>
             </table>
+            </div>
+            
+            {/* Pagination Controls */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="text-sm text-gray-600">
+                    <span>Menampilkan {showAll ? totalItems : paginatedSurveys.length} dari {totalItems} data</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-600">Tampilkan:</label>
+                    <select
+                      value={showAll ? "all" : itemsPerPage}
+                      onChange={(e) => {
+                        if (e.target.value === "all") {
+                          void fetchAllSurveys();
+                        } else {
+                          setItemsPerPage(Number(e.target.value));
+                          setCurrentPage(1);
+                          setShowAll(false);
+                        }
+                      }}
+                      className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value="all">Semua</option>
+                    </select>
+                  </div>
+                </div>
+
+                {!showAll && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => handlePageChange(pageNum)}
+                            className={`px-3 py-1 text-sm border rounded ${
+                              currentPage === pageNum
+                                ? "bg-emerald-500 text-white border-emerald-500"
+                                : "bg-white border-gray-300 hover:bg-gray-50"
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    
+                    <button
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages || !hasNextPage}
+                      className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import dynamic from "next/dynamic";
-import { collection, getDocs, query, orderBy, where } from "firebase/firestore";
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 
 // Interface for TrackingHistoryMap props
 interface TrackingHistoryMapProps {
@@ -44,32 +44,47 @@ interface TrackingSession {
   surveyType: string;
 }
 
+const TRACKING_SESSIONS_CACHE_KEY = "tracking_sessions_history_v1";
+const TRACKING_SESSIONS_CACHE_TTL = 5 * 60 * 1000;
+
 function TrackingHistoryContent() {
   const router = useRouter();
-  const { user } = useAuth();
 
   const [trackingSessions, setTrackingSessions] = useState<TrackingSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedSession, setSelectedSession] = useState<TrackingSession | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterUser, setFilterUser] = useState<string>("all");
 
   useEffect(() => {
-    loadTrackingSessions();
+    void loadTrackingSessions();
   }, []);
 
-  const loadTrackingSessions = async () => {
+  const loadTrackingSessions = async (forceRefresh = false) => {
     try {
-      setLoading(true);
-      const sessionsQuery = query(
-        collection(db, "tracking-sessions"),
-        orderBy("startTime", "desc")
+      if (forceRefresh) {
+        setRefreshing(true);
+        clearCachedData(TRACKING_SESSIONS_CACHE_KEY);
+      } else {
+        setLoading(true);
+      }
+
+      const sessions = await fetchWithCache(
+        TRACKING_SESSIONS_CACHE_KEY,
+        async () => {
+          const sessionsQuery = query(
+            collection(db, "tracking-sessions"),
+            orderBy("startTime", "desc")
+          );
+          const querySnapshot = await getDocs(sessionsQuery);
+          return querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as TrackingSession[];
+        },
+        TRACKING_SESSIONS_CACHE_TTL
       );
-      const querySnapshot = await getDocs(sessionsQuery);
-      const sessions = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as TrackingSession[];
       
       setTrackingSessions(sessions);
       console.log("Loaded tracking sessions:", sessions.length);
@@ -77,6 +92,7 @@ function TrackingHistoryContent() {
       console.error("Error loading tracking sessions:", error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -146,6 +162,10 @@ function TrackingHistoryContent() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-4">
         {/* Filters */}
         <div className="bg-white rounded-2xl shadow-md p-5 border border-gray-200">
+          <div className="mb-4 px-3 py-2 rounded-xl bg-purple-50 border border-purple-200 text-xs font-medium text-purple-700 inline-flex">
+            Mode hemat reads aktif. Tracking session memakai cache 5 menit.
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-2">Filter Status</label>
@@ -222,13 +242,14 @@ function TrackingHistoryContent() {
               <p className="text-sm text-gray-600">{filteredSessions.length} session ditemukan</p>
             </div>
             <button
-              onClick={loadTrackingSessions}
-              className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white font-bold rounded-xl transition-all flex items-center gap-2"
+              onClick={() => void loadTrackingSessions(true)}
+              disabled={loading || refreshing}
+              className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white font-bold rounded-xl transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              Refresh
+              {refreshing ? "Memuat ulang..." : "Refresh"}
             </button>
           </div>
 

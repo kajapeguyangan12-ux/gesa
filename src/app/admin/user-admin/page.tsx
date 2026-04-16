@@ -4,7 +4,7 @@ import { useState, useEffect, memo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { collection, getDocs, query, where, orderBy, limit, addDoc, serverTimestamp, doc, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, limit, addDoc, serverTimestamp, doc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import { createUserWithEmailAndPassword } from "firebase/auth";
@@ -92,6 +92,8 @@ UserCard.displayName = "UserCard";
 
 function UserAdminContent() {
   const DEFAULT_VISIBLE_USERS = 4;
+  const USERS_CACHE_KEY = "user-admin_dataset_v2";
+  const USERS_CACHE_TTL_MS = 15 * 60 * 1000;
   const { user } = useAuth();
   const router = useRouter();
   const [superAdmins, setSuperAdmins] = useState<User[]>([]);
@@ -104,6 +106,7 @@ function UserAdminContent() {
   const [om, setOm] = useState<User[]>([]);
   const [bmdGudang, setBmdGudang] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -126,193 +129,49 @@ function UserAdminContent() {
     fetchUsers();
   }, []);
 
-  const fetchUsers = async () => {
+  const applyUserBuckets = (users: User[]) => {
+    setSuperAdmins(users.filter((item) => item.role === "super-admin"));
+    setAdministrators(users.filter((item) => item.role === "admin"));
+    setSurveyExisting(users.filter((item) => item.role === "petugas-existing"));
+    setSurveyAPJ(users.filter((item) => item.role === "petugas-apj-propose"));
+    setSurveyPraExisting(users.filter((item) => item.role === "petugas-pra-existing"));
+    setSurveyCahaya(users.filter((item) => item.role === "petugas-survey-cahaya"));
+    setKontruksi(users.filter((item) => item.role === "petugas-kontruksi"));
+    setOm(users.filter((item) => item.role === "petugas-om"));
+    setBmdGudang(users.filter((item) => item.role === "petugas-bmd-gudang"));
+  };
+
+  const fetchUsers = async (forceRefresh = false) => {
     try {
-      setLoading(true);
-      
-      // Fetch super administrators
-      const superAdminData = await fetchWithCache<User[]>(
-        "user-admin_super-admin",
-        async () => {
-          const superAdminQuery = query(
-            collection(db, "User-Admin"),
-            where("role", "==", "super-admin"),
-            orderBy("createdAt", "desc"),
-            limit(100)
-          );
-          const superAdminSnapshot = await getDocs(superAdminQuery);
-          return superAdminSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as User[];
-        },
-        300_000
-      );
-      setSuperAdmins(superAdminData);
-      
-      // Fetch administrators
-      const adminData = await fetchWithCache<User[]>(
-        "user-admin_admin",
-        async () => {
-          const adminQuery = query(
-            collection(db, "User-Admin"),
-            where("role", "==", "admin"),
-            orderBy("createdAt", "desc"),
-            limit(100)
-          );
-          const adminSnapshot = await getDocs(adminQuery);
-          return adminSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as User[];
-        },
-        300_000
-      );
-      setAdministrators(adminData);
+      if (forceRefresh) {
+        setRefreshing(true);
+        clearCachedData(USERS_CACHE_KEY);
+      } else {
+        setLoading(true);
+      }
 
-      // Fetch Survey Existing
-      const existingData = await fetchWithCache<User[]>(
-        "user-admin_petugas-existing",
+      const usersData = await fetchWithCache<User[]>(
+        USERS_CACHE_KEY,
         async () => {
-          const existingQuery = query(
+          const usersQuery = query(
             collection(db, "User-Admin"),
-            where("role", "==", "petugas-existing"),
             orderBy("createdAt", "desc"),
-            limit(100)
+            limit(300)
           );
-          const existingSnapshot = await getDocs(existingQuery);
-          return existingSnapshot.docs.map((doc) => ({
+          const usersSnapshot = await getDocs(usersQuery);
+          return usersSnapshot.docs.map((doc) => ({
             id: doc.id,
             ...doc.data(),
           })) as User[];
         },
-        300_000
+        USERS_CACHE_TTL_MS
       );
-      setSurveyExisting(existingData);
-
-      // Fetch Survey APJ Propose
-      const apjData = await fetchWithCache<User[]>(
-        "user-admin_petugas-apj-propose",
-        async () => {
-          const apjQuery = query(
-            collection(db, "User-Admin"),
-            where("role", "==", "petugas-apj-propose"),
-            orderBy("createdAt", "desc"),
-            limit(100)
-          );
-          const apjSnapshot = await getDocs(apjQuery);
-          return apjSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as User[];
-        },
-        300_000
-      );
-      setSurveyAPJ(apjData);
-
-      // Fetch Survey Pra Existing
-      const praExistingData = await fetchWithCache<User[]>(
-        "user-admin_petugas-pra-existing",
-        async () => {
-          const praExistingQuery = query(
-            collection(db, "User-Admin"),
-            where("role", "==", "petugas-pra-existing"),
-            orderBy("createdAt", "desc"),
-            limit(100)
-          );
-          const praExistingSnapshot = await getDocs(praExistingQuery);
-          return praExistingSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as User[];
-        },
-        300_000
-      );
-      setSurveyPraExisting(praExistingData);
-
-      // Fetch Survey Cahaya
-      const cahayaData = await fetchWithCache<User[]>(
-        "user-admin_petugas-survey-cahaya",
-        async () => {
-          const cahayaQuery = query(
-            collection(db, "User-Admin"),
-            where("role", "==", "petugas-survey-cahaya"),
-            orderBy("createdAt", "desc"),
-            limit(100)
-          );
-          const cahayaSnapshot = await getDocs(cahayaQuery);
-          return cahayaSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as User[];
-        },
-        300_000
-      );
-      setSurveyCahaya(cahayaData);
-
-      // Fetch Kontruksi
-      const kontruksiData = await fetchWithCache<User[]>(
-        "user-admin_petugas-kontruksi",
-        async () => {
-          const kontruksiQuery = query(
-            collection(db, "User-Admin"),
-            where("role", "==", "petugas-kontruksi"),
-            orderBy("createdAt", "desc"),
-            limit(100)
-          );
-          const kontruksiSnapshot = await getDocs(kontruksiQuery);
-          return kontruksiSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as User[];
-        },
-        300_000
-      );
-      setKontruksi(kontruksiData);
-
-      // Fetch O&M
-      const omData = await fetchWithCache<User[]>(
-        "user-admin_petugas-om",
-        async () => {
-          const omQuery = query(
-            collection(db, "User-Admin"),
-            where("role", "==", "petugas-om"),
-            orderBy("createdAt", "desc"),
-            limit(100)
-          );
-          const omSnapshot = await getDocs(omQuery);
-          return omSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as User[];
-        },
-        300_000
-      );
-      setOm(omData);
-
-      // Fetch BMD & Gudang
-      const bmdData = await fetchWithCache<User[]>(
-        "user-admin_petugas-bmd-gudang",
-        async () => {
-          const bmdQuery = query(
-            collection(db, "User-Admin"),
-            where("role", "==", "petugas-bmd-gudang"),
-            orderBy("createdAt", "desc"),
-            limit(100)
-          );
-          const bmdSnapshot = await getDocs(bmdQuery);
-          return bmdSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as User[];
-        },
-        300_000
-      );
-      setBmdGudang(bmdData);
+      applyUserBuckets(usersData);
     } catch (error) {
       console.error("Error fetching users:", error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -348,7 +207,7 @@ function UserAdminContent() {
         password: "",
         role: "petugas-existing",
       });
-      fetchUsers(); // Refresh data
+      fetchUsers(true); // Refresh data
     } catch (error: any) {
       console.error("Error adding user:", error);
       alert(`Gagal menambahkan user: ${error.message}`);
@@ -377,7 +236,7 @@ function UserAdminContent() {
       alert("User berhasil dihapus!");
       setShowDeleteModal(false);
       setSelectedUser(null);
-      fetchUsers(); // Refresh data
+      fetchUsers(true); // Refresh data
     } catch (error: any) {
       console.error("Error deleting user:", error);
       alert(`Gagal menghapus user: ${error.message}`);
@@ -600,7 +459,7 @@ function UserAdminContent() {
         {/* Manajemen Pengguna Banner */}
         <div className="mb-8 bg-gradient-to-r from-purple-600 to-purple-700 rounded-2xl shadow-xl p-6 lg:p-8">
           <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-            <div className="flex items-start gap-4">
+          <div className="flex items-start gap-4">
               <div className="w-14 h-14 bg-white bg-opacity-20 rounded-xl flex items-center justify-center flex-shrink-0">
                 <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -615,15 +474,27 @@ function UserAdminContent() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => setShowAddUserModal(true)}
-              className="flex items-center gap-2 px-5 py-3 bg-white hover:bg-gray-50 text-purple-700 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl active:scale-95"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-              </svg>
-              <span>Tambah Pengguna</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => void fetchUsers(true)}
+                disabled={refreshing}
+                className="flex items-center gap-2 px-5 py-3 bg-white/10 hover:bg-white/20 disabled:bg-white/10 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl border border-white/20"
+              >
+                <svg className={`w-5 h-5 ${refreshing ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>{refreshing ? "Memuat..." : "Refresh Data"}</span>
+              </button>
+              <button
+                onClick={() => setShowAddUserModal(true)}
+                className="flex items-center gap-2 px-5 py-3 bg-white hover:bg-gray-50 text-purple-700 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl active:scale-95"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+                <span>Tambah Pengguna</span>
+              </button>
+            </div>
           </div>
         </div>
 

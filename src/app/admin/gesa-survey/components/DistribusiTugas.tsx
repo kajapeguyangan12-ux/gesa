@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { collection, getDoc, getDocs, addDoc, serverTimestamp, query, orderBy, limit, deleteDoc, doc, setDoc, updateDoc, where } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
-import { fetchWithCache } from "@/utils/firestoreCache";
+import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import dynamic from "next/dynamic";
 import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
@@ -109,6 +109,8 @@ interface DistribusiTugasProps {
 }
 
 export default function DistribusiTugas({}: DistribusiTugasProps) {
+  const TASKS_CACHE_PREFIX = "distribusi_tugas_tasks";
+  const TASK_PROGRESS_CACHE_PREFIX = "distribusi_tugas_progress";
   const [showTaskDropdown, setShowTaskDropdown] = useState(false);
   const [showProposeModal, setShowProposeModal] = useState(false);
   const [showExistingModal, setShowExistingModal] = useState(false);
@@ -192,7 +194,7 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
     }
   };
 
-  const fetchTasks = async () => {
+  const fetchTasks = async (forceRefresh = false) => {
     try {
       setLoadingTasks(true);
       
@@ -201,22 +203,30 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
       const currentAdmin = storedUser ? JSON.parse(storedUser) : null;
       const adminId = currentAdmin?.uid || null;
       
-      const tasksRef = collection(db, "tasks");
-      const q = query(tasksRef, orderBy("createdAt", "desc"));
-      const snapshot = await getDocs(q);
-      
-      // Filter tasks yang dibuat oleh admin yang sedang login
-      const tasksData = snapshot.docs
-        .filter((doc) => {
-          const taskAdminId = doc.data().createdByAdminId;
-          // Jika task tidak punya createdByAdminId (data lama), tampilkan untuk semua admin
-          // Jika ada, hanya tampilkan jika sesuai dengan admin yang login
-          return !taskAdminId || taskAdminId === adminId;
-        })
-        .map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Task[];
+      const cacheKey = `${TASKS_CACHE_PREFIX}_${adminId || "all"}`;
+      if (forceRefresh) {
+        clearCachedData(cacheKey);
+      }
+
+      const tasksData = await fetchWithCache<Task[]>(
+        cacheKey,
+        async () => {
+          const tasksRef = collection(db, "tasks");
+          const q = query(tasksRef, orderBy("createdAt", "desc"));
+          const snapshot = await getDocs(q);
+          
+          return snapshot.docs
+            .filter((doc) => {
+              const taskAdminId = doc.data().createdByAdminId;
+              return !taskAdminId || taskAdminId === adminId;
+            })
+            .map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+            })) as Task[];
+        },
+        5 * 60_000
+      );
       
       setTasks(tasksData);
       console.log("Tasks loaded for admin:", tasksData.length);
@@ -468,64 +478,69 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
       setTaskProgressError(null);
       const taskCreatedAtMs = getTaskCreatedAtMs(task.createdAt);
       const configs = getTaskProgressConfigs(task);
+      const cacheKey = `${TASK_PROGRESS_CACHE_PREFIX}_${task.id}`;
+      const sections = await fetchWithCache<TaskProgressSection[]>(
+        cacheKey,
+        async () =>
+          Promise.all(
+            configs.map(async (config): Promise<TaskProgressSection> => {
+              const geometries =
+                config.kmzFileUrl
+                  ? await loadParsedTaskGeometries(config.kmzFileUrl).catch(() => null)
+                  : null;
 
-      const sections = await Promise.all(
-        configs.map(async (config): Promise<TaskProgressSection> => {
-          const geometries =
-            config.kmzFileUrl
-              ? await loadParsedTaskGeometries(config.kmzFileUrl).catch(() => null)
-              : null;
+              const surveyQuery = query(collection(db, config.collectionName), where("surveyorUid", "==", task.surveyorId));
+              const snapshot = await getDocs(surveyQuery);
 
-          const surveyQuery = query(collection(db, config.collectionName), where("surveyorUid", "==", task.surveyorId));
-          const snapshot = await getDocs(surveyQuery);
+              let exactMatchCount = 0;
+              let inferredMatchCount = 0;
 
-          let exactMatchCount = 0;
-          let inferredMatchCount = 0;
+              const markers = snapshot.docs
+                .map((surveyDoc) => ({ id: surveyDoc.id, ...surveyDoc.data() }) as SurveyDocData)
+                .filter((survey) => {
+                  if (survey.taskId) {
+                    const isExact = survey.taskId === task.id;
+                    if (isExact) exactMatchCount += 1;
+                    return isExact;
+                  }
 
-          const markers = snapshot.docs
-            .map((surveyDoc) => ({ id: surveyDoc.id, ...surveyDoc.data() }) as SurveyDocData)
-            .filter((survey) => {
-              if (survey.taskId) {
-                const isExact = survey.taskId === task.id;
-                if (isExact) exactMatchCount += 1;
-                return isExact;
-              }
+                  const latitude = Number(survey.latitude);
+                  const longitude = Number(survey.longitude);
+                  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                    return false;
+                  }
 
-              const latitude = Number(survey.latitude);
-              const longitude = Number(survey.longitude);
-              if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-                return false;
-              }
+                  const surveyCreatedAtMs = getSurveyCreatedAtMs(survey.createdAt, survey.submittedAtLocal);
+                  if (taskCreatedAtMs && surveyCreatedAtMs && surveyCreatedAtMs + 5 * 60 * 1000 < taskCreatedAtMs) {
+                    return false;
+                  }
 
-              const surveyCreatedAtMs = getSurveyCreatedAtMs(survey.createdAt, survey.submittedAtLocal);
-              if (taskCreatedAtMs && surveyCreatedAtMs && surveyCreatedAtMs + 5 * 60 * 1000 < taskCreatedAtMs) {
-                return false;
-              }
+                  const matched = isPointMatchedToTaskGeometry({ lat: latitude, lng: longitude }, geometries);
+                  if (matched) inferredMatchCount += 1;
+                  return matched;
+                })
+                .map((survey) => mapSurveyDocToMarker(config.kind, survey))
+                .filter((marker): marker is UnifiedSurveyMarker => marker !== null)
+                .sort((left, right) => {
+                  const leftTime = getSurveyCreatedAtMs(left.createdAt, undefined) ?? 0;
+                  const rightTime = getSurveyCreatedAtMs(right.createdAt, undefined) ?? 0;
+                  return rightTime - leftTime;
+                });
 
-              const matched = isPointMatchedToTaskGeometry({ lat: latitude, lng: longitude }, geometries);
-              if (matched) inferredMatchCount += 1;
-              return matched;
+              return {
+                kind: config.kind,
+                label: config.label,
+                markerLabel: config.markerLabel,
+                markerColor: config.markerColor,
+                kmzFileUrl: config.kmzFileUrl,
+                markers,
+                totalPoints: markers.length,
+                exactMatchCount,
+                inferredMatchCount,
+              };
             })
-            .map((survey) => mapSurveyDocToMarker(config.kind, survey))
-            .filter((marker): marker is UnifiedSurveyMarker => marker !== null)
-            .sort((left, right) => {
-              const leftTime = getSurveyCreatedAtMs(left.createdAt, undefined) ?? 0;
-              const rightTime = getSurveyCreatedAtMs(right.createdAt, undefined) ?? 0;
-              return rightTime - leftTime;
-            });
-
-          return {
-            kind: config.kind,
-            label: config.label,
-            markerLabel: config.markerLabel,
-            markerColor: config.markerColor,
-            kmzFileUrl: config.kmzFileUrl,
-            markers,
-            totalPoints: markers.length,
-            exactMatchCount,
-            inferredMatchCount,
-          };
-        })
+          ),
+        5 * 60_000
       );
 
       setTaskProgressSections(sections);
@@ -633,7 +648,7 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
       alert("Tugas berhasil dibuat dan dikirim ke surveyor!");
       
       // Refresh task list
-      await fetchTasks();
+      await fetchTasks(true);
       
       // Reset form and close modal
       setTaskTitle("");
@@ -662,7 +677,8 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
 
     try {
       await deleteDoc(doc(db, "tasks", taskId));
-      await fetchTasks();
+      clearCachedData(`${TASK_PROGRESS_CACHE_PREFIX}_${taskId}`);
+      await fetchTasks(true);
       alert("Tugas berhasil dihapus!");
     } catch (error) {
       console.error("Error deleting task:", error);
@@ -682,7 +698,7 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
         completedAt: null,
       });
 
-      await fetchTasks();
+      await fetchTasks(true);
       setSelectedTaskDetail((previous) => (previous?.id === task.id ? { ...previous, status: "in-progress" } : previous));
       alert("Tugas berhasil diaktifkan kembali.");
     } catch (error) {
@@ -899,7 +915,7 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
                 <p className="text-blue-100">Pantau dan kelola distribusi tugas untuk tim surveyor</p>
               </div>
               <button 
-                onClick={() => fetchTasks()}
+                onClick={() => void fetchTasks(true)}
                 className="flex items-center gap-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-5 py-3 rounded-xl font-semibold transition-all backdrop-blur-sm border border-white border-opacity-30"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

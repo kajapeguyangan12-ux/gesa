@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 
 // Dynamic import for Tracking Map
 const DynamicTrackingMap = dynamic<{
@@ -38,30 +39,46 @@ interface TrackingSession {
   surveyType: string;
 }
 
+const TRACKING_SESSIONS_CACHE_KEY = "tracking_sessions_history_v1";
+const TRACKING_SESSIONS_CACHE_TTL = 5 * 60 * 1000;
+
 export default function TrackingHistory() {
   const [trackingSessions, setTrackingSessions] = useState<TrackingSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedSession, setSelectedSession] = useState<TrackingSession | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterUser, setFilterUser] = useState<string>("all");
   const [filterType, setFilterType] = useState<string>("all");
 
   useEffect(() => {
-    loadTrackingSessions();
+    void loadTrackingSessions();
   }, []);
 
-  const loadTrackingSessions = async () => {
+  const loadTrackingSessions = async (forceRefresh = false) => {
     try {
-      setLoading(true);
-      const sessionsQuery = query(
-        collection(db, "tracking-sessions"),
-        orderBy("startTime", "desc")
+      if (forceRefresh) {
+        setRefreshing(true);
+        clearCachedData(TRACKING_SESSIONS_CACHE_KEY);
+      } else {
+        setLoading(true);
+      }
+
+      const sessions = await fetchWithCache(
+        TRACKING_SESSIONS_CACHE_KEY,
+        async () => {
+          const sessionsQuery = query(
+            collection(db, "tracking-sessions"),
+            orderBy("startTime", "desc")
+          );
+          const querySnapshot = await getDocs(sessionsQuery);
+          return querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as TrackingSession[];
+        },
+        TRACKING_SESSIONS_CACHE_TTL
       );
-      const querySnapshot = await getDocs(sessionsQuery);
-      const sessions = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as TrackingSession[];
       
       setTrackingSessions(sessions);
       console.log("Loaded tracking sessions:", sessions.length);
@@ -69,6 +86,7 @@ export default function TrackingHistory() {
       console.error("Error loading tracking sessions:", error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -127,14 +145,19 @@ export default function TrackingHistory() {
             <p className="text-purple-100 text-sm mt-1">Monitoring perjalanan surveyor real-time</p>
           </div>
           <button
-            onClick={loadTrackingSessions}
-            className="px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur rounded-xl transition-all flex items-center gap-2 font-semibold"
+            onClick={() => void loadTrackingSessions(true)}
+            disabled={loading || refreshing}
+            className="px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur rounded-xl transition-all flex items-center gap-2 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            Refresh
+            {refreshing ? "Memuat ulang..." : "Refresh"}
           </button>
+        </div>
+
+        <div className="mb-4 px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-xs font-medium text-purple-50 inline-flex">
+          Mode hemat reads aktif. Tracking session memakai cache 5 menit.
         </div>
 
         {/* Stats Cards */}

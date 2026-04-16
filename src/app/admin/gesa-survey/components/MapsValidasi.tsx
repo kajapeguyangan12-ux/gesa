@@ -1,10 +1,12 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
+import { fetchWithCache } from "@/utils/firestoreCache";
 import { useAuth } from "@/hooks/useAuth";
+import { PRA_EXISTING_TABANAN_DATA } from "@/app/survey-pra-existing/location-data";
 
 // Import Map component dynamically to avoid SSR issues
 const MapsValidasiMap = dynamic(
@@ -68,6 +70,12 @@ type TimestampLike =
   | null
   | undefined;
 
+interface DashboardSummaryDocument {
+  propose?: { totalDiverifikasi?: number; totalTervalidasi?: number };
+  existing?: { totalDiverifikasi?: number; totalTervalidasi?: number };
+  praExisting?: { totalDiverifikasi?: number; totalTervalidasi?: number };
+}
+
 export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: string | null }) {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "super-admin";
@@ -77,7 +85,10 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
     ? "Visualisasi bersama titik koordinat survey yang telah divalidasi dalam peta interaktif"
     : "Visualisasi bersama titik koordinat survey yang telah diverifikasi dalam peta interaktif";
   const [surveys, setSurveys] = useState<Survey[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [selectedKecamatan, setSelectedKecamatan] = useState("Semua Kecamatan");
+  const [overviewLoaded, setOverviewLoaded] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
     visible: 0,
@@ -86,7 +97,43 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
     praExisting: 0,
   });
 
-  const fetchSurveys = useCallback(async () => {
+  const kecamatanOptions = activeKabupaten === "tabanan"
+    ? ["Semua Kecamatan", ...Object.keys(PRA_EXISTING_TABANAN_DATA).sort()]
+    : ["Semua Kecamatan"];
+
+  const hydrateStatsFromSummary = useCallback(async () => {
+    try {
+      const summaryDocId = `gesa-survey_${activeKabupaten || "all"}_super`;
+      const summary = await fetchWithCache<DashboardSummaryDocument | null>(
+        `dashboard_summary_${summaryDocId}`,
+        async () => {
+          const snapshot = await getDoc(doc(db, "dashboard-summaries", summaryDocId));
+          return snapshot.exists() ? (snapshot.data() as DashboardSummaryDocument) : null;
+        },
+        10 * 60_000
+      );
+
+      if (!summary) return;
+
+      const summaryKey = isSuperAdmin ? "totalTervalidasi" : "totalDiverifikasi";
+      const existing = summary.existing?.[summaryKey] || 0;
+      const propose = summary.propose?.[summaryKey] || 0;
+      const praExisting = summary.praExisting?.[summaryKey] || 0;
+
+      setStats((current) => ({
+        ...current,
+        total: existing + propose + praExisting,
+        existing,
+        propose,
+        praExisting,
+      }));
+      setOverviewLoaded(true);
+    } catch (error) {
+      console.error("Error hydrating map overview from summary:", error);
+    }
+  }, [activeKabupaten, isSuperAdmin]);
+
+  const fetchSurveys = useCallback(async (filterKecamatan?: string) => {
     try {
       setLoading(true);
       
@@ -219,15 +266,20 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
       }) as Survey[];
       
       const allSurveys = [...existingData, ...proposeData, ...praExistingData];
-      
-      setSurveys(allSurveys);
+      const normalizedKecamatan = filterKecamatan && filterKecamatan !== "Semua Kecamatan" ? filterKecamatan : "";
+      const filteredSurveys = normalizedKecamatan
+        ? allSurveys.filter((survey) => survey.kecamatan === normalizedKecamatan)
+        : allSurveys;
+
+      setSurveys(filteredSurveys);
       setStats({
         total: allSurveys.length,
-        visible: allSurveys.length,
-        existing: existingData.length,
-        propose: proposeData.length,
-        praExisting: praExistingData.length,
+        visible: filteredSurveys.length,
+        existing: filteredSurveys.filter((survey) => survey.type === "existing").length,
+        propose: filteredSurveys.filter((survey) => survey.type === "propose").length,
+        praExisting: filteredSurveys.filter((survey) => survey.type === "pra-existing").length,
       });
+      setMapLoaded(true);
     } catch (error) {
       console.error("Error fetching surveys:", error);
     } finally {
@@ -236,12 +288,34 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
   }, [activeKabupaten, targetStatus]);
 
   useEffect(() => {
-    void Promise.resolve().then(fetchSurveys);
-  }, [fetchSurveys]);
+    setSurveys([]);
+    setMapLoaded(false);
+    setOverviewLoaded(false);
+    setSelectedKecamatan("Semua Kecamatan");
+    setStats({
+      total: 0,
+      visible: 0,
+      existing: 0,
+      propose: 0,
+      praExisting: 0,
+    });
+  }, [activeKabupaten, targetStatus]);
+
+  useEffect(() => {
+    void hydrateStatsFromSummary();
+  }, [hydrateStatsFromSummary]);
 
   const handleResetView = () => {
-    // Reset map view to default center
-    window.location.reload();
+    setSurveys([]);
+    setMapLoaded(false);
+    setSelectedKecamatan("Semua Kecamatan");
+    setStats({
+      total: 0,
+      visible: 0,
+      existing: 0,
+      propose: 0,
+      praExisting: 0,
+    });
   };
 
   return (
@@ -272,6 +346,42 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
         </div>
       </div>
 
+      <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+        <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+          <div className="flex-1">
+            <h2 className="text-lg font-bold text-gray-900 mb-1">Kontrol Tampilan Map</h2>
+            <p className="text-sm text-gray-600">Default map kosong. Tampilkan semua atau pilih kecamatan saat diperlukan.</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+            <button
+              onClick={() => void fetchSurveys()}
+              disabled={loading}
+              className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-semibold rounded-xl transition-colors"
+            >
+              Tampilkan Semua
+            </button>
+            <select
+              value={selectedKecamatan}
+              onChange={(event) => setSelectedKecamatan(event.target.value)}
+              className="px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            >
+              {kecamatanOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => void fetchSurveys(selectedKecamatan)}
+              disabled={loading || selectedKecamatan === "Semua Kecamatan"}
+              className="px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white font-semibold rounded-xl transition-colors"
+            >
+              Tampilkan Kecamatan
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="bg-white rounded-xl p-5 shadow-md border border-gray-200">
@@ -284,7 +394,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
             </div>
             <div className="flex-1">
               <p className="text-xs text-gray-600 font-medium">{isSuperAdmin ? "Total Survey Valid" : "Total Survey Terverifikasi"}</p>
-              <h3 className="text-3xl font-bold text-gray-900">{stats.total}</h3>
+              <h3 className="text-3xl font-bold text-gray-900">{overviewLoaded ? stats.total : "-"}</h3>
             </div>
           </div>
         </div>
@@ -299,7 +409,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
             </div>
             <div className="flex-1">
               <p className="text-xs text-gray-600 font-medium">Data Tampil</p>
-              <h3 className="text-3xl font-bold text-gray-900">{stats.visible}</h3>
+              <h3 className="text-3xl font-bold text-gray-900">{mapLoaded ? stats.visible : "-"}</h3>
             </div>
           </div>
         </div>
@@ -313,7 +423,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
             </div>
             <div className="flex-1">
               <p className="text-xs text-gray-600 font-medium">Survey Existing</p>
-              <h3 className="text-3xl font-bold text-gray-900">{stats.existing}</h3>
+              <h3 className="text-3xl font-bold text-gray-900">{overviewLoaded ? stats.existing : "-"}</h3>
             </div>
           </div>
         </div>
@@ -327,7 +437,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
             </div>
             <div className="flex-1">
               <p className="text-xs text-gray-600 font-medium">Survey APJ Propose</p>
-              <h3 className="text-3xl font-bold text-gray-900">{stats.propose}</h3>
+              <h3 className="text-3xl font-bold text-gray-900">{overviewLoaded ? stats.propose : "-"}</h3>
             </div>
           </div>
         </div>
@@ -341,7 +451,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
             </div>
             <div className="flex-1">
               <p className="text-xs text-gray-600 font-medium">Survey Pra Existing</p>
-              <h3 className="text-3xl font-bold text-gray-900">{stats.praExisting}</h3>
+              <h3 className="text-3xl font-bold text-gray-900">{overviewLoaded ? stats.praExisting : "-"}</h3>
             </div>
           </div>
         </div>
@@ -358,7 +468,9 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
               <div>
                 <h3 className="font-bold text-gray-900 text-lg">{pageTitle}</h3>
                 <p className="text-sm text-gray-600">
-                  Menampilkan {stats.visible} titik koordinat survey {isSuperAdmin ? "tervalidasi" : "terverifikasi"}
+                  {mapLoaded
+                    ? `Menampilkan ${stats.visible} titik koordinat survey ${isSuperAdmin ? "tervalidasi" : "terverifikasi"}`
+                    : "Map belum dimuat. Pilih Tampilkan Semua atau filter kecamatan."}
                 </p>
               </div>
             </div>
@@ -372,6 +484,12 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
               <div className="w-16 h-16 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mb-4"></div>
               <p className="text-gray-600">Memuat peta...</p>
             </div>
+          ) : !mapLoaded ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50">
+              <div className="w-16 h-16 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center text-2xl mb-4">M</div>
+              <p className="text-gray-800 font-semibold mb-1">Map Belum Ditampilkan</p>
+              <p className="text-gray-600 text-sm">Klik `Tampilkan Semua` atau pilih kecamatan terlebih dulu.</p>
+            </div>
           ) : (
             <MapsValidasiMap surveys={surveys} />
           )}
@@ -380,13 +498,14 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
         {/* Map Footer */}
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
           <p className="text-xs text-gray-600 text-center">
-            <span className="font-medium">Total Titik:</span> {stats.total} • 
-            <span className="font-medium"> Tampil:</span> {stats.visible} • 
+            <span className="font-medium">Total Titik:</span> {overviewLoaded ? stats.total : "-"} • 
+            <span className="font-medium"> Tampil:</span> {mapLoaded ? stats.visible : "-"} • 
             <span className="font-medium"> Zoom:</span> Drag untuk menggeser, scroll untuk zoom • 
-            <span className="font-medium"> Filter:</span> Semua Collection
+            <span className="font-medium"> Filter:</span> {!mapLoaded ? "Belum dipilih" : selectedKecamatan === "Semua Kecamatan" ? "Semua Collection" : selectedKecamatan}
           </p>
         </div>
       </div>
     </div>
   );
 }
+

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, getDocs, query, where, deleteDoc, doc } from "firebase/firestore";
+import { collection, getCountFromServer, getDocs, query, where, deleteDoc, doc, orderBy, limit, startAfter, QueryConstraint, QueryDocumentSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/hooks/useAuth";
@@ -84,21 +84,55 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterZona, setFilterZona] = useState<string>("all");
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [showAll, setShowAll] = useState(false);
+  const [totalItems, setTotalItems] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [pageCursors, setPageCursors] = useState<QueryDocumentSnapshot[]>([]);
 
   useEffect(() => {
-    fetchSurveys();
-  }, [statusFilter, activeKabupaten]);
+    setSurveys([]);
+    setCurrentPage(1);
+    setHasNextPage(false);
+    setPageCursors([]);
+  }, [statusFilter, activeKabupaten, itemsPerPage]);
+
+  useEffect(() => {
+    void fetchSurveys();
+  }, [statusFilter, activeKabupaten, itemsPerPage]);
 
   const fetchSurveys = async () => {
     try {
       setLoading(true);
       const surveysRef = collection(db, "survey-existing");
-      const q = activeKabupaten
-        ? query(surveysRef, where("kabupaten", "==", activeKabupaten), where("status", "==", statusFilter))
-        : query(surveysRef, where("status", "==", statusFilter));
-      const snapshot = await getDocs(q);
+      const countConstraints: QueryConstraint[] = [where("status", "==", statusFilter)];
+      if (activeKabupaten) countConstraints.unshift(where("kabupaten", "==", activeKabupaten));
+      const countSnapshot = await getCountFromServer(query(surveysRef, ...countConstraints));
+      setTotalItems(countSnapshot.data().count);
+      await fetchPage(1);
+    } catch (error) {
+      console.error("Error fetching surveys:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchPage = async (page: number) => {
+    try {
+      setLoading(true);
+      const surveysRef = collection(db, "survey-existing");
+      const constraints: QueryConstraint[] = [where("status", "==", statusFilter), orderBy("createdAt", "desc"), limit(itemsPerPage + 1)];
+      if (activeKabupaten) constraints.unshift(where("kabupaten", "==", activeKabupaten));
+      const previousCursor = page > 1 ? pageCursors[page - 2] : null;
+      if (previousCursor) constraints.push(startAfter(previousCursor));
+      const snapshot = await getDocs(query(surveysRef, ...constraints));
+      const hasMore = snapshot.docs.length > itemsPerPage;
+      const visibleDocs = hasMore ? snapshot.docs.slice(0, itemsPerPage) : snapshot.docs;
       
-      const data = snapshot.docs.map((doc) => ({
+      const data = visibleDocs.map((doc) => ({
         id: doc.id,
         title: doc.data().title || `Survey Existing - ${doc.data().namaJalan || "Untitled"}`,
         namaJalan: doc.data().namaJalan,
@@ -145,8 +179,80 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
       })) as Survey[];
       
       setSurveys(data);
+      setCurrentPage(page);
+      setHasNextPage(hasMore);
+      setShowAll(false);
+      setPageCursors((current) => {
+        const next = current.slice(0, Math.max(page - 1, 0));
+        const lastVisible = visibleDocs[visibleDocs.length - 1];
+        if (lastVisible) next[page - 1] = lastVisible;
+        return next;
+      });
     } catch (error) {
       console.error("Error fetching surveys:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAllSurveys = async () => {
+    try {
+      setLoading(true);
+      const surveysRef = collection(db, "survey-existing");
+      const constraints: QueryConstraint[] = [where("status", "==", statusFilter), orderBy("createdAt", "desc")];
+      if (activeKabupaten) constraints.unshift(where("kabupaten", "==", activeKabupaten));
+      const snapshot = await getDocs(query(surveysRef, ...constraints));
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        title: doc.data().title || `Survey Existing - ${doc.data().namaJalan || "Untitled"}`,
+        namaJalan: doc.data().namaJalan,
+        namaGang: doc.data().namaGang,
+        lokasiJalan: doc.data().lokasiJalan,
+        type: "existing",
+        status: doc.data().status || statusFilter,
+        surveyorName: doc.data().surveyorName || "Unknown",
+        surveyorEmail: doc.data().surveyorEmail,
+        createdAt: doc.data().createdAt,
+        verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
+        verifiedBy: doc.data().verifiedBy || doc.data().editedBy || "Admin",
+        validatedAt: doc.data().validatedAt || doc.data().createdAt,
+        validatedBy: doc.data().validatedBy || doc.data().editedBy || "Admin",
+        latitude: doc.data().latitude || 0,
+        longitude: doc.data().longitude || 0,
+        accuracy: doc.data().accuracy,
+        kepemilikan: doc.data().kepemilikan || doc.data().keteranganTiang,
+        keteranganTiang: doc.data().keteranganTiang,
+        jenis: doc.data().jenis || doc.data().jenisTitik,
+        jenisTitik: doc.data().jenisTitik,
+        jenisExisting: doc.data().jenisExisting,
+        tinggiArm: doc.data().tinggiArm || doc.data().tinggiARM,
+        tinggiARM: doc.data().tinggiARM,
+        tinggiAPM: doc.data().tinggiAPM,
+        kategori: doc.data().kategori || "Survey Existing",
+        zona: doc.data().zona || "N/A",
+        photoUrl: doc.data().photoUrl,
+        fotoTiangAPM: doc.data().fotoTiangAPM,
+        fotoTitikActual: doc.data().fotoTitikActual,
+        palet: doc.data().palet,
+        lumina: doc.data().lumina,
+        metodeUkur: doc.data().metodeUkur,
+        tinggiMedian: doc.data().tinggiMedian,
+        lebarMedian: doc.data().lebarMedian,
+        lebarJalan1: doc.data().lebarJalan1,
+        lebarJalan2: doc.data().lebarJalan2,
+        lebarTrotoar: doc.data().lebarTrotoar,
+        lamnyaBerdekatan: doc.data().lamnyaBerdekatan,
+        lebarBahuBertiang: doc.data().lebarBahuBertiang,
+        lebarTrotoarBertiang: doc.data().lebarTrotoarBertiang,
+        lainnyaBertiang: doc.data().lainnyaBertiang,
+        keterangan: doc.data().keterangan,
+      })) as Survey[];
+      setSurveys(data);
+      setShowAll(true);
+      setCurrentPage(1);
+      setHasNextPage(false);
+    } catch (error) {
+      console.error("Error fetching all surveys:", error);
     } finally {
       setLoading(false);
     }
@@ -229,26 +335,27 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
   const normalizeCoordinateText = (value: string) => value.replace(/\s+/g, "");
 
   const filteredSurveys = surveys.filter(survey => {
-    const matchSearch =
-      searchQuery === "" ||
+    const matchesSearch = searchQuery === "" || 
       survey.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      survey.namaJalan?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      survey.surveyorName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      searchQuery
-        .split(/[\s,;]+/)
-        .map((term) => normalizeCoordinateText(term.trim()))
-        .filter(Boolean)
-        .every((term) =>
-          [survey.latitude, survey.longitude]
-            .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
-            .flatMap((value) => [value.toString(), value.toFixed(7)])
-            .some((value) => normalizeCoordinateText(value).includes(term))
-        );
+      (survey.namaJalan && survey.namaJalan.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      survey.surveyorName.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const matchZona = filterZona === "all" || survey.zona === filterZona;
+    const matchesZona = filterZona === "all" || survey.zona === filterZona;
     
-    return matchSearch && matchZona;
+    return matchesSearch && matchesZona;
   });
+
+  // Pagination logic
+  const effectiveTotalItems = totalItems > 0 ? totalItems : filteredSurveys.length;
+  const totalPages = showAll ? 1 : Math.ceil(effectiveTotalItems / itemsPerPage);
+  const startIndex = filteredSurveys.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
+  const endIndex = filteredSurveys.length === 0 ? 0 : Math.min(startIndex + (showAll ? filteredSurveys.length : itemsPerPage) - 1, effectiveTotalItems);
+  const paginatedSurveys = showAll ? filteredSurveys : filteredSurveys.slice(0, itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > totalPages || page === currentPage) return;
+    void fetchPage(page);
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -350,125 +457,210 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">No</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Judul Proyek</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Surveyor</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Zona</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Koordinat</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Foto</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Divalidasi</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredSurveys.map((survey, index) => (
-                  <tr key={survey.id} className="hover:bg-blue-50/50 transition-colors group">
-                    <td className="px-6 py-4">
-                      <span className="w-8 h-8 flex items-center justify-center bg-blue-100 text-blue-700 font-bold rounded-lg text-sm">
-                        {index + 1}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-gray-900">{survey.title}</span>
-                        {survey.namaJalan && (
-                          <span className="text-xs text-gray-500 mt-0.5">{survey.namaJalan}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                          {survey.surveyorName.charAt(0).toUpperCase()}
-                        </div>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">No</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Judul Proyek</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Surveyor</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Zona</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Koordinat</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Foto</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Divalidasi</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-4 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {paginatedSurveys.map((survey, index) => (
+                    <tr key={survey.id} className="hover:bg-blue-50/50 transition-colors group">
+                      <td className="px-6 py-4">
+                        <span className="w-8 h-8 flex items-center justify-center bg-blue-100 text-blue-700 font-bold rounded-lg text-sm">
+                          {startIndex + index + 1}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
                         <div className="flex flex-col">
-                          <span className="text-sm font-medium text-gray-900">{survey.surveyorName}</span>
-                          {survey.surveyorEmail && (
-                            <span className="text-xs text-gray-500">{survey.surveyorEmail}</span>
+                          <span className="font-semibold text-gray-900">{survey.title}</span>
+                          {survey.namaJalan && (
+                            <span className="text-xs text-gray-500 mt-0.5">{survey.namaJalan}</span>
                           )}
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-purple-100 to-violet-100 text-purple-700 rounded-full border border-purple-200">
-                        {survey.zona || "N/A"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-xs text-gray-600 font-mono bg-gray-100 px-2 py-1 rounded">
-                        {survey.latitude.toFixed(6)}, {survey.longitude.toFixed(6)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {survey.photoUrl || survey.fotoTiangAPM || survey.fotoTitikActual ? (
-                        <img 
-                          src={survey.photoUrl || survey.fotoTiangAPM || survey.fotoTitikActual} 
-                          alt="Survey" 
-                          className="w-14 h-14 object-cover rounded-xl cursor-pointer hover:scale-110 transition-transform shadow-sm border-2 border-white"
-                          onClick={() => window.open(survey.photoUrl || survey.fotoTiangAPM || survey.fotoTitikActual, '_blank')}
-                        />
-                      ) : (
-                        <div className="w-14 h-14 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center">
-                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                            {survey.surveyorName.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium text-gray-900">{survey.surveyorName}</span>
+                            {survey.surveyorEmail && (
+                              <span className="text-xs text-gray-500">{survey.surveyorEmail}</span>
+                            )}
+                          </div>
                         </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium text-gray-900">{survey.validatedBy}</span>
-                        <span className="text-xs text-gray-500">{formatDate(survey.validatedAt)}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1.5 text-xs font-semibold rounded-full border capitalize ${getStatusBadge(survey.status)}`}>
-                        {survey.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => handleViewMaps(survey.latitude, survey.longitude)}
-                          className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-all"
-                          title="Lihat di Google Maps"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => handleViewDetail(survey)}
-                          className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-all"
-                          title="Lihat Detail"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => handleDelete(survey.id)}
-                          className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-all"
-                          title="Hapus"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-purple-100 to-violet-100 text-purple-700 rounded-full border border-purple-200">
+                          {survey.zona || "N/A"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-xs text-gray-600 font-mono bg-gray-100 px-2 py-1 rounded">
+                          {survey.latitude.toFixed(6)}, {survey.longitude.toFixed(6)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {survey.photoUrl || survey.fotoTiangAPM || survey.fotoTitikActual ? (
+                          <img 
+                            src={survey.photoUrl || survey.fotoTiangAPM || survey.fotoTitikActual} 
+                            alt="Survey" 
+                            className="w-14 h-14 object-cover rounded-xl cursor-pointer hover:scale-110 transition-transform shadow-sm border-2 border-white"
+                            onClick={() => window.open(survey.photoUrl || survey.fotoTiangAPM || survey.fotoTitikActual, '_blank')}
+                          />
+                        ) : (
+                          <div className="w-14 h-14 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center">
+                            <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-gray-900">{survey.validatedBy}</span>
+                          <span className="text-xs text-gray-500">{formatDate(survey.validatedAt)}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1.5 text-xs font-semibold rounded-full border capitalize ${getStatusBadge(survey.status)}`}>
+                          {survey.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => handleViewMaps(survey.latitude, survey.longitude)}
+                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-all"
+                            title="Lihat di Google Maps"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleViewDetail(survey)}
+                            className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-all"
+                            title="Lihat Detail"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleDelete(survey.id)}
+                            className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-all"
+                            title="Hapus"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Pagination Controls */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="text-sm text-gray-600">
+                    <span>Menampilkan {showAll ? effectiveTotalItems : paginatedSurveys.length} dari {effectiveTotalItems} data</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-600">Tampilkan:</label>
+                    <select
+                      value={showAll ? "all" : itemsPerPage}
+                      onChange={(e) => {
+                        if (e.target.value === "all") {
+                          void fetchAllSurveys();
+                        } else {
+                          setItemsPerPage(Number(e.target.value));
+                          setCurrentPage(1);
+                          setShowAll(false);
+                        }
+                      }}
+                      className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value="all">Semua</option>
+                    </select>
+                  </div>
+                </div>
+
+                {!showAll && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => handlePageChange(pageNum)}
+                            className={`px-3 py-1 text-sm border rounded ${
+                              currentPage === pageNum
+                                ? "bg-blue-500 text-white border-blue-500"
+                                : "bg-white border-gray-300 hover:bg-gray-50"
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    
+                    <button
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages || !hasNextPage}
+                      className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
         )}
       </div>
 

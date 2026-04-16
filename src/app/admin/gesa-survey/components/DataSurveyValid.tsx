@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { fetchWithCache } from "@/utils/firestoreCache";
 import { useAuth } from "@/hooks/useAuth";
 import SurveyExistingDetail from "./SurveyExistingDetail";
 import SurveyProposeDetail from "./SurveyProposeDetail";
@@ -25,6 +26,12 @@ interface Survey {
   banjar?: string;
 }
 
+interface DashboardSummaryDocument {
+  propose?: { totalDiverifikasi?: number; totalTervalidasi?: number };
+  existing?: { totalDiverifikasi?: number; totalTervalidasi?: number };
+  praExisting?: { totalDiverifikasi?: number; totalTervalidasi?: number };
+}
+
 export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?: string | null }) {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "super-admin";
@@ -42,9 +49,45 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
     propose: 0,
     praExisting: 0,
   });
+  const [statsLoaded, setStatsLoaded] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [fullDataLoaded, setFullDataLoaded] = useState(false);
+
+  const hydrateStatsFromSummary = useCallback(async () => {
+    if (!isSuperAdmin) return;
+
+    try {
+      const summaryDocId = `gesa-survey_${activeKabupaten || "all"}_super`;
+      const summary = await fetchWithCache<DashboardSummaryDocument | null>(
+        `dashboard_summary_${summaryDocId}`,
+        async () => {
+          const snapshot = await getDoc(doc(db, "dashboard-summaries", summaryDocId));
+          return snapshot.exists() ? (snapshot.data() as DashboardSummaryDocument) : null;
+        },
+        10 * 60_000
+      );
+
+      if (!summary) return;
+
+      const existing = summary.existing?.totalTervalidasi || 0;
+      const propose = summary.propose?.totalTervalidasi || 0;
+      const praExisting = summary.praExisting?.totalTervalidasi || 0;
+
+      setStats({
+        total: existing + propose + praExisting,
+        existing,
+        propose,
+        praExisting,
+      });
+      setStatsLoaded(true);
+    } catch (error) {
+      console.error("Error hydrating valid survey stats from summary:", error);
+    }
+  }, [activeKabupaten, isSuperAdmin]);
 
   const fetchStatistics = useCallback(async () => {
     try {
+      setStatsLoading(true);
       // Fetch from all collections
       const existingRef = collection(db, "survey-existing");
       const proposeRef = collection(db, "survey-apj-propose");
@@ -92,6 +135,8 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
         propose: proposeCount,
         praExisting: praExistingCount,
       });
+      setStatsLoaded(true);
+      setFullDataLoaded(true);
 
       const allRows = [
         ...existingSnapshot.docs.map((doc) => ({
@@ -147,12 +192,27 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
       setSurveys(allRows);
     } catch (error) {
       console.error("Error fetching statistics:", error);
+    } finally {
+      setStatsLoading(false);
     }
   }, [activeKabupaten, targetStatus]);
 
   useEffect(() => {
-    void Promise.resolve().then(fetchStatistics);
-  }, [fetchStatistics]);
+    setStatsLoaded(false);
+    setFullDataLoaded(false);
+    setStats({
+      total: 0,
+      existing: 0,
+      propose: 0,
+      praExisting: 0,
+    });
+    setSurveys([]);
+    setSelectedSurveyor("Semua Petugas");
+  }, [activeKabupaten, targetStatus]);
+
+  useEffect(() => {
+    void hydrateStatsFromSummary();
+  }, [hydrateStatsFromSummary]);
 
   const surveyorOptions = useMemo(
     () => ["Semua Petugas", ...new Set(surveys.map((survey) => survey.surveyorName).filter(Boolean))],
@@ -273,7 +333,8 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
           </div>
           <button 
             onClick={handleExportCsv}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5"
+            disabled={!fullDataLoaded || surveys.length === 0}
+            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:from-green-300 disabled:to-green-400 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 disabled:transform-none"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -295,71 +356,90 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
             <div>
               <h2 className="text-xl font-bold text-gray-900 mb-2">Rekap Titik Valid per Petugas</h2>
               <p className="text-sm text-gray-600">
-                Alat bantu untuk melihat jumlah titik yang sudah tervalidasi per petugas dan per tugas.
+                Alat bantu untuk melihat jumlah titik yang sudah tervalidasi per petugas dan per tugas. Rekap baru dihitung saat diminta.
               </p>
             </div>
-            <div className="w-full lg:w-72">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Filter Petugas</label>
-              <select
-                value={selectedSurveyor}
-                onChange={(event) => setSelectedSurveyor(event.target.value)}
-                className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {surveyorOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-              <p className="text-sm font-medium text-blue-900 mb-1">Total Titik Valid</p>
-              <h3 className="text-3xl font-bold text-blue-700">{recapStats.total}</h3>
-            </div>
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-              <p className="text-sm font-medium text-emerald-900 mb-1">Survey Existing</p>
-              <h3 className="text-3xl font-bold text-emerald-700">{recapStats.existing}</h3>
-            </div>
-            <div className="rounded-xl border border-green-200 bg-green-50 p-4">
-              <p className="text-sm font-medium text-green-900 mb-1">Survey APJ Propose</p>
-              <h3 className="text-3xl font-bold text-green-700">{recapStats.propose}</h3>
-            </div>
-            <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
-              <p className="text-sm font-medium text-teal-900 mb-1">Survey Pra Existing</p>
-              <h3 className="text-3xl font-bold text-teal-700">{recapStats.praExisting}</h3>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-4 bg-gray-50 border-b border-gray-200">
-              <h3 className="text-lg font-bold text-gray-900">Jumlah Titik per Tugas</h3>
-              <p className="text-sm text-gray-600">
-                {selectedSurveyor === "Semua Petugas"
-                  ? "Menampilkan akumulasi semua petugas."
-                  : `Menampilkan tugas untuk ${selectedSurveyor}.`}
-              </p>
-            </div>
-            {taskRecap.length === 0 ? (
-              <div className="px-5 py-8 text-sm text-gray-500">Belum ada titik valid untuk filter yang dipilih.</div>
-            ) : (
-              <div className="divide-y divide-gray-200">
-                {taskRecap.map((task, index) => (
-                  <div key={`${task.label}-${index}`} className="px-5 py-4 flex items-center justify-between gap-4">
-                    <div>
-                      <p className="font-semibold text-gray-900">{task.label}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-blue-700">{task.count}</p>
-                      <p className="text-xs text-gray-500">titik valid</p>
-                    </div>
-                  </div>
-                ))}
+            <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto lg:items-end">
+              <div className="w-full lg:w-72">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Filter Petugas</label>
+                <select
+                  value={selectedSurveyor}
+                  onChange={(event) => setSelectedSurveyor(event.target.value)}
+                  disabled={!fullDataLoaded}
+                  className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+                >
+                  {surveyorOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
               </div>
-            )}
+              <button
+                onClick={() => void fetchStatistics()}
+                disabled={statsLoading}
+                className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold rounded-xl transition-colors"
+              >
+                {statsLoading ? "Menghitung..." : statsLoaded ? "Hitung Ulang Rekap" : "Hitung Rekap"}
+              </button>
+            </div>
           </div>
+
+          {!fullDataLoaded ? (
+            <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+              <p className="text-base font-semibold text-gray-900 mb-1">Rekap detail belum dimuat</p>
+              <p className="text-sm text-gray-600">Klik `Hitung Rekap` untuk memuat data petugas dan jumlah titik per tugas.</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                  <p className="text-sm font-medium text-blue-900 mb-1">Total Titik Valid</p>
+                  <h3 className="text-3xl font-bold text-blue-700">{recapStats.total}</h3>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-sm font-medium text-emerald-900 mb-1">Survey Existing</p>
+                  <h3 className="text-3xl font-bold text-emerald-700">{recapStats.existing}</h3>
+                </div>
+                <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                  <p className="text-sm font-medium text-green-900 mb-1">Survey APJ Propose</p>
+                  <h3 className="text-3xl font-bold text-green-700">{recapStats.propose}</h3>
+                </div>
+                <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
+                  <p className="text-sm font-medium text-teal-900 mb-1">Survey Pra Existing</p>
+                  <h3 className="text-3xl font-bold text-teal-700">{recapStats.praExisting}</h3>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-gray-200 overflow-hidden">
+                <div className="px-5 py-4 bg-gray-50 border-b border-gray-200">
+                  <h3 className="text-lg font-bold text-gray-900">Jumlah Titik per Tugas</h3>
+                  <p className="text-sm text-gray-600">
+                    {selectedSurveyor === "Semua Petugas"
+                      ? "Menampilkan akumulasi semua petugas."
+                      : `Menampilkan tugas untuk ${selectedSurveyor}.`}
+                  </p>
+                </div>
+                {taskRecap.length === 0 ? (
+                  <div className="px-5 py-8 text-sm text-gray-500">Belum ada titik valid untuk filter yang dipilih.</div>
+                ) : (
+                  <div className="divide-y divide-gray-200">
+                    {taskRecap.map((task, index) => (
+                      <div key={`${task.label}-${index}`} className="px-5 py-4 flex items-center justify-between gap-4">
+                        <div>
+                          <p className="font-semibold text-gray-900">{task.label}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-bold text-blue-700">{task.count}</p>
+                          <p className="text-xs text-gray-500">titik valid</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -490,6 +570,20 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
       </div>
 
       {/* Statistics Section */}
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-bold text-gray-900">Ringkasan Hitungan</h3>
+          <p className="text-sm text-gray-600">Hitungan kartu hanya dijalankan saat tombol ditekan.</p>
+        </div>
+        <button
+          onClick={() => void fetchStatistics()}
+          disabled={statsLoading}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold rounded-xl transition-colors"
+        >
+          {statsLoading ? "Menghitung..." : statsLoaded ? (isSuperAdmin ? "Hitung Ulang Semua" : "Hitung Ulang") : (isSuperAdmin ? "Hitung Kartu & Rekap" : "Hitung")}
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-xl p-6 shadow-md border border-gray-200">
           <div className="flex items-center gap-4">
@@ -500,7 +594,7 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
             </div>
             <div>
               <p className="text-sm text-gray-600 font-medium">Total Survey Valid</p>
-              <h3 className="text-2xl font-bold text-gray-900">{stats.total}</h3>
+              <h3 className="text-2xl font-bold text-gray-900">{statsLoaded ? stats.total : "-"}</h3>
             </div>
           </div>
         </div>
@@ -514,7 +608,7 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
             </div>
             <div>
               <p className="text-sm text-gray-600 font-medium">Survey Existing</p>
-              <h3 className="text-2xl font-bold text-gray-900">{stats.existing}</h3>
+              <h3 className="text-2xl font-bold text-gray-900">{statsLoaded ? stats.existing : "-"}</h3>
             </div>
           </div>
         </div>
@@ -528,7 +622,7 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
             </div>
             <div>
               <p className="text-sm text-gray-600 font-medium">Survey APJ Propose</p>
-              <h3 className="text-2xl font-bold text-gray-900">{stats.propose}</h3>
+              <h3 className="text-2xl font-bold text-gray-900">{statsLoaded ? stats.propose : "-"}</h3>
             </div>
           </div>
         </div>
@@ -542,7 +636,7 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
             </div>
             <div>
               <p className="text-sm text-gray-600 font-medium">Survey Pra Existing</p>
-              <h3 className="text-2xl font-bold text-gray-900">{stats.praExisting}</h3>
+              <h3 className="text-2xl font-bold text-gray-900">{statsLoaded ? stats.praExisting : "-"}</h3>
             </div>
           </div>
         </div>

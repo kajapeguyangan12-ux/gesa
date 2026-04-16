@@ -7,6 +7,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
 import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { fetchWithCache } from "@/utils/firestoreCache";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
 
@@ -101,22 +102,29 @@ function DashboardPengukuranContent() {
       setLoadingReport(true);
       setShowReportPicker(true);
       setReportsLoading(true);
-      const q = query(
-        collection(db, "reports"),
-        where("kabupaten", "==", activeKabupaten),
-        orderBy("createdAt", "desc"),
-        limit(100)
+      
+      const list = await fetchWithCache<Array<{ id: string; label: string }>>(
+        `reports_${activeKabupaten}_${user?.uid || "all"}`,
+        async () => {
+          const q = query(
+            collection(db, "reports"),
+            where("kabupaten", "==", activeKabupaten),
+            orderBy("createdAt", "desc"),
+            limit(100)
+          );
+          const snapshot = await getDocs(q);
+          let docs = snapshot.docs;
+          if (user?.uid) {
+            const mine = docs.filter((doc) => doc.data()?.createdById === user.uid);
+            if (mine.length > 0) docs = mine;
+          }
+          return docs.map((doc) => ({
+            id: doc.id,
+            label: buildReportLabel(doc.data()),
+          }));
+        },
+        180_000 // 3min cache
       );
-      const snapshot = await getDocs(q);
-      let docs = snapshot.docs;
-      if (user?.uid) {
-        const mine = docs.filter((doc) => doc.data()?.createdById === user.uid);
-        if (mine.length > 0) docs = mine;
-      }
-      const list = docs.map((doc) => ({
-        id: doc.id,
-        label: buildReportLabel(doc.data()),
-      }));
       setReportsList(list);
     } catch (err) {
       console.error("Gagal memuat laporan:", err);

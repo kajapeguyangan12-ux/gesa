@@ -1,12 +1,27 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { collection, getDocs, query, where, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getCountFromServer,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  QueryConstraint,
+  QueryDocumentSnapshot,
+  startAfter,
+  where,
+  updateDoc,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { PRA_EXISTING_TABANAN_DATA } from "@/app/survey-pra-existing/location-data";
 import type { TaskNavigationInfo } from "@/utils/taskNavigation";
+import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 
 // Define props type inline
 interface MapComponentProps {
@@ -175,7 +190,14 @@ function buildPraExistingOwnershipDisplay(kepemilikanTiang: string, tipeTiangPLN
 export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: string | null }) {
   const [activeTab, setActiveTab] = useState<"existing" | "propose" | "pra-existing">("existing");
   const [surveys, setSurveys] = useState<Survey[]>([]);
+  const [stats, setStats] = useState({
+    total: 0,
+    existing: 0,
+    propose: 0,
+    praExisting: 0,
+  });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [selectedTaskNavigationInfo, setSelectedTaskNavigationInfo] = useState<TaskNavigationInfo | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -185,7 +207,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   const [deletingSurveyId, setDeletingSurveyId] = useState<string | null>(null);
   
   // Filter states
-  const [filterStatus, setFilterStatus] = useState<string>("Semua Status");
+  const [filterStatus, setFilterStatus] = useState<string>("Menunggu");
   const [filterJenisExisting, setFilterJenisExisting] = useState<string>("Semua Jenis");
   const [filterSort, setFilterSort] = useState<string>("Terbaru");
   const [filterSurveyor, setFilterSurveyor] = useState<string>("Semua Petugas");
@@ -197,91 +219,223 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   const [filterExistingJudul, setFilterExistingJudul] = useState<string>("Semua Judul");
   const [filterProposeSurveyor, setFilterProposeSurveyor] = useState<string>("Semua Petugas");
   const [filterProposeJudul, setFilterProposeJudul] = useState<string>("Semua Judul");
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [showAll, setShowAll] = useState(false);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [pageCursors, setPageCursors] = useState<QueryDocumentSnapshot[]>([]);
+  const cacheScope = activeKabupaten || "all";
+  const validasiStatsCacheKey = `validasi_survey_stats_${cacheScope}`;
+  const buildPageCacheKey = (tab: "existing" | "propose" | "pra-existing", page: number, perPage: number) =>
+    `validasi_survey_page_${tab}_${cacheScope}_${perPage}_${page}`;
+  const buildAllDataCacheKey = (tab: "existing" | "propose" | "pra-existing") =>
+    `validasi_survey_all_${tab}_${cacheScope}`;
 
-  // State untuk menyimpan semua surveys
-  const [allSurveys, setAllSurveys] = useState<Survey[]>([]);
+  const mapSurveyDoc = (docSnap: QueryDocumentSnapshot, tab: "existing" | "propose" | "pra-existing") => {
+    const data = docSnap.data();
 
-  // Fetch surveys from Firebase
-  useEffect(() => {
-    fetchSurveys();
-  }, [activeTab, activeKabupaten]);
+    if (tab === "existing") {
+      return {
+        id: docSnap.id,
+        ...data,
+        title: data.title || `Survey existing - ${data.namaJalan || "Untitled"}`,
+        type: "existing",
+        status: data.status || "menunggu",
+        surveyorName: data.surveyorName || "Unknown",
+        kepemilikan: data.kepemilikan || data.keteranganTiang || "N/A",
+        jenis: data.jenis || data.jenisTitik || "N/A",
+        tinggiArm: data.tinggiArm || data.tinggiARM || "N/A",
+      } as Survey;
+    }
 
-  const fetchSurveys = async () => {
+    if (tab === "propose") {
+      return {
+        id: docSnap.id,
+        ...data,
+        title: data.title || `Survey propose - ${data.namaJalan || "Untitled"}`,
+        type: "propose",
+        status: data.status || "menunggu",
+        surveyorName: data.surveyorName || "Unknown",
+        kepemilikan: data.kepemilikan || data.keteranganTiang || "N/A",
+        jenis: data.jenis || data.jenisTitik || "N/A",
+        tinggiArm: data.tinggiArm || data.tinggiARM || "N/A",
+      } as Survey;
+    }
+
+    return {
+      id: docSnap.id,
+      ...data,
+      title: data.title || `Survey pra existing - ${data.jenisLampu || "Untitled"}`,
+      type: "pra-existing",
+      status: data.status || "menunggu",
+      surveyorName: data.surveyorName || "Unknown",
+    } as Survey;
+  };
+
+  const fetchStatistics = async (forceRefresh = false) => {
+    if (forceRefresh) {
+      clearCachedData(validasiStatsCacheKey);
+    }
+
+    const cachedStats = await fetchWithCache(
+      validasiStatsCacheKey,
+      async () => {
+        const buildCountQuery = (collectionName: string) => {
+          const ref = collection(db, collectionName);
+          const constraints: QueryConstraint[] = [where("status", "==", "menunggu")];
+          if (activeKabupaten) constraints.unshift(where("kabupaten", "==", activeKabupaten));
+          return query(ref, ...constraints);
+        };
+
+        const countResults = await Promise.allSettled([
+          getCountFromServer(buildCountQuery("survey-existing")),
+          getCountFromServer(buildCountQuery("survey-apj-propose")),
+          getCountFromServer(buildCountQuery("survey-pra-existing")),
+        ]);
+
+        const existingCount = countResults[0].status === "fulfilled" ? countResults[0].value.data().count : 0;
+        const proposeCount = countResults[1].status === "fulfilled" ? countResults[1].value.data().count : 0;
+        const praExistingCount = countResults[2].status === "fulfilled" ? countResults[2].value.data().count : 0;
+
+        return {
+          existing: existingCount,
+          propose: proposeCount,
+          praExisting: praExistingCount,
+          total: existingCount + proposeCount + praExistingCount,
+        };
+      },
+      5 * 60 * 1000
+    );
+
+    setStats(cachedStats);
+  };
+
+  const fetchSurveys = async (page = 1, forceRefresh = false) => {
     try {
-      setLoading(true);
-      
-      // Fetch data dari collection untuk statistik
-      const existingRef = collection(db, "survey-existing");
-      const proposeRef = collection(db, "survey-apj-propose");
-      const praExistingRef = collection(db, "survey-pra-existing");
-      const existingQuery = activeKabupaten
-        ? query(existingRef, where("kabupaten", "==", activeKabupaten))
-        : existingRef;
-      const proposeQuery = activeKabupaten
-        ? query(proposeRef, where("kabupaten", "==", activeKabupaten))
-        : proposeRef;
-      const praExistingQuery = activeKabupaten
-        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten))
-        : praExistingRef;
-      
-      const [existingSnapshot, proposeSnapshot, praExistingSnapshot] = await Promise.all([
-        getDocs(existingQuery),
-        getDocs(proposeQuery),
-        getDocs(praExistingQuery),
-      ]);
-      
-      const existingData = existingSnapshot.docs
-        .filter((doc) => doc.data().status === "menunggu")
-        .map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          title: doc.data().title || `Survey existing - ${doc.data().namaJalan || "Untitled"}`,
-          type: "existing",
-          status: doc.data().status || "menunggu",
-          surveyorName: doc.data().surveyorName || "Unknown",
-          kepemilikan: doc.data().kepemilikan || doc.data().keteranganTiang || "N/A",
-          jenis: doc.data().jenis || doc.data().jenisTitik || "N/A",
-          tinggiArm: doc.data().tinggiArm || doc.data().tinggiARM || "N/A",
-        })) as Survey[];
-      
-      const proposeData = proposeSnapshot.docs
-        .filter((doc) => doc.data().status === "menunggu")
-        .map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          title: doc.data().title || `Survey propose - ${doc.data().namaJalan || "Untitled"}`,
-          type: "propose",
-          status: doc.data().status || "menunggu",
-          surveyorName: doc.data().surveyorName || "Unknown",
-          kepemilikan: doc.data().kepemilikan || doc.data().keteranganTiang || "N/A",
-          jenis: doc.data().jenis || doc.data().jenisTitik || "N/A",
-          tinggiArm: doc.data().tinggiArm || doc.data().tinggiARM || "N/A",
-        })) as Survey[];
-
-      const praExistingData = praExistingSnapshot.docs
-        .filter((doc) => doc.data().status === "menunggu")
-        .map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          title: doc.data().title || `Survey pra existing - ${doc.data().jenisLampu || "Untitled"}`,
-          type: "pra-existing",
-          status: doc.data().status || "menunggu",
-          surveyorName: doc.data().surveyorName || "Unknown",
-        })) as Survey[];
-      
-      // Simpan semua surveys untuk statistik
-      setAllSurveys([...existingData, ...proposeData, ...praExistingData]);
-      
-      // Set surveys berdasarkan activeTab untuk list
-      if (activeTab === "existing") setSurveys(existingData);
-      else if (activeTab === "propose") setSurveys(proposeData);
-      else setSurveys(praExistingData);
+      if (forceRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      await fetchPage(page, forceRefresh);
+      await fetchStatistics(forceRefresh);
     } catch (error) {
       console.error("Error fetching surveys:", error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
+
+  const fetchPage = async (page: number, forceRefresh = false) => {
+    const collectionName =
+      activeTab === "existing"
+        ? "survey-existing"
+        : activeTab === "propose"
+        ? "survey-apj-propose"
+        : "survey-pra-existing";
+
+    const loadLivePage = async () => {
+      const ref = collection(db, collectionName);
+      const constraints: QueryConstraint[] = [where("status", "==", "menunggu"), orderBy("createdAt", "desc"), limit(itemsPerPage + 1)];
+      if (activeKabupaten) constraints.unshift(where("kabupaten", "==", activeKabupaten));
+
+      const previousCursor = page > 1 ? pageCursors[page - 2] : null;
+      if (previousCursor) {
+        constraints.push(startAfter(previousCursor));
+      }
+
+      const snapshot = await getDocs(query(ref, ...constraints));
+      const hasMore = snapshot.docs.length > itemsPerPage;
+      const visibleDocs = hasMore ? snapshot.docs.slice(0, itemsPerPage) : snapshot.docs;
+
+      setPageCursors((current) => {
+        const next = current.slice(0, Math.max(page - 1, 0));
+        const lastVisible = visibleDocs[visibleDocs.length - 1];
+        if (lastVisible) {
+          next[page - 1] = lastVisible;
+        }
+        return next;
+      });
+
+      return {
+        surveys: visibleDocs.map((docSnap) => mapSurveyDoc(docSnap, activeTab)),
+        hasMore,
+      };
+    };
+
+    if (page === 1) {
+      const pageCacheKey = buildPageCacheKey(activeTab, page, itemsPerPage);
+      if (forceRefresh) {
+        clearCachedData(pageCacheKey);
+      }
+
+      const cachedPage = await fetchWithCache(pageCacheKey, loadLivePage, 5 * 60 * 1000);
+      setSurveys(cachedPage.surveys);
+      setCurrentPage(page);
+      setHasNextPage(cachedPage.hasMore);
+      setShowAll(false);
+      return;
+    }
+
+    const livePage = await loadLivePage();
+    setSurveys(livePage.surveys);
+    setCurrentPage(page);
+    setHasNextPage(livePage.hasMore);
+    setShowAll(false);
+  };
+
+  const fetchAllTabData = async (forceRefresh = false) => {
+    const collectionName =
+      activeTab === "existing"
+        ? "survey-existing"
+        : activeTab === "propose"
+        ? "survey-apj-propose"
+        : "survey-pra-existing";
+    const allDataCacheKey = buildAllDataCacheKey(activeTab);
+    if (forceRefresh) {
+      clearCachedData(allDataCacheKey);
+    }
+
+    const cachedSurveys = await fetchWithCache(
+      allDataCacheKey,
+      async () => {
+        const ref = collection(db, collectionName);
+        const constraints: QueryConstraint[] = [where("status", "==", "menunggu"), orderBy("createdAt", "desc")];
+        if (activeKabupaten) constraints.unshift(where("kabupaten", "==", activeKabupaten));
+
+        const snapshot = await getDocs(query(ref, ...constraints));
+        return snapshot.docs.map((docSnap) => mapSurveyDoc(docSnap, activeTab));
+      },
+      5 * 60 * 1000
+    );
+
+    setSurveys(cachedSurveys);
+    setShowAll(true);
+    setCurrentPage(1);
+    setHasNextPage(false);
+  };
+
+  const clearCurrentTabCaches = () => {
+    clearCachedData(validasiStatsCacheKey);
+    clearCachedData(buildAllDataCacheKey(activeTab));
+    [10, 25, 50, 100].forEach((perPage) => {
+      clearCachedData(buildPageCacheKey(activeTab, 1, perPage));
+    });
+  };
+
+  useEffect(() => {
+    setCurrentPage(1);
+    setSurveys([]);
+    setHasNextPage(false);
+    setPageCursors([]);
+  }, [activeTab, activeKabupaten, itemsPerPage, filterSort]);
+
+  useEffect(() => {
+    void fetchSurveys();
+  }, [activeTab, activeKabupaten, itemsPerPage, filterSort]);
 
   // Filter and sort surveys
   const filteredSurveys = surveys.filter(survey => {
@@ -315,29 +469,112 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     if (activeTab === "existing" && filterExistingSurveyor !== "Semua Petugas") {
       if (survey.surveyorName !== filterExistingSurveyor) return false;
     }
-
-    // Filter by judul (only for existing tab)
-    if (activeTab === "existing" && filterExistingJudul !== "Semua Judul") {
-      const judul = survey.title || survey.lokasiJalan;
-      if (judul !== filterExistingJudul) return false;
-    }
-
-    // Filter by surveyor (only for propose tab)
-    if (activeTab === "propose" && filterProposeSurveyor !== "Semua Petugas") {
-      if (survey.surveyorName !== filterProposeSurveyor) return false;
-    }
-
-    // Filter by judul (only for propose tab)
-    if (activeTab === "propose" && filterProposeJudul !== "Semua Judul") {
-      if (survey.title !== filterProposeJudul) return false;
-    }
     
     return true;
   }).sort((a, b) => {
-    const aTime = getTimestampValue(a.createdAt);
-    const bTime = getTimestampValue(b.createdAt);
-    return filterSort === "Terbaru" ? bTime - aTime : aTime - bTime;
+    const dateA = a.createdAt instanceof Date ? a.createdAt : 
+                  (typeof a.createdAt === 'object' && a.createdAt?.toDate) ? a.createdAt.toDate() : new Date(0);
+    const dateB = b.createdAt instanceof Date ? b.createdAt : 
+                  (typeof b.createdAt === 'object' && b.createdAt?.toDate) ? b.createdAt.toDate() : new Date(0);
+    return dateB.getTime() - dateA.getTime();
   });
+
+  const displayedStats = useMemo(() => {
+    const fallbackActiveCount = filteredSurveys.length;
+    const existing = activeTab === "existing" && stats.existing === 0 ? fallbackActiveCount : stats.existing;
+    const propose = activeTab === "propose" && stats.propose === 0 ? fallbackActiveCount : stats.propose;
+    const praExisting = activeTab === "pra-existing" && stats.praExisting === 0 ? fallbackActiveCount : stats.praExisting;
+    const total = stats.total > 0 ? stats.total : existing + propose + praExisting;
+
+    return { total, existing, propose, praExisting };
+  }, [activeTab, filteredSurveys.length, stats.existing, stats.praExisting, stats.propose, stats.total]);
+
+  // Pagination logic
+  const totalItems =
+    activeTab === "existing"
+      ? displayedStats.existing
+      : activeTab === "propose"
+      ? displayedStats.propose
+      : displayedStats.praExisting;
+  const totalPages = showAll ? 1 : Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const startIndex = filteredSurveys.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
+  const endIndex = filteredSurveys.length === 0 ? 0 : Math.min(startIndex + (showAll ? filteredSurveys.length : itemsPerPage) - 1, totalItems);
+  const paginatedSurveys = showAll ? filteredSurveys : filteredSurveys.slice(0, itemsPerPage);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterStatus, filterSurveyor, filterKecamatan, filterDesa, activeTab, filterExistingSurveyor, filterExistingJudul, filterProposeSurveyor, filterProposeJudul]);
+
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > totalPages || page === currentPage) return;
+    void fetchPage(page);
+  };
+
+  // Handle items per page change
+  const handleItemsPerPageChange = (value: number) => {
+    setItemsPerPage(value);
+    setCurrentPage(1);
+    setShowAll(false);
+    setPageCursors([]);
+  };
+
+  // Pagination controls component
+  const PaginationControls = () => {
+    return (
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-gray-50 border-t">
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-gray-600">
+            <span>Menampilkan {startIndex}-{endIndex} dari {totalItems} data</span>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">Tampilkan:</label>
+            <select
+              value={showAll ? "all" : itemsPerPage}
+              onChange={(e) => {
+                if (e.target.value === "all") {
+                  void fetchAllTabData();
+                } else {
+                  handleItemsPerPageChange(Number(e.target.value));
+                }
+              }}
+              className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value="all">Semua</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Previous
+          </button>
+
+          <div className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded">
+            Hal {currentPage} / {totalPages}
+          </div>
+
+          <button
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage >= totalPages || !hasNextPage}
+            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   // Get unique surveyors from pra-existing surveys
   const surveyorOptions = useMemo(() => {
@@ -395,12 +632,11 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     return ["Semua Judul", ...uniqueJuduls.sort()];
   }, [surveys]);
   
-  // Calculate statistics dari semua surveys yang diverifikasi
-  const totalSurveys = allSurveys.length;
-  const totalExisting = allSurveys.filter(s => s.type === "existing").length;
-  const totalPropose = allSurveys.filter(s => s.type === "propose").length;
-  const totalPraExisting = allSurveys.filter(s => s.type === "pra-existing").length;
-  const diverifikasiCount = allSurveys.length; // semua yang tampil adalah diverifikasi
+  const totalSurveys = displayedStats.total;
+  const totalExisting = displayedStats.existing;
+  const totalPropose = displayedStats.propose;
+  const totalPraExisting = displayedStats.praExisting;
+  const diverifikasiCount = displayedStats.total;
   const kabupatenOptionMap = useMemo(
     () => Object.fromEntries(KABUPATEN_OPTIONS.map((item) => [item.id, item.name])),
     []
@@ -567,7 +803,9 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
       });
       
       // Refresh surveys
-      await fetchSurveys();
+      setPageCursors([]);
+      clearCurrentTabCaches();
+      await fetchSurveys(1, true);
       setShowEditModal(false);
       setEditFormData(null);
       
@@ -628,7 +866,9 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
       });
       
       // Refresh surveys
-      await fetchSurveys();
+      setPageCursors([]);
+      clearCurrentTabCaches();
+      await fetchSurveys(1, true);
       setShowDetailModal(false);
       setSelectedSurvey(null);
       
@@ -659,7 +899,9 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
       await deleteDoc(surveyDoc);
       
       // Refresh surveys
-      await fetchSurveys();
+      setPageCursors([]);
+      clearCurrentTabCaches();
+      await fetchSurveys(1, true);
       
       alert("Survey berhasil dihapus permanen!");
     } catch (error) {
@@ -696,7 +938,9 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
       });
       
       // Refresh surveys
-      await fetchSurveys();
+      setPageCursors([]);
+      clearCurrentTabCaches();
+      await fetchSurveys(1, true);
       setShowDetailModal(false);
       setSelectedSurvey(null);
       
@@ -759,6 +1003,13 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
               Data survey dari petugas yang menunggu verifikasi awal. Setelah diverifikasi, data akan pindah ke Validasi Data.
             </p>
           </div>
+          <button
+            onClick={() => void fetchSurveys(1, true)}
+            disabled={loading || refreshing}
+            className="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          >
+            {refreshing ? "Memuat ulang..." : "Refresh Data"}
+          </button>
         </div>
 
         {/* Statistics Cards */}
@@ -838,15 +1089,15 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                 </svg>
                 Filter:
               </div>
+              <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs font-medium text-blue-700">
+                Mode hemat reads aktif. Data halaman dan statistik memakai cache 5 menit.
+              </div>
               <select 
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
                 className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option>Semua Status</option>
                 <option>Menunggu</option>
-                <option>Diverifikasi</option>
-                <option>Ditolak</option>
               </select>
               {activeTab === "existing" && (
                 <>
@@ -960,13 +1211,25 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
             </div>
             <div className="flex items-center gap-2 text-sm text-black">
               <span>Tampilkan:</span>
-              <select className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg font-medium text-black focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option>10</option>
-                <option>25</option>
-                <option>50</option>
+              <select
+                value={showAll ? "all" : itemsPerPage}
+                onChange={(e) => {
+                  if (e.target.value === "all") {
+                    void fetchAllTabData();
+                  } else {
+                    handleItemsPerPageChange(Number(e.target.value));
+                  }
+                }}
+                className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg font-medium text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value="all">Semua</option>
               </select>
               <span>per halaman</span>
-              <span className="ml-4 font-medium">Menampilkan 1-{filteredSurveys.length} dari {surveys.length} data</span>
+              <span className="ml-4 font-medium">Menampilkan {startIndex}-{endIndex} dari {totalItems} data</span>
             </div>
           </div>
         </div>
@@ -1003,7 +1266,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                 ? "bg-yellow-100 text-yellow-700"
                 : "bg-emerald-100 text-emerald-700"
             }`}>
-              {filteredSurveys.length} Survey (Hal 1)
+              {totalItems} Survey (Hal {currentPage})
             </span>
           </div>
 
@@ -1025,9 +1288,10 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
               </p>
             </div>
           ) : (
-            /* Survey Cards */
-            <div className="space-y-4">
-              {filteredSurveys.map((survey) => (
+            <>
+              {/* Survey Cards */}
+              <div className="space-y-4">
+                {paginatedSurveys.map((survey) => (
                 <div key={survey.id} className="bg-blue-50 rounded-xl p-4 border border-blue-100">
                   <div className="flex flex-col lg:flex-row gap-4">
                     {/* Photo */}
@@ -1184,7 +1448,11 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                   </div>
                 </div>
               ))}
-            </div>
+              </div>
+              
+              {/* Pagination Controls */}
+              <PaginationControls />
+            </>
           )}
         </div>
       </div>

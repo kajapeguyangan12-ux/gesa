@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { collection, query, orderBy, getDocs, limit, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { fetchWithCache } from "@/utils/firestoreCache";
+import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
@@ -38,11 +38,15 @@ interface FilterState {
 
 
 function AdminPanelContent() {
+  const REPORTS_CACHE_KEY = "admin_reports_dataset_v2";
+  const REPORTS_CACHE_TTL_MS = 15 * 60 * 1000;
   const { user, signOut } = useAuth();
   const router = useRouter();
   const [surveys, setSurveys] = useState<SurveyData[]>([]);
   const [filteredSurveys, setFilteredSurveys] = useState<SurveyData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hasLoadedData, setHasLoadedData] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     judulLokasi: "",
     petugas: "",
@@ -259,12 +263,16 @@ function AdminPanelContent() {
     };
   };
 
-  const fetchSurveys = async () => {
+  const fetchSurveys = async (forceRefresh = false) => {
     try {
-      setIsLoading(true);
-      const cacheKey = filters.kabupaten && filters.kabupaten !== "Semua" ? filters.kabupaten : "all";
+      if (forceRefresh) {
+        setIsRefreshing(true);
+        clearCachedData(REPORTS_CACHE_KEY);
+      } else {
+        setIsLoading(true);
+      }
       const surveysData = await fetchWithCache<SurveyData[]>(
-        `admin_surveys_${cacheKey}`,
+        REPORTS_CACHE_KEY,
         async () => {
           const surveysRef = collection(db, FIREBASE_COLLECTIONS.SURVEYS);
           const q = query(surveysRef, orderBy("createdAt", "desc"), limit(300));
@@ -275,15 +283,17 @@ function AdminPanelContent() {
           });
           return result;
         },
-        120_000
+        REPORTS_CACHE_TTL_MS
       );
       
       setSurveys(surveysData);
       setFilteredSurveys(surveysData);
+      setHasLoadedData(true);
     } catch (error) {
       console.error("Error fetching surveys:", error);
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -343,6 +353,10 @@ function AdminPanelContent() {
 
   const handleSearch = () => {
     applyFilters();
+  };
+
+  const handleRefreshData = async () => {
+    await fetchSurveys(true);
   };
 
   const handleLogout = async () => {
@@ -428,6 +442,22 @@ function AdminPanelContent() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-6">{/* Filters Section */}
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 border border-gray-200">
+          <div className="mb-4 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="text-sm text-blue-900">
+              <span className="font-semibold">Mode hemat reads aktif.</span>{" "}
+              Daftar laporan memakai cache lokal selama 15 menit dan hanya memuat ulang dari Firestore saat `Refresh Data` ditekan.
+            </div>
+            <button
+              onClick={() => void handleRefreshData()}
+              disabled={isRefreshing || !hasLoadedData}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl transition-all font-semibold"
+            >
+              <svg className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {isRefreshing ? "Memuat Ulang..." : "Refresh Data"}
+            </button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">{/* Judul / Lokasi */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">

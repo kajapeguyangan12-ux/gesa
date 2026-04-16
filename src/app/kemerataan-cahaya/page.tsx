@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { collection, getDocs, query, orderBy, limit, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { fetchWithCache } from "@/utils/firestoreCache";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -11,6 +12,17 @@ import { KABUPATEN_OPTIONS } from "@/utils/constants";
 
 interface GridCell {
   value: string;
+}
+
+interface ReportOption {
+  id: string;
+  label: string;
+  data: any;
+}
+
+interface CachedReportEntry {
+  id: string;
+  data: any;
 }
 
 type JenisJalan = "arterial" | "kolektor" | "lokal" | "lingkungan" | "";
@@ -77,7 +89,7 @@ export function KemeratanCahayaContent() {
   const [dimmingMiddle, setDimmingMiddle] = useState(100);
   const [dimmingBottom, setDimmingBottom] = useState(100);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [reportsList, setReportsList] = useState<Array<{ id: string; label: string; data: any }>>([]);
+  const [reportsList, setReportsList] = useState<ReportOption[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [showTopList, setShowTopList] = useState(false);
   const [showMiddleList, setShowMiddleList] = useState(false);
@@ -298,18 +310,13 @@ export function KemeratanCahayaContent() {
         if (ok) return;
       }
 
-      // Fallback: fetch latest report
+      // Fallback: fetch latest report from cache-first store
       try {
-        const constraints: any[] = [];
-        if (useKabupatenFilter && activeKabupaten) {
-          constraints.push(where("kabupaten", "==", activeKabupaten));
-        }
-        constraints.push(orderBy("createdAt", "desc"), limit(1));
-        const q = query(collection(db, "reports"), ...constraints);
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          const data = snapshot.docs[0].data();
-          const ok = applyReportToGrid(data, "top", snapshot.docs[0].id);
+        const cacheKey = `kemerataan_report_latest_v2_${activeKabupaten || "all"}`;
+        const entry = await fetchCachedSingleReport(cacheKey, "desc");
+
+        if (entry) {
+          const ok = applyReportToGrid(entry.data, "top", entry.id);
           if (ok) return;
         }
       } catch (err) {
@@ -317,7 +324,7 @@ export function KemeratanCahayaContent() {
       }
       alert("Tidak ada data untuk di-load!");
     })();
-  }, [rows, cols, selectedReportTopData, selectedReportTopId, lastLoadedTopId, activeKabupaten]);
+  }, [selectedReportTopData, selectedReportTopId, lastLoadedTopId, activeKabupaten, fetchCachedSingleReport]);
 
   const handleLoadDataFromBottom = useCallback(() => {
     (async () => {
@@ -328,18 +335,13 @@ export function KemeratanCahayaContent() {
         if (ok) return;
       }
 
-      // Fallback: fetch oldest report
+      // Fallback: fetch oldest report from cache-first store
       try {
-        const constraints: any[] = [];
-        if (useKabupatenFilter && activeKabupaten) {
-          constraints.push(where("kabupaten", "==", activeKabupaten));
-        }
-        constraints.push(orderBy("createdAt", "asc"), limit(1));
-        const q = query(collection(db, "reports"), ...constraints);
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          const data = snapshot.docs[0].data();
-          const ok = applyReportToGrid(data, "bottom", snapshot.docs[0].id);
+        const cacheKey = `kemerataan_report_oldest_v2_${activeKabupaten || "all"}`;
+        const entry = await fetchCachedSingleReport(cacheKey, "asc");
+
+        if (entry) {
+          const ok = applyReportToGrid(entry.data, "bottom", entry.id);
           if (ok) return;
         }
       } catch (err) {
@@ -347,7 +349,7 @@ export function KemeratanCahayaContent() {
       }
       alert("Tidak ada data untuk di-load!");
     })();
-  }, [rows, cols, selectedReportBottomData, selectedReportBottomId, lastLoadedBottomId, activeKabupaten]);
+  }, [selectedReportBottomData, selectedReportBottomId, lastLoadedBottomId, activeKabupaten, fetchCachedSingleReport]);
 
   const handleLoadDataFromMiddle = useCallback(() => {
     (async () => {
@@ -358,16 +360,11 @@ export function KemeratanCahayaContent() {
       }
 
       try {
-        const constraints: any[] = [];
-        if (useKabupatenFilter && activeKabupaten) {
-          constraints.push(where("kabupaten", "==", activeKabupaten));
-        }
-        constraints.push(orderBy("createdAt", "desc"), limit(1));
-        const q = query(collection(db, "reports"), ...constraints);
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          const data = snapshot.docs[0].data();
-          const ok = applyReportToGrid(data, "middle", snapshot.docs[0].id);
+        const cacheKey = `kemerataan_report_middle_v2_${activeKabupaten || "all"}`;
+        const entry = await fetchCachedSingleReport(cacheKey, "desc");
+
+        if (entry) {
+          const ok = applyReportToGrid(entry.data, "middle", entry.id);
           if (ok) return;
         }
       } catch (err) {
@@ -375,7 +372,7 @@ export function KemeratanCahayaContent() {
       }
       alert("Tidak ada data untuk di-load!");
     })();
-  }, [rows, cols, selectedReportMiddleData, selectedReportMiddleId, lastLoadedMiddleId, activeKabupaten]);
+  }, [selectedReportMiddleData, selectedReportMiddleId, lastLoadedMiddleId, activeKabupaten, fetchCachedSingleReport]);
 
   const deriveReportLabel = (data: any) => {
     if (!data) return "(untitled)";
@@ -422,6 +419,54 @@ export function KemeratanCahayaContent() {
     if (lokasi) meta.push(String(lokasi));
     return meta.length > 0 ? `${mainLeft} - ${meta.join(" | ")}` : mainLeft;
   };
+
+  function buildReportsConstraints(sortDirection: "asc" | "desc", maxItems: number) {
+    const constraints: any[] = [];
+    if (useKabupatenFilter && activeKabupaten) {
+      constraints.push(where("kabupaten", "==", activeKabupaten));
+    }
+    constraints.push(orderBy("createdAt", sortDirection), limit(maxItems));
+    return constraints;
+  }
+
+  async function fetchCachedReportList() {
+    const cacheKey = `kemerataan_reports_list_v2_${activeKabupaten || "all"}`;
+    return fetchWithCache<ReportOption[]>(
+      cacheKey,
+      async () => {
+        const q = query(collection(db, "reports"), ...buildReportsConstraints("desc", 100));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            label: deriveReportLabel(data),
+            data,
+          };
+        });
+      },
+      15 * 60_000
+    );
+  }
+
+  async function fetchCachedSingleReport(cacheKey: string, sortDirection: "asc" | "desc") {
+    return fetchWithCache<CachedReportEntry | null>(
+      cacheKey,
+      async () => {
+        const q = query(collection(db, "reports"), ...buildReportsConstraints(sortDirection, 1));
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) {
+          return null;
+        }
+        const firstDoc = snapshot.docs[0];
+        return {
+          id: firstDoc.id,
+          data: firstDoc.data(),
+        };
+      },
+      15 * 60_000
+    );
+  }
 
   const sanitizeLux = (val: number): number => {
     if (!isFinite(val) || isNaN(val)) return 0;
@@ -651,14 +696,7 @@ export function KemeratanCahayaContent() {
   const fetchReportsList = async () => {
     try {
       setReportsLoading(true);
-      const constraints: any[] = [];
-      if (useKabupatenFilter && activeKabupaten) {
-        constraints.push(where("kabupaten", "==", activeKabupaten));
-      }
-      constraints.push(orderBy("createdAt", "desc"), limit(100));
-      const q = query(collection(db, "reports"), ...constraints);
-      const snapshot = await getDocs(q);
-      const list = snapshot.docs.map((d) => ({ id: d.id, label: deriveReportLabel(d.data()), data: d.data() }));
+      const list = await fetchCachedReportList();
       setReportsList(list);
       if (list.length === 0) alert("Tidak ada report tersedia");
     } catch (err) {
@@ -670,7 +708,7 @@ export function KemeratanCahayaContent() {
     }
   };
 
-  const handleSelectReportTop = (report: { id: string; label: string; data: any }) => {
+  const handleSelectReportTop = (report: ReportOption) => {
     // select report for Load Data Pertama
     setSelectedReportTopId(report.id);
     setSelectedReportTopData(report.data);
@@ -678,7 +716,7 @@ export function KemeratanCahayaContent() {
     applyReportToGrid(report.data, "top", report.id);
   };
 
-  const handleSelectReportMiddle = (report: { id: string; label: string; data: any }) => {
+  const handleSelectReportMiddle = (report: ReportOption) => {
     // select report for Load Data Ketiga (Tengah)
     setSelectedReportMiddleId(report.id);
     setSelectedReportMiddleData(report.data);
@@ -686,7 +724,7 @@ export function KemeratanCahayaContent() {
     applyReportToGrid(report.data, "middle", report.id);
   };
 
-  const handleSelectReportBottom = (report: { id: string; label: string; data: any }) => {
+  const handleSelectReportBottom = (report: ReportOption) => {
     // select report for Load Data Kedua
     setSelectedReportBottomId(report.id);
     setSelectedReportBottomData(report.data);

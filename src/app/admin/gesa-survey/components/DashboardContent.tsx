@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
-import { collection, getDocs, query, where, orderBy, limit } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, setDoc, where, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { fetchWithCache } from "@/utils/firestoreCache";
+import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import { useAuth } from "@/hooks/useAuth";
 
 interface DashboardContentProps {
@@ -76,7 +76,7 @@ const emptySummary: ReportSummary = {
 };
 
 const initialReportState: DashboardReportState = {
-  loading: true,
+  loading: false,
   error: "",
   allRows: [],
   allRowsRaw: [],
@@ -86,6 +86,16 @@ const initialReportState: DashboardReportState = {
   praExisting: emptySummary,
   praExistingByKecamatan: [],
 };
+const DASHBOARD_REPORT_CACHE_TTL_MS = 5 * 60 * 1000;
+const DASHBOARD_SUMMARY_CACHE_TTL_MS = 10 * 60 * 1000;
+
+interface DashboardSummaryDocument {
+  totalUniqueSurveyors?: number;
+  propose?: Partial<ReportSummary>;
+  existing?: Partial<ReportSummary>;
+  praExisting?: Partial<ReportSummary>;
+  praExistingByKecamatan?: Array<Partial<KecamatanSummary> & { kecamatan?: string }>;
+}
 
 function resolveTimestamp(value: TimestampLike) {
   if (!value) return null;
@@ -177,14 +187,42 @@ function buildKecamatanSummary(rows: SurveyReportRow[]) {
     .sort((a, b) => b.totalData - a.totalData || a.kecamatan.localeCompare(b.kecamatan));
 }
 
+function mergeSummary(partial?: Partial<ReportSummary>): ReportSummary {
+  return {
+    ...emptySummary,
+    ...partial,
+  };
+}
+
+function normalizeKecamatanSummaryRow(
+  row: Partial<KecamatanSummary> & { kecamatan?: string }
+): KecamatanSummary {
+  return {
+    kecamatan: row.kecamatan?.trim() || "Tanpa Kecamatan",
+    ...mergeSummary(row),
+  };
+}
+
+async function fetchDashboardSummary(activeKabupaten?: string | null) {
+  const summaryDocId = `gesa-survey_${activeKabupaten || "all"}_super`;
+  return await fetchWithCache<DashboardSummaryDocument | null>(
+    `dashboard_summary_${summaryDocId}`,
+    async () => {
+      const snapshot = await getDoc(doc(db, "dashboard-summaries", summaryDocId));
+      return snapshot.exists() ? (snapshot.data() as DashboardSummaryDocument) : null;
+    },
+    DASHBOARD_SUMMARY_CACHE_TTL_MS
+  );
+}
+
 async function fetchCollectionRows(collectionName: string, activeKabupaten?: string | null) {
   return await fetchWithCache<SurveyReportRow[]>(
     `dashboard_rows_${collectionName}_${activeKabupaten || "all"}`,
     async () => {
       const surveysRef = collection(db, collectionName);
       const snapshot = activeKabupaten
-        ? await getDocs(query(surveysRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc"), limit(300)))
-        : await getDocs(query(surveysRef, orderBy("createdAt", "desc"), limit(300)));
+        ? await getDocs(query(surveysRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc")))
+        : await getDocs(query(surveysRef, orderBy("createdAt", "desc")));
 
       return snapshot.docs.map((item) => {
         const data = item.data();
@@ -199,8 +237,10 @@ async function fetchCollectionRows(collectionName: string, activeKabupaten?: str
             typeof data.verifiedBy === "string"
               ? data.verifiedBy
               : "",
+          verifiedAt: data.verifiedAt,
           kabupaten: typeof data.kabupaten === "string" ? data.kabupaten : "",
           kecamatan: typeof data.kecamatan === "string" ? data.kecamatan : "",
+          jumlahLampu: normalizeLampCount(data.jumlahLampu),
           desa: typeof data.desa === "string" ? data.desa : "",
           createdAt: data.createdAt,
           category: collectionName,
@@ -405,17 +445,97 @@ export default function DashboardContent({
 }: DashboardContentProps) {
   const { user } = useAuth();
   const [reportState, setReportState] = useState<DashboardReportState>(initialReportState);
+  const [reportsVisible, setReportsVisible] = useState(false);
+  const [reportsLoaded, setReportsLoaded] = useState(false);
+  const [summaryRefreshing, setSummaryRefreshing] = useState(false);
   const [startDate, setStartDate] = useState(() => {
     const today = new Date();
     return formatDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1));
   });
   const [endDate, setEndDate] = useState(() => formatDateInputValue(new Date()));
+  const reportCacheKey = useMemo(
+    () => `dashboard_reports_${isSuperAdmin ? "super" : user?.uid || "guest"}_${activeKabupaten || "all"}`,
+    [activeKabupaten, isSuperAdmin, user?.uid]
+  );
+  const dashboardSummaryDocId = useMemo(
+    () => `gesa-survey_${activeKabupaten || "all"}_super`,
+    [activeKabupaten]
+  );
 
   useEffect(() => {
+    if (!isSuperAdmin) return;
+    let cancelled = false;
+
+    const hydrateFromSummary = async () => {
+      try {
+        const summary = await fetchDashboardSummary(activeKabupaten);
+        if (!summary || cancelled) return;
+
+        setReportState((current) => ({
+          ...current,
+          totalUniqueSurveyors:
+            typeof summary.totalUniqueSurveyors === "number"
+              ? summary.totalUniqueSurveyors
+              : current.totalUniqueSurveyors,
+          propose: mergeSummary(summary.propose),
+          existing: mergeSummary(summary.existing),
+          praExisting: mergeSummary(summary.praExisting),
+          praExistingByKecamatan: Array.isArray(summary.praExistingByKecamatan)
+            ? summary.praExistingByKecamatan.map(normalizeKecamatanSummaryRow)
+            : current.praExistingByKecamatan,
+        }));
+      } catch (error) {
+        console.error("Failed to load dashboard summary:", error);
+      }
+    };
+
+    void hydrateFromSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeKabupaten, isSuperAdmin]);
+
+  useEffect(() => {
+    if (!reportsVisible) return;
     let cancelled = false;
 
     const loadReports = async () => {
       try {
+        if (typeof window !== "undefined") {
+          const cachedRaw = window.sessionStorage.getItem(reportCacheKey);
+          if (cachedRaw) {
+            try {
+              const cached = JSON.parse(cachedRaw) as {
+                savedAt: number;
+                data: DashboardReportState;
+              };
+
+              const cachedHasData =
+                (cached.data?.allRows?.length || 0) > 0 ||
+                cached.data?.propose?.totalData > 0 ||
+                cached.data?.existing?.totalData > 0 ||
+                cached.data?.praExisting?.totalData > 0;
+
+              if (cachedHasData && Date.now() - cached.savedAt <= DASHBOARD_REPORT_CACHE_TTL_MS) {
+                setReportState({
+                  ...cached.data,
+                  loading: false,
+                  error: "",
+                });
+                setReportsLoaded(true);
+                return;
+              }
+
+              if (!cachedHasData) {
+                window.sessionStorage.removeItem(reportCacheKey);
+              }
+            } catch {
+              window.sessionStorage.removeItem(reportCacheKey);
+            }
+          }
+        }
+
         setReportState((current) => ({
           ...current,
           loading: true,
@@ -482,6 +602,30 @@ export default function DashboardContent({
           praExisting: buildSummary(filteredPraExistingRows),
           praExistingByKecamatan: buildKecamatanSummary(filteredPraExistingRows),
         });
+
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(
+            reportCacheKey,
+            JSON.stringify({
+              savedAt: Date.now(),
+              data: {
+                loading: false,
+                error: "",
+                allRows: filteredRows,
+                allRowsRaw: rawRows,
+                totalUniqueSurveyors: new Set(
+                  filteredRows
+                    .map((row) => row.surveyorName?.trim().toLowerCase())
+                    .filter((value): value is string => Boolean(value))
+                ).size,
+                propose: buildSummary(filteredProposeRows),
+                existing: buildSummary(filteredExistingRows),
+                praExisting: buildSummary(filteredPraExistingRows),
+                praExistingByKecamatan: buildKecamatanSummary(filteredPraExistingRows),
+              },
+            })
+          );
+        }
       } catch (error) {
         if (cancelled) return;
 
@@ -490,6 +634,10 @@ export default function DashboardContent({
           loading: false,
           error: error instanceof Error ? error.message : "Gagal memuat laporan dashboard.",
         });
+      } finally {
+        if (!cancelled) {
+          setReportsLoaded(true);
+        }
       }
     };
 
@@ -498,7 +646,7 @@ export default function DashboardContent({
     return () => {
       cancelled = true;
     };
-  }, [activeKabupaten, isSuperAdmin, user?.uid]);
+  }, [activeKabupaten, isSuperAdmin, reportCacheKey, reportsVisible, user?.uid]);
 
   const waitingReviewCount = useMemo(
     () =>
@@ -722,6 +870,59 @@ export default function DashboardContent({
     XLSX.writeFile(workbook, `rekap-admin-verifikasi-${startLabel}-sampai-${endLabel}.xlsx`);
   };
 
+  const handleRefreshSummary = async () => {
+    if (!isSuperAdmin || summaryRefreshing) return;
+
+    try {
+      setSummaryRefreshing(true);
+
+      const [proposeRows, existingRows, praExistingRows] = await Promise.all([
+        fetchCollectionRows("survey-apj-propose", activeKabupaten),
+        fetchCollectionRows("survey-existing", activeKabupaten),
+        fetchCollectionRows("survey-pra-existing", activeKabupaten),
+      ]);
+
+      const allRows = [...proposeRows, ...existingRows, ...praExistingRows];
+      const summaryPayload: DashboardSummaryDocument & {
+        kabupatenScope: string;
+        updatedAt: Date;
+        updatedBy: string;
+      } = {
+        kabupatenScope: activeKabupaten || "all",
+        updatedAt: new Date(),
+        updatedBy: user?.email || user?.displayName || "super-admin",
+        totalUniqueSurveyors: new Set(
+          allRows
+            .map((row) => row.surveyorName?.trim().toLowerCase())
+            .filter((value): value is string => Boolean(value))
+        ).size,
+        propose: buildSummary(proposeRows),
+        existing: buildSummary(existingRows),
+        praExisting: buildSummary(praExistingRows),
+        praExistingByKecamatan: buildKecamatanSummary(praExistingRows),
+      };
+
+      await setDoc(doc(db, "dashboard-summaries", dashboardSummaryDocId), summaryPayload, { merge: true });
+      clearCachedData(`dashboard_summary_${dashboardSummaryDocId}`);
+
+      setReportState((current) => ({
+        ...current,
+        totalUniqueSurveyors: summaryPayload.totalUniqueSurveyors || 0,
+        propose: mergeSummary(summaryPayload.propose),
+        existing: mergeSummary(summaryPayload.existing),
+        praExisting: mergeSummary(summaryPayload.praExisting),
+        praExistingByKecamatan: (summaryPayload.praExistingByKecamatan || []).map(normalizeKecamatanSummaryRow),
+      }));
+
+      alert("Summary dashboard berhasil diperbarui.");
+    } catch (error) {
+      console.error("Failed to refresh dashboard summary:", error);
+      alert("Gagal memperbarui summary dashboard.");
+    } finally {
+      setSummaryRefreshing(false);
+    }
+  };
+
   return (
     <>
       <div className="mb-6 bg-gradient-to-r from-green-600 to-green-700 rounded-2xl shadow-lg p-4 lg:p-6">
@@ -799,13 +1000,60 @@ export default function DashboardContent({
                     : "Ringkasan ini hanya menampilkan hasil survey yang terhubung ke tugas distribusi buatan admin yang sedang login, agar fokus per kecamatan tidak tercampur admin lain."}
                 </p>
               </div>
-              <div className="rounded-2xl bg-white/10 px-4 py-3 text-sm text-slate-100 backdrop-blur">
-                Kabupaten aktif: <span className="font-bold">{activeKabupaten || "Semua Kabupaten"}</span>
+              <div className="flex flex-col items-start gap-3 lg:items-end">
+                <div className="rounded-2xl bg-white/10 px-4 py-3 text-sm text-slate-100 backdrop-blur">
+                  Kabupaten aktif: <span className="font-bold">{activeKabupaten || "Semua Kabupaten"}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => void handleRefreshSummary()}
+                      disabled={summaryRefreshing}
+                      className="rounded-xl border border-white/20 bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                    >
+                      {summaryRefreshing ? "Memperbarui Summary..." : "Refresh Summary"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setReportsVisible((current) => !current)}
+                    className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-100"
+                  >
+                    {reportsVisible ? "Sembunyikan Laporan" : reportsLoaded ? "Tampilkan Laporan" : "Muat Laporan"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
-          {reportState.loading ? (
+          {!reportsVisible ? (
+            <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-8 text-sm text-gray-600 shadow-sm">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  Laporan dashboard sedang disembunyikan. Klik `{reportsLoaded ? "Tampilkan Laporan" : "Muat Laporan"}` untuk menghitung dan menampilkan data saat diperlukan.
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-xl bg-slate-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Total Survey</div>
+                    <div className="mt-1 text-lg font-bold text-gray-900">{totalSurveyCount}</div>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Menunggu</div>
+                    <div className="mt-1 text-lg font-bold text-amber-600">{waitingReviewCount}</div>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Patch Pra</div>
+                    <div className="mt-1 text-lg font-bold text-emerald-700">{reportState.praExisting.totalData}</div>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Surveyor</div>
+                    <div className="mt-1 text-lg font-bold text-purple-700">{reportState.totalUniqueSurveyors}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : reportState.loading ? (
                 <div className="rounded-2xl border border-gray-200 bg-white p-10 shadow-sm">
               <div className="flex flex-col items-center justify-center">
                 <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-600" />

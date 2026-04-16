@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, getDocs, doc, updateDoc, deleteDoc, query, where, orderBy, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { fetchWithCache } from "@/utils/firestoreCache";
+import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import dynamic from "next/dynamic";
 
 // Dynamic import for Map
@@ -127,9 +127,12 @@ interface Task {
 }
 
 export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupaten?: string | null }) {
+  const VALIDASI_CACHE_PREFIX = "data_survey_validasi";
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -150,18 +153,37 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     propose: 0,
     praExisting: 0,
   });
-
-  useEffect(() => {
-    fetchAllSurveys();
-  }, [activeKabupaten]);
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     setSelectedSurveyIds([]);
   }, [filterType, filterStatus, filterSurveyor, filterKecamatan, filterDesa, coordinateSearch]);
 
-  const fetchAllSurveys = async () => {
+  useEffect(() => {
+    setSurveys([]);
+    setTasks([]);
+    setCurrentPage(1);
+    setShowAll(false);
+    setDataLoaded(false);
+    setStats({
+      total: 0,
+      existing: 0,
+      propose: 0,
+      praExisting: 0,
+    });
+  }, [activeKabupaten]);
+
+  const fetchAllSurveys = async (requestedLimit?: number | null, forceRefresh = false) => {
     try {
-      setLoading(true);
+      if (forceRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       
       // Get current admin info
       const storedUser = localStorage.getItem('gesa_user');
@@ -171,8 +193,15 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       setCurrentAdminId(adminId);
       
       // Fetch tasks first to get list of assigned surveyors by THIS admin
+      const tasksCacheKey = `${VALIDASI_CACHE_PREFIX}_tasks_${adminId || "all"}`;
+      const surveysCacheKey = `${VALIDASI_CACHE_PREFIX}_surveys_${adminId || "all"}_${activeKabupaten || "all"}_${requestedLimit ?? "all"}`;
+      if (forceRefresh) {
+        clearCachedData(tasksCacheKey);
+        clearCachedData(surveysCacheKey);
+      }
+
       const tasksData = await fetchWithCache<Task[]>(
-        `validasi_tasks_${adminId || "all"}`,
+        tasksCacheKey,
         async () => {
           const tasksRef = collection(db, "tasks");
           const tasksQuery = query(tasksRef, orderBy("createdAt", "desc"), limit(300));
@@ -201,90 +230,137 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       // Get list of assigned surveyor UIDs (only from tasks created by this admin)
       const assignedSurveyorIds = tasksData.map(task => task.surveyorId);
       
-      // Fetch from all collections
-      const existingRef = collection(db, "survey-existing");
-      const proposeRef = collection(db, "survey-apj-propose");
-      const praExistingRef = collection(db, "survey-pra-existing");
-      const existingQuery = activeKabupaten
-        ? query(existingRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc"), limit(300))
-        : query(existingRef, orderBy("createdAt", "desc"), limit(300));
-      const proposeQuery = activeKabupaten
-        ? query(proposeRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc"), limit(300))
-        : query(proposeRef, orderBy("createdAt", "desc"), limit(300));
-      const praExistingQuery = activeKabupaten
-        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc"), limit(300))
-        : query(praExistingRef, orderBy("createdAt", "desc"), limit(300));
-      
-      const [existingSnapshot, proposeSnapshot, praExistingSnapshot] = await Promise.all([
-        getDocs(existingQuery),
-        getDocs(proposeQuery),
-        getDocs(praExistingQuery),
-      ]);
-      
-      // Super admin can validate all verified surveys.
-      // Regular admin remains limited to surveyors assigned from their own tasks.
-      const existingData = existingSnapshot.docs
-        .filter((doc) => {
-          const surveyorUid = doc.data().surveyorUid;
-          const status = doc.data().status;
-          if (status !== "diverifikasi") return false;
-          if (superAdmin) return true;
-          return surveyorUid && assignedSurveyorIds.includes(surveyorUid);
-        })
-        .map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          title: doc.data().title || `Survey Existing - ${doc.data().namaJalan || "Untitled"}`,
-          type: "existing",
-          surveyorName: doc.data().surveyorName || "Unknown",
-        })) as Survey[];
-      
-      const proposeData = proposeSnapshot.docs
-        .filter((doc) => {
-          const surveyorUid = doc.data().surveyorUid;
-          const status = doc.data().status;
-          if (status !== "diverifikasi") return false;
-          if (superAdmin) return true;
-          return surveyorUid && assignedSurveyorIds.includes(surveyorUid);
-        })
-        .map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          title: doc.data().title || `Survey APJ Propose - ${doc.data().namaJalan || "Untitled"}`,
-          type: "propose",
-          surveyorName: doc.data().surveyorName || "Unknown",
-        })) as Survey[];
+      const { allSurveys, existingData, proposeData, praExistingData } = await fetchWithCache<{
+        allSurveys: Survey[];
+        existingData: Survey[];
+        proposeData: Survey[];
+        praExistingData: Survey[];
+      }>(
+        surveysCacheKey,
+        async () => {
+          const existingRef = collection(db, "survey-existing");
+          const proposeRef = collection(db, "survey-apj-propose");
+          const praExistingRef = collection(db, "survey-pra-existing");
+          const safeLimit = requestedLimit ? Math.max(requestedLimit * 5, 50) : null;
 
-      const praExistingData = praExistingSnapshot.docs
-        .filter((doc) => {
-          const surveyorUid = doc.data().surveyorUid;
-          const status = doc.data().status;
-          if (status !== "diverifikasi") return false;
-          if (superAdmin) return true;
-          return surveyorUid && assignedSurveyorIds.includes(surveyorUid);
-        })
-        .map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          title: doc.data().title || `Survey Pra Existing - ${doc.data().jenisLampu || "Untitled"}`,
-          type: "pra-existing",
-          surveyorName: doc.data().surveyorName || "Unknown",
-        })) as Survey[];
+          const existingQuery = activeKabupaten
+            ? (requestedLimit
+                ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit!))
+                : query(existingRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc")))
+            : (requestedLimit
+                ? query(existingRef, where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit!))
+                : query(existingRef, orderBy("createdAt", "desc")));
+          const proposeQuery = activeKabupaten
+            ? (requestedLimit
+                ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit!))
+                : query(proposeRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc")))
+            : (requestedLimit
+                ? query(proposeRef, where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit!))
+                : query(proposeRef, orderBy("createdAt", "desc")));
+          const praExistingQuery = activeKabupaten
+            ? (requestedLimit
+                ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit!))
+                : query(praExistingRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc")))
+            : (requestedLimit
+                ? query(praExistingRef, where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit!))
+                : query(praExistingRef, orderBy("createdAt", "desc")));
+          
+          const [existingSnapshot, proposeSnapshot, praExistingSnapshot] = await Promise.all([
+            getDocs(existingQuery),
+            getDocs(proposeQuery),
+            getDocs(praExistingQuery),
+          ]);
+          
+          const existingData = existingSnapshot.docs
+            .filter((doc) => {
+              const surveyorUid = doc.data().surveyorUid;
+              const status = doc.data().status;
+              if (status !== "diverifikasi") return false;
+              if (superAdmin) return true;
+              return surveyorUid && assignedSurveyorIds.includes(surveyorUid);
+            })
+            .map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+              title: doc.data().title || `Survey Existing - ${doc.data().namaJalan || "Untitled"}`,
+              type: "existing",
+              surveyorName: doc.data().surveyorName || "Unknown",
+            })) as Survey[];
+          
+          const proposeData = proposeSnapshot.docs
+            .filter((doc) => {
+              const surveyorUid = doc.data().surveyorUid;
+              const status = doc.data().status;
+              if (status !== "diverifikasi") return false;
+              if (superAdmin) return true;
+              return surveyorUid && assignedSurveyorIds.includes(surveyorUid);
+            })
+            .map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+              title: doc.data().title || `Survey APJ Propose - ${doc.data().namaJalan || "Untitled"}`,
+              type: "propose",
+              surveyorName: doc.data().surveyorName || "Unknown",
+            })) as Survey[];
+
+          const praExistingData = praExistingSnapshot.docs
+            .filter((doc) => {
+              const surveyorUid = doc.data().surveyorUid;
+              const status = doc.data().status;
+              if (status !== "diverifikasi") return false;
+              if (superAdmin) return true;
+              return surveyorUid && assignedSurveyorIds.includes(surveyorUid);
+            })
+            .map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+              title: doc.data().title || `Survey Pra Existing - ${doc.data().jenisLampu || "Untitled"}`,
+              type: "pra-existing",
+              surveyorName: doc.data().surveyorName || "Unknown",
+            })) as Survey[];
+          
+          const allSurveys = [...existingData, ...proposeData, ...praExistingData].sort((a, b) => {
+            const dateA =
+              a.createdAt instanceof Date
+                ? a.createdAt
+                : typeof a.createdAt === "object" && a.createdAt?.toDate
+                ? a.createdAt.toDate()
+                : new Date(0);
+            const dateB =
+              b.createdAt instanceof Date
+                ? b.createdAt
+                : typeof b.createdAt === "object" && b.createdAt?.toDate
+                ? b.createdAt.toDate()
+                : new Date(0);
+            return dateB.getTime() - dateA.getTime();
+          });
+
+          return { allSurveys, existingData, proposeData, praExistingData };
+        },
+        5 * 60_000
+      );
       
-      const allSurveys = [...existingData, ...proposeData, ...praExistingData];
-      setSurveys(allSurveys);
+      setSurveys(requestedLimit ? allSurveys.slice(0, requestedLimit) : allSurveys);
+      setDataLoaded(true);
       
       setStats({
-        total: allSurveys.length,
-        existing: existingData.length,
-        propose: proposeData.length,
-        praExisting: praExistingData.length,
+        total: requestedLimit ? allSurveys.slice(0, requestedLimit).length : allSurveys.length,
+        existing: requestedLimit ? allSurveys.slice(0, requestedLimit).filter((survey) => survey.type === "existing").length : existingData.length,
+        propose: requestedLimit ? allSurveys.slice(0, requestedLimit).filter((survey) => survey.type === "propose").length : proposeData.length,
+        praExisting: requestedLimit ? allSurveys.slice(0, requestedLimit).filter((survey) => survey.type === "pra-existing").length : praExistingData.length,
       });
     } catch (error) {
       console.error("Error fetching surveys:", error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const clearValidasiCaches = () => {
+    clearCachedData(`${VALIDASI_CACHE_PREFIX}_tasks_${currentAdminId || "all"}`);
+    clearCachedData(`${VALIDASI_CACHE_PREFIX}_surveys_${currentAdminId || "all"}_${activeKabupaten || "all"}_10`);
+    clearCachedData(`${VALIDASI_CACHE_PREFIX}_surveys_${currentAdminId || "all"}_${activeKabupaten || "all"}_all`);
   };
 
   const handleViewDetail = (survey: Survey) => {
@@ -354,6 +430,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         updatedAt: new Date()
       });
       
+      clearValidasiCaches();
       await fetchAllSurveys();
       setShowEditModal(false);
       setEditFormData(null);
@@ -403,6 +480,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         validatedAt: new Date()
       });
       
+      clearValidasiCaches();
       await fetchAllSurveys();
       
       alert('Survey berhasil divalidasi! Survey dipindahkan ke Data Survey Valid.');
@@ -460,6 +538,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       );
 
       setSelectedSurveyIds([]);
+      clearValidasiCaches();
       await fetchAllSurveys();
       alert(`${selectedSurveys.length} data berhasil divalidasi.`);
     } catch (error) {
@@ -524,6 +603,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         rejectionReason: alasan
       });
       
+      clearValidasiCaches();
       await fetchAllSurveys();
       setShowDetailModal(false);
       setSelectedSurvey(null);
@@ -548,6 +628,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       const surveyDoc = doc(db, collectionName, survey.id);
       
       await deleteDoc(surveyDoc);
+      clearValidasiCaches();
       await fetchAllSurveys();
       
       alert('Survey berhasil dihapus!');
@@ -664,6 +745,50 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     return true;
   });
 
+  // Pagination logic
+  const totalItems = filteredSurveys.length;
+  const totalPages = showAll ? 1 : Math.ceil(totalItems / itemsPerPage);
+  const startIndex = showAll ? 0 : (currentPage - 1) * itemsPerPage;
+  const endIndex = showAll ? totalItems : startIndex + itemsPerPage;
+  const paginatedSurveys = showAll ? filteredSurveys : filteredSurveys.slice(startIndex, endIndex);
+
+  // Debug pagination values
+  console.log("=== DATA VERIFIKASI PAGINATION DEBUG ===");
+  console.log("filteredSurveys.length:", filteredSurveys.length);
+  console.log("totalItems:", totalItems);
+  console.log("totalPages:", totalPages);
+  console.log("currentPage:", currentPage);
+  console.log("itemsPerPage:", itemsPerPage);
+  console.log("showAll:", showAll);
+  console.log("paginatedSurveys.length:", paginatedSurveys.length);
+  console.log("========================================");
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterType, filterStatus, filterSurveyor, filterKecamatan, filterDesa, coordinateSearch]);
+
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  // Handle items per page change
+  const handleItemsPerPageChange = (value: number) => {
+    setItemsPerPage(value);
+    setCurrentPage(1);
+    setShowAll(false);
+    if (dataLoaded && surveys.length < value) {
+      void fetchAllSurveys(value);
+    }
+  };
+
+  // Handle show all toggle
+  const handleShowAllToggle = () => {
+    setShowAll(!showAll);
+    setCurrentPage(1);
+  };
+
   const allFilteredSelected = filteredSurveys.length > 0 && filteredSurveys.every((survey) => selectedSurveyIds.includes(survey.id));
 
   const toggleSelectAll = () => {
@@ -680,6 +805,93 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     );
   };
 
+  // Pagination controls component
+  const PaginationControls = () => {
+    console.log("DataVerifikasi PaginationControls rendering, totalItems:", totalItems);
+    
+    // Always return the controls, even if totalItems is 0
+    return (
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-gray-50 border-t">
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-gray-600">
+            <span>Menampilkan {showAll ? totalItems : paginatedSurveys.length} dari {totalItems} data</span>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">Tampilkan:</label>
+            <select
+              value={showAll ? "all" : itemsPerPage}
+              onChange={(e) => {
+                if (e.target.value === "all") {
+                  handleShowAllToggle();
+                } else {
+                  handleItemsPerPageChange(Number(e.target.value));
+                }
+              }}
+              className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value="all">Semua</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Always show pagination controls when there's data */}
+        {!showAll && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`px-3 py-1 text-sm border rounded ${
+                      currentPage === pageNum
+                        ? "bg-blue-500 text-white border-blue-500"
+                        : "bg-white border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+            
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
       <div className="bg-white rounded-2xl shadow-sm p-4 lg:p-6 border border-gray-100">
@@ -691,6 +903,29 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
             <p className="text-sm text-gray-600">
               Data survey yang sudah diverifikasi pada tahap awal. Setelah divalidasi, data akan pindah ke Data Survey Valid.
             </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+            <button
+              onClick={() => void fetchAllSurveys(10)}
+              disabled={loading}
+              className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold rounded-xl transition-colors"
+            >
+              {loading ? "Memuat..." : "Muat 10 Data"}
+            </button>
+            <button
+              onClick={() => void fetchAllSurveys(null)}
+              disabled={loading}
+              className="px-4 py-3 bg-slate-700 hover:bg-slate-800 disabled:bg-slate-400 text-white font-semibold rounded-xl transition-colors"
+            >
+              Muat Semua
+            </button>
+            <button
+              onClick={() => void fetchAllSurveys(showAll ? null : 10, true)}
+              disabled={loading || refreshing || !dataLoaded}
+              className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-semibold rounded-xl transition-colors"
+            >
+              {refreshing ? "Refresh..." : "Refresh Data"}
+            </button>
           </div>
         </div>
 
@@ -849,7 +1084,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredSurveys.map((survey, index) => (
+                {paginatedSurveys.map((survey, index) => (
                   <tr key={survey.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3 text-center">
                       <input
@@ -937,6 +1172,11 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
                     </td>
                   </tr>
                 ))}
+                <tr>
+                  <td colSpan={10} className="px-4 py-3 text-right">
+                    <PaginationControls />
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
