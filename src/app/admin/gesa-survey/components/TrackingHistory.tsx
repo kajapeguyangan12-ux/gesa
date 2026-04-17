@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
+import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 
 // Dynamic import for Tracking Map
 const DynamicTrackingMap = dynamic<{
@@ -46,6 +47,8 @@ export default function TrackingHistory() {
   const [trackingSessions, setTrackingSessions] = useState<TrackingSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [dataSource, setDataSource] = useState<string>("Belum ada");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [selectedSession, setSelectedSession] = useState<TrackingSession | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterUser, setFilterUser] = useState<string>("all");
@@ -67,11 +70,25 @@ export default function TrackingHistory() {
       const sessions = await fetchWithCache(
         TRACKING_SESSIONS_CACHE_KEY,
         async () => {
+          try {
+            const response = await fetch("/api/admin/tracking-sessions", { cache: "no-store" });
+            if (response.ok) {
+              const payload = (await response.json()) as { sessions?: TrackingSession[]; source?: string };
+              if (Array.isArray(payload.sessions)) {
+                setDataSource(payload.source || "supabase");
+                return payload.sessions;
+              }
+            }
+          } catch (error) {
+            console.error("Supabase tracking fetch failed, fallback to Firestore:", error);
+          }
+
           const sessionsQuery = query(
             collection(db, "tracking-sessions"),
             orderBy("startTime", "desc")
           );
           const querySnapshot = await getDocs(sessionsQuery);
+          setDataSource("firestore");
           return querySnapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
@@ -81,6 +98,7 @@ export default function TrackingHistory() {
       );
       
       setTrackingSessions(sessions);
+      setLastUpdatedAt(new Date());
       console.log("Loaded tracking sessions:", sessions.length);
     } catch (error) {
       console.error("Error loading tracking sessions:", error);
@@ -158,6 +176,16 @@ export default function TrackingHistory() {
 
         <div className="mb-4 px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-xs font-medium text-purple-50 inline-flex">
           Mode hemat reads aktif. Tracking session memakai cache 5 menit.
+        </div>
+        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-white/20 bg-white/10 px-4 py-3 backdrop-blur">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-purple-100">Sumber Data Panel</div>
+            <div className="mt-1 text-lg font-bold text-white">{getReadableDataSourceLabel(dataSource)}</div>
+          </div>
+          <div className="rounded-xl border border-white/20 bg-white/10 px-4 py-3 backdrop-blur">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-purple-100">Update Terakhir</div>
+            <div className="mt-1 text-lg font-bold text-white">{formatPanelUpdatedAt(lastUpdatedAt)}</div>
+          </div>
         </div>
 
         {/* Stats Cards */}

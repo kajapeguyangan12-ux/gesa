@@ -56,6 +56,18 @@ function TugasSurveyPraExistingContent() {
       const tasksData = await fetchWithCache<Task[]>(
         `pra_existing_tasks_${user?.uid}`,
         async () => {
+          try {
+            const response = await fetch(`/api/pra-existing/tasks?surveyorId=${encodeURIComponent(user?.uid || "")}`, {
+              cache: "no-store",
+            });
+            if (response.ok) {
+              const payload = (await response.json()) as { tasks?: Task[] };
+              if (Array.isArray(payload.tasks)) return payload.tasks;
+            }
+          } catch (error) {
+            console.error("Supabase pra-existing tasks fetch failed, fallback to Firestore:", error);
+          }
+
           const tasksRef = collection(db, "tasks");
           const q = query(
             tasksRef,

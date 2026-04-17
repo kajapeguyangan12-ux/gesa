@@ -20,6 +20,19 @@ function ReportViewContent() {
     const fetchReport = async () => {
       try {
         setLoading(true);
+        try {
+          const response = await fetch(`/api/admin/reports/${reportId}`, { cache: "no-store" });
+          if (response.ok) {
+            const payload = (await response.json()) as { report?: ReportData | null };
+            if (payload.report) {
+              setReport(payload.report);
+              return;
+            }
+          }
+        } catch (error) {
+          console.error("Supabase report detail fetch failed, fallback to Firestore:", error);
+        }
+
         const ref = doc(db, "reports", reportId);
         const snap = await getDoc(ref);
         if (snap.exists()) {

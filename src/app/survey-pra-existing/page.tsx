@@ -622,26 +622,45 @@ function SurveyPraExistingContent() {
 
       try {
         setLoadingSubmittedSurveys(true);
-        const surveysRef = collection(db, "survey-pra-existing");
-        const q = query(surveysRef, where("surveyorUid", "==", user.uid));
-        const snapshot = await getDocs(q);
         const selectedKabupaten = formData.kabupaten || activeKabupaten;
-        const rawRows = snapshot.docs.map((entry) => ({ id: entry.id, ...(entry.data() as Record<string, unknown>) })) as Array<Record<string, unknown> & { id: string }>;
-        const rows = rawRows
-          .filter((item) => !selectedKabupaten || item.kabupaten === selectedKabupaten)
-          .map((item) => ({
-            id: String(item.id),
-            latitude: Number(item.latitude || 0),
-            longitude: Number(item.longitude || 0),
-            kecamatan: typeof item.kecamatan === "string" ? item.kecamatan : "",
-            desa: typeof item.desa === "string" ? item.desa : "",
-            banjar: typeof item.banjar === "string" ? item.banjar : "",
-            kepemilikanTiang: typeof item.keteranganTiang === "string" ? item.keteranganTiang : typeof item.kepemilikanDisplay === "string" ? item.kepemilikanDisplay : typeof item.kepemilikanTiang === "string" ? item.kepemilikanTiang : "",
-            surveyorName: typeof item.surveyorName === "string" ? item.surveyorName : "",
-            createdAt: item.createdAt as SubmittedSurveyItem["createdAt"],
-            status: typeof item.status === "string" ? item.status : "",
-          }))
-          .filter((item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude) && item.latitude !== 0 && item.longitude !== 0);
+        let rows: SubmittedSurveyItem[] = [];
+
+        try {
+          const response = await fetch(
+            `/api/pra-existing/submitted-surveys?surveyorUid=${encodeURIComponent(user.uid)}&kabupaten=${encodeURIComponent(selectedKabupaten || "")}`,
+            { cache: "no-store" }
+          );
+          if (response.ok) {
+            const payload = (await response.json()) as { surveys?: SubmittedSurveyItem[] };
+            if (Array.isArray(payload.surveys)) {
+              rows = payload.surveys;
+            }
+          }
+        } catch (error) {
+          console.error("Supabase pra-existing submitted surveys fetch failed, fallback to Firestore:", error);
+        }
+
+        if (rows.length === 0) {
+          const surveysRef = collection(db, "survey-pra-existing");
+          const q = query(surveysRef, where("surveyorUid", "==", user.uid));
+          const snapshot = await getDocs(q);
+          const rawRows = snapshot.docs.map((entry) => ({ id: entry.id, ...(entry.data() as Record<string, unknown>) })) as Array<Record<string, unknown> & { id: string }>;
+          rows = rawRows
+            .filter((item) => !selectedKabupaten || item.kabupaten === selectedKabupaten)
+            .map((item) => ({
+              id: String(item.id),
+              latitude: Number(item.latitude || 0),
+              longitude: Number(item.longitude || 0),
+              kecamatan: typeof item.kecamatan === "string" ? item.kecamatan : "",
+              desa: typeof item.desa === "string" ? item.desa : "",
+              banjar: typeof item.banjar === "string" ? item.banjar : "",
+              kepemilikanTiang: typeof item.keteranganTiang === "string" ? item.keteranganTiang : typeof item.kepemilikanDisplay === "string" ? item.kepemilikanDisplay : typeof item.kepemilikanTiang === "string" ? item.kepemilikanTiang : "",
+              surveyorName: typeof item.surveyorName === "string" ? item.surveyorName : "",
+              createdAt: item.createdAt as SubmittedSurveyItem["createdAt"],
+              status: typeof item.status === "string" ? item.status : "",
+            }))
+            .filter((item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude) && item.latitude !== 0 && item.longitude !== 0);
+        }
 
         setSubmittedSurveys(rows);
       } catch (error) {

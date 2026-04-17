@@ -44,6 +44,8 @@ function PraExistingPanelContent() {
 
   const [stats, setStats] = useState<PanelStats>(initialStats);
   const [loading, setLoading] = useState(true);
+  const [dataSource, setDataSource] = useState<"supabase" | "firestore">("firestore");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState("");
 
   const handleBack = () => {
     router.push("/module-selection");
@@ -63,6 +65,20 @@ function PraExistingPanelContent() {
         const statsData = await fetchWithCache<PanelStats>(
           `pra_existing_panel_stats_${user.uid}`,
           async () => {
+            try {
+              const response = await fetch(`/api/pra-existing/panel?userId=${encodeURIComponent(user.uid)}`, {
+                cache: "no-store",
+              });
+              if (response.ok) {
+                const payload = (await response.json()) as PanelStats & { source?: "supabase" | "firestore" };
+                setDataSource(payload.source || "supabase");
+                setLastUpdatedAt(new Date().toISOString());
+                return payload;
+              }
+            } catch (error) {
+              console.error("Supabase pra-existing panel fetch failed, fallback to Firestore:", error);
+            }
+
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const startOfToday = Timestamp.fromDate(today);
@@ -89,6 +105,10 @@ function PraExistingPanelContent() {
           PANEL_STATS_TTL_MS
         );
 
+        if (dataSource !== "supabase") {
+          setDataSource("firestore");
+          setLastUpdatedAt(new Date().toISOString());
+        }
         setStats(statsData);
       } catch (error) {
         console.error("Error fetching pra-existing dashboard stats:", error);
@@ -146,6 +166,18 @@ function PraExistingPanelContent() {
         </div>
       </header>
       <main className="container mx-auto flex-grow px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">Sumber Data Aktif</div>
+            <div className="mt-1 text-base font-bold text-emerald-900">{dataSource === "supabase" ? "Supabase" : "Firestore"}</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">Update Terakhir</div>
+            <div className="mt-1 text-base font-bold text-slate-900">
+              {lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleString("id-ID") : "Belum ada"}
+            </div>
+          </div>
+        </div>
         <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2">
           <div onClick={() => router.push("/pra-existing-surveys")} className="cursor-pointer rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm transition-shadow hover:shadow-lg">
             <div className="mb-3 inline-flex rounded-xl bg-blue-100 px-3 py-2 text-sm font-bold text-blue-700">SRV</div>

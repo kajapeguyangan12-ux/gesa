@@ -32,6 +32,21 @@ function ReportEditContent() {
     const fetchReport = async () => {
       try {
         setLoading(true);
+        try {
+          const response = await fetch(`/api/admin/reports/${reportId}`, { cache: "no-store" });
+          if (response.ok) {
+            const payload = (await response.json()) as { report?: any | null };
+            if (payload.report) {
+              const data = payload.report;
+              setReport(data);
+              setGridData(parseGridData(data));
+              return;
+            }
+          }
+        } catch (error) {
+          console.error("Supabase report edit fetch failed, fallback to Firestore:", error);
+        }
+
         const ref = doc(db, "reports", reportId);
         const snap = await getDoc(ref);
         if (snap.exists()) {

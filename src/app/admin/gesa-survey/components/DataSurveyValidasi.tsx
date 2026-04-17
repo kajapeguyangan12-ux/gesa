@@ -5,6 +5,7 @@ import { collection, getDocs, doc, updateDoc, deleteDoc, query, where, orderBy, 
 import { db } from "@/lib/firebase";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import dynamic from "next/dynamic";
+import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 
 // Dynamic import for Map
 const DynamicDetailMap = dynamic<{
@@ -136,6 +137,8 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   const [loading, setLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [dataSource, setDataSource] = useState<string>("Belum ada");
   const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -188,149 +191,26 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         setLoading(true);
       }
       
-      // Get current admin info
       const storedUser = localStorage.getItem('gesa_user');
       const currentAdmin = storedUser ? JSON.parse(storedUser) : null;
       const adminId = currentAdmin?.uid || null;
       const superAdmin = currentAdmin?.role === "super-admin";
       setCurrentAdminId(adminId);
-      
-      // Fetch tasks first to get list of assigned surveyors by THIS admin
-      const tasksCacheKey = `${VALIDASI_CACHE_PREFIX}_tasks_${adminId || "all"}`;
       const normalizedLimit = Math.max(requestedLimit, DEFAULT_FETCH_LIMIT);
-      const surveysCacheKey = `${VALIDASI_CACHE_PREFIX}_surveys_${adminId || "all"}_${activeKabupaten || "all"}_${normalizedLimit}`;
-      if (forceRefresh) {
-        clearCachedData(tasksCacheKey);
-        clearCachedData(surveysCacheKey);
+      const params = new URLSearchParams({
+        includeDetails: "1",
+        status: "diverifikasi",
+      });
+      if (activeKabupaten) params.set("kabupaten", activeKabupaten);
+      if (!superAdmin && adminId) params.set("adminId", adminId);
+
+      const response = await fetch(`/api/admin/gesa-survey?${params.toString()}`, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Gagal memuat data validasi dari Supabase.");
       }
-
-      const tasksData = await fetchWithCache<Task[]>(
-        tasksCacheKey,
-        async () => {
-          const tasksRef = collection(db, "tasks");
-          const tasksQuery = query(tasksRef, orderBy("createdAt", "desc"), limit(TASK_FETCH_LIMIT));
-          const tasksSnapshot = await getDocs(tasksQuery);
-          return tasksSnapshot.docs
-            .filter((doc) => {
-              const taskAdminId = doc.data().createdByAdminId;
-              return !taskAdminId || taskAdminId === adminId;
-            })
-            .map((doc) => ({
-              id: doc.id,
-              surveyorId: doc.data().surveyorId,
-              surveyorName: doc.data().surveyorName,
-              surveyorEmail: doc.data().surveyorEmail,
-              type: doc.data().type,
-              status: doc.data().status,
-              createdByAdminId: doc.data().createdByAdminId,
-              createdByAdminName: doc.data().createdByAdminName,
-              createdByAdminEmail: doc.data().createdByAdminEmail,
-            })) as Task[];
-        },
-        120_000
-      );
-      setTasks(tasksData);
-      
-      // Get list of assigned surveyor UIDs (only from tasks created by this admin)
-      const assignedSurveyorIds = tasksData.map(task => task.surveyorId);
-      
-      const { allSurveys, existingData, proposeData, praExistingData } = await fetchWithCache<{
-        allSurveys: Survey[];
-        existingData: Survey[];
-        proposeData: Survey[];
-        praExistingData: Survey[];
-      }>(
-        surveysCacheKey,
-        async () => {
-          const existingRef = collection(db, "survey-existing");
-          const proposeRef = collection(db, "survey-apj-propose");
-          const praExistingRef = collection(db, "survey-pra-existing");
-          const safeLimit = Math.max(normalizedLimit * 3, 50);
-
-          const existingQuery = activeKabupaten
-            ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit))
-            : query(existingRef, where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit));
-          const proposeQuery = activeKabupaten
-            ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit))
-            : query(proposeRef, where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit));
-          const praExistingQuery = activeKabupaten
-            ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit))
-            : query(praExistingRef, where("status", "==", "diverifikasi"), orderBy("createdAt", "desc"), limit(safeLimit));
-          
-          const [existingSnapshot, proposeSnapshot, praExistingSnapshot] = await Promise.all([
-            getDocs(existingQuery),
-            getDocs(proposeQuery),
-            getDocs(praExistingQuery),
-          ]);
-          
-          const existingData = existingSnapshot.docs
-            .filter((doc) => {
-              const surveyorUid = doc.data().surveyorUid;
-              const status = doc.data().status;
-              if (status !== "diverifikasi") return false;
-              if (superAdmin) return true;
-              return surveyorUid && assignedSurveyorIds.includes(surveyorUid);
-            })
-            .map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
-              title: doc.data().title || `Survey Existing - ${doc.data().namaJalan || "Untitled"}`,
-              type: "existing",
-              surveyorName: doc.data().surveyorName || "Unknown",
-            })) as Survey[];
-          
-          const proposeData = proposeSnapshot.docs
-            .filter((doc) => {
-              const surveyorUid = doc.data().surveyorUid;
-              const status = doc.data().status;
-              if (status !== "diverifikasi") return false;
-              if (superAdmin) return true;
-              return surveyorUid && assignedSurveyorIds.includes(surveyorUid);
-            })
-            .map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
-              title: doc.data().title || `Survey APJ Propose - ${doc.data().namaJalan || "Untitled"}`,
-              type: "propose",
-              surveyorName: doc.data().surveyorName || "Unknown",
-            })) as Survey[];
-
-          const praExistingData = praExistingSnapshot.docs
-            .filter((doc) => {
-              const surveyorUid = doc.data().surveyorUid;
-              const status = doc.data().status;
-              if (status !== "diverifikasi") return false;
-              if (superAdmin) return true;
-              return surveyorUid && assignedSurveyorIds.includes(surveyorUid);
-            })
-            .map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
-              title: doc.data().title || `Survey Pra Existing - ${doc.data().jenisLampu || "Untitled"}`,
-              type: "pra-existing",
-              surveyorName: doc.data().surveyorName || "Unknown",
-            })) as Survey[];
-          
-          const allSurveys = [...existingData, ...proposeData, ...praExistingData].sort((a, b) => {
-            const dateA =
-              a.createdAt instanceof Date
-                ? a.createdAt
-                : typeof a.createdAt === "object" && a.createdAt?.toDate
-                ? a.createdAt.toDate()
-                : new Date(0);
-            const dateB =
-              b.createdAt instanceof Date
-                ? b.createdAt
-                : typeof b.createdAt === "object" && b.createdAt?.toDate
-                ? b.createdAt.toDate()
-                : new Date(0);
-            return dateB.getTime() - dateA.getTime();
-          });
-
-          return { allSurveys, existingData, proposeData, praExistingData };
-        },
-        5 * 60_000
-      );
+      const payload = await response.json() as { allRows?: Survey[]; source?: string; generatedAt?: string };
+      const allSurveys = Array.isArray(payload.allRows) ? payload.allRows : [];
+      setTasks([]);
       
       const limitedSurveys = allSurveys.slice(0, normalizedLimit);
       setLoadedLimit(normalizedLimit);
@@ -343,6 +223,8 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         propose: limitedSurveys.filter((survey) => survey.type === "propose").length,
         praExisting: limitedSurveys.filter((survey) => survey.type === "pra-existing").length,
       });
+      setDataSource(payload.source || "supabase");
+      setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
     } catch (error) {
       console.error("Error fetching surveys:", error);
     } finally {
@@ -907,6 +789,16 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
             >
               {refreshing ? "Refresh..." : "Refresh Data"}
             </button>
+          </div>
+        </div>
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Sumber Data Panel</div>
+            <div className="mt-1 text-lg font-bold text-slate-900">{getReadableDataSourceLabel(dataSource)}</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Update Terakhir</div>
+            <div className="mt-1 text-lg font-bold text-slate-900">{formatPanelUpdatedAt(lastUpdatedAt)}</div>
           </div>
         </div>
 

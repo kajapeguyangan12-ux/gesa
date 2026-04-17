@@ -4,6 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { collection, doc, getDoc, getDocs, query, setDoc, where, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import {
+  ADMIN_BUNDLE_VERSION,
+  getGesaSurveyDashboardBundlePath,
+  readJsonBundle,
+  type GesaSurveyDashboardBundle,
+  writeJsonBundle,
+} from "@/utils/adminBundles";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -96,6 +103,8 @@ interface DashboardSummaryDocument {
   praExisting?: Partial<ReportSummary>;
   praExistingByKecamatan?: Array<Partial<KecamatanSummary> & { kecamatan?: string }>;
 }
+
+type DashboardBundleSource = "supabase" | "storage-bundle" | "firestore";
 
 interface TaskExportRecord {
   id: string;
@@ -214,6 +223,22 @@ function normalizeKecamatanSummaryRow(
   };
 }
 
+function mapBundleToReportState(bundle: GesaSurveyDashboardBundle): DashboardReportState {
+  return {
+    loading: false,
+    error: "",
+    allRows: Array.isArray(bundle.allRows) ? (bundle.allRows as SurveyReportRow[]) : [],
+    allRowsRaw: Array.isArray(bundle.allRows) ? (bundle.allRows as SurveyReportRow[]) : [],
+    totalUniqueSurveyors: typeof bundle.totalUniqueSurveyors === "number" ? bundle.totalUniqueSurveyors : 0,
+    propose: mergeSummary(bundle.propose),
+    existing: mergeSummary(bundle.existing),
+    praExisting: mergeSummary(bundle.praExisting),
+    praExistingByKecamatan: Array.isArray(bundle.praExistingByKecamatan)
+      ? bundle.praExistingByKecamatan.map(normalizeKecamatanSummaryRow)
+      : [],
+  };
+}
+
 async function fetchDashboardSummary(activeKabupaten?: string | null) {
   const summaryDocId = `gesa-survey_${activeKabupaten || "all"}_super`;
   return await fetchWithCache<DashboardSummaryDocument | null>(
@@ -266,6 +291,16 @@ async function fetchTaskExportRecords() {
   return await fetchWithCache<TaskExportRecord[]>(
     "dashboard_task_export_records_v1",
     async () => {
+      try {
+        const response = await fetch("/api/admin/tasks-export", { cache: "no-store" });
+        if (response.ok) {
+          const payload = (await response.json()) as { tasks?: TaskExportRecord[] };
+          if (Array.isArray(payload.tasks)) return payload.tasks;
+        }
+      } catch (error) {
+        console.error("Supabase task export fetch failed, fallback to Firestore:", error);
+      }
+
       const tasksRef = collection(db, "tasks");
       const snapshot = await getDocs(query(tasksRef, orderBy("createdAt", "desc")));
 
@@ -486,6 +521,9 @@ export default function DashboardContent({
   const [detailLoaded, setDetailLoaded] = useState(false);
   const [summaryRefreshing, setSummaryRefreshing] = useState(false);
   const [taskExporting, setTaskExporting] = useState(false);
+  const [bundleSource, setBundleSource] = useState<DashboardBundleSource>("firestore");
+  const [bundleGeneratedAt, setBundleGeneratedAt] = useState("");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState("");
   const [startDate, setStartDate] = useState(() => {
     const today = new Date();
     return formatDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -499,16 +537,81 @@ export default function DashboardContent({
     () => `gesa-survey_${activeKabupaten || "all"}_super`,
     [activeKabupaten]
   );
+  const dashboardBundlePath = useMemo(
+    () => getGesaSurveyDashboardBundlePath(activeKabupaten),
+    [activeKabupaten]
+  );
+  const dashboardApiQuery = useMemo(() => {
+    const params = new URLSearchParams();
+    if (activeKabupaten) params.set("kabupaten", activeKabupaten);
+    if (!isSuperAdmin && user?.uid) params.set("adminId", user.uid);
+    return params.toString();
+  }, [activeKabupaten, isSuperAdmin, user?.uid]);
+
+  const applyDashboardBundle = (bundle: GesaSurveyDashboardBundle | null) => {
+    if (!bundle) return false;
+
+    setBundleSource("storage-bundle");
+    setBundleGeneratedAt(bundle.generatedAt || "");
+    setLastUpdatedAt(bundle.generatedAt || new Date().toISOString());
+    setReportState(mapBundleToReportState(bundle));
+    return true;
+  };
 
   useEffect(() => {
-    if (!isSuperAdmin) return;
     let cancelled = false;
 
     const hydrateFromSummary = async () => {
       try {
+        try {
+          const response = await fetch(`/api/admin/gesa-survey?${dashboardApiQuery}`, {
+            cache: "no-store",
+          });
+          if (response.ok) {
+            const payload = (await response.json()) as {
+              generatedAt?: string;
+              totalUniqueSurveyors?: number;
+              propose?: Partial<ReportSummary>;
+              existing?: Partial<ReportSummary>;
+              praExisting?: Partial<ReportSummary>;
+              praExistingByKecamatan?: Array<Partial<KecamatanSummary> & { kecamatan?: string }>;
+            };
+
+            if (!cancelled) {
+              setBundleSource("supabase");
+              setBundleGeneratedAt(payload.generatedAt || "");
+              setLastUpdatedAt(payload.generatedAt || new Date().toISOString());
+              setReportState((current) => ({
+                ...current,
+                totalUniqueSurveyors:
+                  typeof payload.totalUniqueSurveyors === "number"
+                    ? payload.totalUniqueSurveyors
+                    : current.totalUniqueSurveyors,
+                propose: mergeSummary(payload.propose),
+                existing: mergeSummary(payload.existing),
+                praExisting: mergeSummary(payload.praExisting),
+                praExistingByKecamatan: Array.isArray(payload.praExistingByKecamatan)
+                  ? payload.praExistingByKecamatan.map(normalizeKecamatanSummaryRow)
+                  : current.praExistingByKecamatan,
+              }));
+              return;
+            }
+          }
+        } catch (error) {
+          console.error("Supabase dashboard summary fetch failed, fallback to bundle/firestore:", error);
+        }
+
+        const bundle = await readJsonBundle<GesaSurveyDashboardBundle>(dashboardBundlePath);
+        if (!cancelled && applyDashboardBundle(bundle)) {
+          return;
+        }
+
         const summary = await fetchDashboardSummary(activeKabupaten);
         if (!summary || cancelled) return;
 
+        setBundleSource("firestore");
+        setBundleGeneratedAt("");
+        setLastUpdatedAt(new Date().toISOString());
         setReportState((current) => ({
           ...current,
           totalUniqueSurveyors:
@@ -532,10 +635,9 @@ export default function DashboardContent({
     return () => {
       cancelled = true;
     };
-  }, [activeKabupaten, isSuperAdmin]);
+  }, [activeKabupaten, dashboardApiQuery, dashboardBundlePath, isSuperAdmin]);
 
   useEffect(() => {
-    if (!isSuperAdmin) return;
     if (!detailVisible) return;
     let cancelled = false;
 
@@ -580,6 +682,55 @@ export default function DashboardContent({
           loading: true,
           error: "",
         }));
+
+        try {
+          const response = await fetch(
+            `/api/admin/gesa-survey?${dashboardApiQuery}${dashboardApiQuery ? "&" : ""}includeDetails=1`,
+            { cache: "no-store" }
+          );
+          if (response.ok) {
+            const payload = (await response.json()) as GesaSurveyDashboardBundle;
+            if (!cancelled) {
+              setBundleSource("supabase");
+              setBundleGeneratedAt(payload.generatedAt || "");
+              setLastUpdatedAt(payload.generatedAt || new Date().toISOString());
+              const mappedState = mapBundleToReportState(payload);
+              setReportState(mappedState);
+              setDetailLoaded(true);
+              if (typeof window !== "undefined") {
+                window.sessionStorage.setItem(
+                  reportCacheKey,
+                  JSON.stringify({
+                    savedAt: Date.now(),
+                    data: mappedState,
+                  })
+                );
+              }
+              return;
+            }
+          }
+        } catch (error) {
+          console.error("Supabase dashboard detail fetch failed, fallback to bundle/firestore:", error);
+        }
+
+        const bundle = await readJsonBundle<GesaSurveyDashboardBundle>(dashboardBundlePath);
+        if (!cancelled && applyDashboardBundle(bundle)) {
+          setDetailLoaded(true);
+          if (typeof window !== "undefined") {
+            window.sessionStorage.setItem(
+              reportCacheKey,
+              JSON.stringify({
+                savedAt: Date.now(),
+                data: mapBundleToReportState(bundle as GesaSurveyDashboardBundle),
+              })
+            );
+          }
+          return;
+        }
+
+        setBundleSource("firestore");
+        setBundleGeneratedAt("");
+        setLastUpdatedAt(new Date().toISOString());
 
         let allowedTaskIds: Set<string> | null = null;
 
@@ -685,7 +836,7 @@ export default function DashboardContent({
     return () => {
       cancelled = true;
     };
-  }, [activeKabupaten, detailVisible, isSuperAdmin, reportCacheKey, user?.uid]);
+  }, [activeKabupaten, dashboardApiQuery, dashboardBundlePath, detailVisible, isSuperAdmin, reportCacheKey, user?.uid]);
 
   const waitingReviewCount = useMemo(
     () =>
@@ -724,6 +875,9 @@ export default function DashboardContent({
       ),
     [reportState.praExistingByKecamatan]
   );
+  const activeSourceLabel =
+    bundleSource === "supabase" ? "Supabase" : bundleSource === "storage-bundle" ? "Bundle Storage" : "Firestore";
+  const activeTimestamp = bundleGeneratedAt || lastUpdatedAt;
 
   const normalizedDateRange = useMemo(() => {
     const start = startDate ? new Date(`${startDate}T00:00:00`) : null;
@@ -941,22 +1095,42 @@ export default function DashboardContent({
         praExistingByKecamatan: buildKecamatanSummary(praExistingRows),
       };
 
-      await setDoc(doc(db, "dashboard-summaries", dashboardSummaryDocId), summaryPayload, { merge: true });
-      clearCachedData(`dashboard_summary_${dashboardSummaryDocId}`);
-
-      setReportState((current) => ({
-        ...current,
+      const dashboardBundlePayload: GesaSurveyDashboardBundle = {
+        version: ADMIN_BUNDLE_VERSION,
+        generatedAt: new Date().toISOString(),
+        generatedBy: user?.email || user?.displayName || "super-admin",
+        source: "storage-bundle",
+        kabupatenScope: activeKabupaten || "all",
         totalUniqueSurveyors: summaryPayload.totalUniqueSurveyors || 0,
         propose: mergeSummary(summaryPayload.propose),
         existing: mergeSummary(summaryPayload.existing),
         praExisting: mergeSummary(summaryPayload.praExisting),
         praExistingByKecamatan: (summaryPayload.praExistingByKecamatan || []).map(normalizeKecamatanSummaryRow),
-      }));
+        allRows,
+      };
 
-      alert("Summary dashboard berhasil diperbarui.");
+      await setDoc(doc(db, "dashboard-summaries", dashboardSummaryDocId), summaryPayload, { merge: true });
+      await writeJsonBundle(dashboardBundlePath, dashboardBundlePayload);
+      clearCachedData(`dashboard_summary_${dashboardSummaryDocId}`);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(
+          reportCacheKey,
+          JSON.stringify({
+            savedAt: Date.now(),
+            data: mapBundleToReportState(dashboardBundlePayload),
+          })
+        );
+      }
+
+      setBundleSource("storage-bundle");
+      setBundleGeneratedAt(dashboardBundlePayload.generatedAt);
+      setLastUpdatedAt(dashboardBundlePayload.generatedAt);
+      setReportState(mapBundleToReportState(dashboardBundlePayload));
+
+      alert("Bundle dashboard berhasil diperbarui di Storage.");
     } catch (error) {
       console.error("Failed to refresh dashboard summary:", error);
-      alert("Gagal memperbarui summary dashboard.");
+      alert("Gagal memperbarui bundle dashboard.");
     } finally {
       setSummaryRefreshing(false);
     }
@@ -1115,12 +1289,34 @@ export default function DashboardContent({
                     ? "Ringkasan ini menggabungkan seluruh hasil survey berdasarkan patch data dan merinci `pra-existing` per kecamatan agar monitoring verifikasi, validasi, titik, dan lampu lebih cepat."
                     : "Ringkasan ini hanya menampilkan hasil survey yang terhubung ke tugas distribusi buatan admin yang sedang login, agar fokus per kecamatan tidak tercampur admin lain."}
                 </p>
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-300">Sumber Data Dashboard</div>
+                    <div className="mt-1 text-base font-bold text-white">{activeSourceLabel}</div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-300">Update Terakhir</div>
+                    <div className="mt-1 text-base font-bold text-white">
+                      {activeTimestamp ? new Date(activeTimestamp).toLocaleString("id-ID") : "Belum ada"}
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="flex flex-col items-start gap-3 lg:items-end">
                 <div className="rounded-2xl bg-white/10 px-4 py-3 text-sm text-slate-100 backdrop-blur">
                   Kabupaten aktif: <span className="font-bold">{activeKabupaten || "Semua Kabupaten"}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => void handleRefreshSummary()}
+                      disabled={summaryRefreshing}
+                      className="rounded-xl border border-white/20 bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-300/60"
+                    >
+                      {summaryRefreshing ? "Membuat Bundle..." : "Refresh Bundle"}
+                    </button>
+                  )}
                   {isSuperAdmin && (
                     <button
                       type="button"
@@ -1131,16 +1327,14 @@ export default function DashboardContent({
                       {taskExporting ? "Exporting..." : "Export Tugas Excel"}
                     </button>
                   )}
-                  {isSuperAdmin && (
-                    <button
-                      type="button"
-                      onClick={handleToggleReports}
-                      className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-100"
-                    >
-                      {reportsVisible ? "Sembunyikan Laporan" : "Muat Laporan"}
-                    </button>
-                  )}
-                  {isSuperAdmin && reportsVisible && (
+                  <button
+                    type="button"
+                    onClick={handleToggleReports}
+                    className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-100"
+                  >
+                    {reportsVisible ? "Sembunyikan Laporan" : "Muat Laporan"}
+                  </button>
+                  {reportsVisible && (
                     <button
                       type="button"
                       onClick={handleLoadDetail}
@@ -1163,16 +1357,15 @@ export default function DashboardContent({
             </div>
           </div>
 
-          {!isSuperAdmin ? (
-            <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-8 text-sm text-gray-600 shadow-sm">
-              Laporan dashboard dikunci untuk admin biasa agar read Firestore tetap hemat. Monitoring rekap, laporan detail, dan export hanya tersedia di akun super admin.
-            </div>
-          ) : !reportsVisible ? (
+          {!reportsVisible ? (
             <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-8 text-sm text-gray-600 shadow-sm">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  Ringkasan dashboard sedang disembunyikan. Klik `Muat Laporan` untuk menampilkan summary hemat read. Detail besar tetap terpisah di tombol `Muat Detail`.
-                  Summary saat ini tidak bisa di-refresh dari dashboard agar Firestore reads tetap stabil.
+                  Ringkasan dashboard sedang disembunyikan. Klik `Muat Laporan` untuk menampilkan summary hemat read.
+                  Sistem sekarang memprioritaskan bundle JSON di Storage, lalu fallback ke Firestore bila bundle belum ada.
+                  {bundleGeneratedAt
+                    ? ` Bundle terakhir dibuat ${new Date(bundleGeneratedAt).toLocaleString("id-ID")}.`
+                    : " Bundle dashboard belum tersedia untuk scope kabupaten ini."}
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div className="rounded-xl bg-slate-50 px-4 py-3">
@@ -1219,7 +1412,9 @@ export default function DashboardContent({
 
               {!detailVisible ? (
                 <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-8 text-sm text-gray-600 shadow-sm">
-                  Summary ringan sudah tampil dari dokumen ringkasan. Klik `Muat Detail` jika super admin ingin membuka tabel verifikasi, detail per admin, dan data export yang membaca data survey lebih besar. Refresh summary manual dari dashboard sengaja dimatikan untuk menekan reads.
+                  Summary ringan sudah tampil.
+                  Sumber aktif: <span className="font-semibold">{bundleSource === "supabase" ? "Supabase" : bundleSource === "storage-bundle" ? "Bundle Storage" : "Firestore"}</span>.
+                  Klik `Muat Detail` untuk membuka tabel verifikasi dan rincian dashboard.
                 </div>
               ) : reportState.loading ? (
                 <div className="rounded-2xl border border-gray-200 bg-white p-10 shadow-sm">
@@ -1232,13 +1427,14 @@ export default function DashboardContent({
                 <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 shadow-sm">
                   Gagal memuat detail laporan: {reportState.error}
                 </div>
-              ) : isSuperAdmin && (
+              ) : (
                 <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
                   <div className="flex flex-col gap-4 border-b border-gray-200 px-6 py-5 xl:flex-row xl:items-end xl:justify-between">
                     <div>
                       <h4 className="text-xl font-bold text-gray-900">Rekap Admin Verifikasi</h4>
                       <p className="mt-1 text-sm text-gray-500">
                         Ringkasan admin yang melakukan verifikasi berdasarkan rentang tanggal yang dipilih, lengkap dengan jumlah titik dan waktu verifikasi.
+                        Sumber aktif: {bundleSource === "supabase" ? "Supabase" : bundleSource === "storage-bundle" ? "Bundle Storage" : "Firestore"}.
                       </p>
                     </div>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end">

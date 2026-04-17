@@ -7,6 +7,7 @@ import dynamic from "next/dynamic";
 import { fetchWithCache } from "@/utils/firestoreCache";
 import { useAuth } from "@/hooks/useAuth";
 import { PRA_EXISTING_TABANAN_DATA } from "@/app/survey-pra-existing/location-data";
+import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 
 // Import Map component dynamically to avoid SSR issues
 const MapsValidasiMap = dynamic(
@@ -89,6 +90,8 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
   const [mapLoaded, setMapLoaded] = useState(false);
   const [selectedKecamatan, setSelectedKecamatan] = useState("Semua Kecamatan");
   const [overviewLoaded, setOverviewLoaded] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [dataSource, setDataSource] = useState<string>("Belum ada");
   const [stats, setStats] = useState({
     total: 0,
     visible: 0,
@@ -128,6 +131,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
         praExisting,
       }));
       setOverviewLoaded(true);
+      setLastUpdatedAt(new Date());
     } catch (error) {
       console.error("Error hydrating map overview from summary:", error);
     }
@@ -136,156 +140,220 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
   const fetchSurveys = useCallback(async (filterKecamatan?: string) => {
     try {
       setLoading(true);
-      
-      // Fetch dari survey-existing
-      const existingRef = collection(db, "survey-existing");
-      const existingQuery = activeKabupaten
-        ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
-        : query(existingRef, where("status", "==", targetStatus));
-      const existingSnapshot = await getDocs(existingQuery);
-      
-      // Fetch dari survey-apj-propose
-      const proposeRef = collection(db, "survey-apj-propose");
-      const proposeQuery = activeKabupaten
-        ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
-        : query(proposeRef, where("status", "==", targetStatus));
-      const proposeSnapshot = await getDocs(proposeQuery);
-      
-      // Fetch dari survey-pra-existing
-      const praExistingRef = collection(db, "survey-pra-existing");
-      const praExistingQuery = activeKabupaten
-        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
-        : query(praExistingRef, where("status", "==", targetStatus));
-      const praExistingSnapshot = await getDocs(praExistingQuery);
+      const params = new URLSearchParams({
+        includeDetails: "1",
+        status: targetStatus,
+      });
+      if (activeKabupaten) params.set("kabupaten", activeKabupaten);
+      if (!isSuperAdmin && user?.uid) params.set("adminId", user.uid);
 
-      // Combine data dari collection
-      const existingData = existingSnapshot.docs.map((doc) => {
-        const surveyData = doc.data();
-        const resolvedLatitude = surveyData.finalLatitude || surveyData.adminLatitude || surveyData.latitude || 0;
-        const resolvedLongitude = surveyData.finalLongitude || surveyData.adminLongitude || surveyData.longitude || 0;
-        return {
-          id: doc.id,
-          title: surveyData.namaTitikSurvey || surveyData.title || "Untitled",
-          type: "existing",
-          status: surveyData.status || targetStatus,
-          surveyorName: surveyData.namaSurveyor || "-",
-          validatedBy: surveyData.validatedBy || surveyData.editedBy || "Admin",
-          latitude: resolvedLatitude,
-          longitude: resolvedLongitude,
-          adminLatitude: surveyData.adminLatitude,
-          adminLongitude: surveyData.adminLongitude,
-          createdAt: surveyData.createdAt,
-          validatedAt: surveyData.validatedAt || surveyData.createdAt,
-          namaJalan: surveyData.namaJalan || "-",
-          zona: surveyData.zona || "Existing",
-          kategori: "Survey Existing",
-          statusIdTitik: surveyData.statusIdTitik || "-",
-          idTitik: surveyData.idTitik || "N/A",
-          dayaLampu: surveyData.dayaLampu || "-",
-          dataTiang: surveyData.dataTiang || "-",
-          dataRuas: surveyData.dataRuas || "-",
-          subRuas: surveyData.subRuas || "-",
-          jarakAntarTiang: surveyData.jarakAntarTiang || "-",
-          keterangan: surveyData.keterangan || "N/A",
-          finalLatitude: resolvedLatitude,
-          finalLongitude: resolvedLongitude,
-        };
-      }) as Survey[];
-      
-      const proposeData = proposeSnapshot.docs.map((doc) => {
-        const surveyData = doc.data();
-        const resolvedLatitude = surveyData.finalLatitude || surveyData.adminLatitude || surveyData.latitude || 0;
-        const resolvedLongitude = surveyData.finalLongitude || surveyData.adminLongitude || surveyData.longitude || 0;
-        return {
-          id: doc.id,
-          title: surveyData.namaTitikSurvey || surveyData.title || "Untitled",
-          type: "propose",
-          status: surveyData.status || targetStatus,
-          surveyorName: surveyData.namaSurveyor || "-",
-          validatedBy: surveyData.validatedBy || surveyData.editedBy || "Admin",
-          latitude: resolvedLatitude,
-          longitude: resolvedLongitude,
-          adminLatitude: surveyData.adminLatitude,
-          adminLongitude: surveyData.adminLongitude,
-          createdAt: surveyData.createdAt,
-          validatedAt: surveyData.validatedAt || surveyData.createdAt,
-          namaJalan: surveyData.namaJalan || "-",
-          zona: surveyData.zona || "Propose",
-          kategori: "Survey APJ Propose",
-          statusIdTitik: surveyData.statusIdTitik || "-",
-          idTitik: surveyData.idTitik || "N/A",
-          dayaLampu: surveyData.dayaLampu || "-",
-          dataTiang: surveyData.dataTiang || "-",
-          dataRuas: surveyData.dataRuas || "-",
-          subRuas: surveyData.subRuas || "-",
-          jarakAntarTiang: surveyData.jarakAntarTiang || "-",
-          keterangan: surveyData.keterangan || "N/A",
-          finalLatitude: resolvedLatitude,
-          finalLongitude: resolvedLongitude,
-        };
-      }) as Survey[];
+      const response = await fetch(`/api/admin/gesa-survey?${params.toString()}`, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Gagal memuat peta validasi dari Supabase.");
+      }
+      const payload = await response.json() as { allRows?: Survey[]; source?: string; generatedAt?: string };
+      const allSurveys = (Array.isArray(payload.allRows) ? payload.allRows : []).filter((survey) => {
+        const lat = typeof survey.finalLatitude === "number"
+          ? survey.finalLatitude
+          : typeof survey.adminLatitude === "number"
+            ? survey.adminLatitude
+            : typeof survey.latitude === "number"
+              ? survey.latitude
+              : null;
+        const lng = typeof survey.finalLongitude === "number"
+          ? survey.finalLongitude
+          : typeof survey.adminLongitude === "number"
+            ? survey.adminLongitude
+            : typeof survey.longitude === "number"
+              ? survey.longitude
+              : null;
 
-      const praExistingData = praExistingSnapshot.docs.map((doc) => {
-        const surveyData = doc.data();
-        return {
-          id: doc.id,
-          title: surveyData.title || `Survey Pra Existing - ${surveyData.jenisLampu || "Untitled"}`,
-          type: "pra-existing",
-          status: surveyData.status || targetStatus,
-          surveyorName: surveyData.surveyorName || "-",
-          validatedBy: surveyData.validatedBy || surveyData.editedBy || "Admin",
-          latitude: surveyData.finalLatitude || surveyData.adminLatitude || surveyData.latitude || 0,
-          longitude: surveyData.finalLongitude || surveyData.adminLongitude || surveyData.longitude || 0,
-          createdAt: surveyData.createdAt,
-          validatedAt: surveyData.validatedAt || surveyData.createdAt,
-          namaJalan: surveyData.lokasiLengkap || surveyData.title || "-",
-          zona: "Pra Existing",
-          kategori: "Survey Pra Existing",
-          statusIdTitik: "-",
-          idTitik: "N/A",
-          dayaLampu: surveyData.dayaLampu || "-",
-          dataTiang: surveyData.jenisTiang || "-",
-          dataRuas: "-",
-          subRuas: "-",
-          jarakAntarTiang: "-",
-          keterangan: surveyData.keterangan || surveyData.kondisi || "N/A",
-          kabupaten: surveyData.kabupatenName || surveyData.kabupaten || "-",
-          kecamatan: surveyData.kecamatan || "-",
-          desa: surveyData.desa || "-",
-          banjar: surveyData.banjar || "-",
-          kepemilikanDisplay: surveyData.kepemilikanDisplay || surveyData.keteranganTiang || surveyData.kepemilikanTiang || "-",
-          tipeTiangPLN: surveyData.tipeTiangPLN || "-",
-          jenisLampu: surveyData.jenisLampu || "-",
-          jumlahLampu: surveyData.jumlahLampu || "-",
-          fungsiLampu: surveyData.fungsiLampu || "-",
-          garduStatus: surveyData.garduStatus || "-",
-          kodeGardu: surveyData.kodeGardu || "-",
-          finalLatitude: surveyData.finalLatitude || surveyData.adminLatitude || surveyData.latitude || 0,
-          finalLongitude: surveyData.finalLongitude || surveyData.adminLongitude || surveyData.longitude || 0,
-        };
-      }) as Survey[];
-      
-      const allSurveys = [...existingData, ...proposeData, ...praExistingData];
+        if (lat === null || lng === null) return false;
+        return Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0;
+      }).map((survey) => ({
+        ...survey,
+        latitude:
+          typeof survey.finalLatitude === "number"
+            ? survey.finalLatitude
+            : typeof survey.adminLatitude === "number"
+              ? survey.adminLatitude
+              : survey.latitude,
+        longitude:
+          typeof survey.finalLongitude === "number"
+            ? survey.finalLongitude
+            : typeof survey.adminLongitude === "number"
+              ? survey.adminLongitude
+              : survey.longitude,
+      }));
+      let candidateSurveys = allSurveys;
+      let activeSource = payload.source || "supabase";
+
+      if (candidateSurveys.length === 0) {
+        const existingRef = collection(db, "survey-existing");
+        const proposeRef = collection(db, "survey-apj-propose");
+        const praExistingRef = collection(db, "survey-pra-existing");
+
+        const existingQuery = activeKabupaten
+          ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
+          : query(existingRef, where("status", "==", targetStatus));
+        const proposeQuery = activeKabupaten
+          ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
+          : query(proposeRef, where("status", "==", targetStatus));
+        const praExistingQuery = activeKabupaten
+          ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
+          : query(praExistingRef, where("status", "==", targetStatus));
+
+        const [existingSnapshot, proposeSnapshot, praExistingSnapshot] = await Promise.all([
+          getDocs(existingQuery),
+          getDocs(proposeQuery),
+          getDocs(praExistingQuery),
+        ]);
+
+        const fallbackRows = [
+          ...existingSnapshot.docs.map((doc) => {
+            const surveyData = doc.data();
+            const lat = surveyData.finalLatitude || surveyData.adminLatitude || surveyData.latitude || 0;
+            const lng = surveyData.finalLongitude || surveyData.adminLongitude || surveyData.longitude || 0;
+            return {
+              id: doc.id,
+              title: surveyData.namaTitikSurvey || surveyData.title || "Untitled",
+              type: "existing",
+              status: surveyData.status || targetStatus,
+              surveyorName: surveyData.namaSurveyor || surveyData.surveyorName || "-",
+              validatedBy: surveyData.validatedBy || surveyData.editedBy || "Admin",
+              latitude: lat,
+              longitude: lng,
+              adminLatitude: surveyData.adminLatitude,
+              adminLongitude: surveyData.adminLongitude,
+              finalLatitude: surveyData.finalLatitude || lat,
+              finalLongitude: surveyData.finalLongitude || lng,
+              createdAt: surveyData.createdAt,
+              validatedAt: surveyData.validatedAt || surveyData.verifiedAt || surveyData.createdAt,
+              namaJalan: surveyData.namaJalan || "-",
+              zona: surveyData.zona || "Existing",
+              kategori: "Survey Existing",
+              statusIdTitik: surveyData.statusIdTitik || "-",
+              idTitik: surveyData.idTitik || "N/A",
+              dayaLampu: surveyData.dayaLampu || "-",
+              dataTiang: surveyData.dataTiang || "-",
+              dataRuas: surveyData.dataRuas || "-",
+              subRuas: surveyData.subRuas || "-",
+              jarakAntarTiang: surveyData.jarakAntarTiang || "-",
+              keterangan: surveyData.keterangan || "N/A",
+              kabupaten: surveyData.kabupatenName || surveyData.kabupaten || "-",
+              kecamatan: surveyData.kecamatan || "-",
+              desa: surveyData.desa || "-",
+              banjar: surveyData.banjar || "-",
+            };
+          }),
+          ...proposeSnapshot.docs.map((doc) => {
+            const surveyData = doc.data();
+            const lat = surveyData.finalLatitude || surveyData.adminLatitude || surveyData.latitude || 0;
+            const lng = surveyData.finalLongitude || surveyData.adminLongitude || surveyData.longitude || 0;
+            return {
+              id: doc.id,
+              title: surveyData.namaTitikSurvey || surveyData.title || "Untitled",
+              type: "propose",
+              status: surveyData.status || targetStatus,
+              surveyorName: surveyData.namaSurveyor || surveyData.surveyorName || "-",
+              validatedBy: surveyData.validatedBy || surveyData.editedBy || "Admin",
+              latitude: lat,
+              longitude: lng,
+              adminLatitude: surveyData.adminLatitude,
+              adminLongitude: surveyData.adminLongitude,
+              finalLatitude: surveyData.finalLatitude || lat,
+              finalLongitude: surveyData.finalLongitude || lng,
+              createdAt: surveyData.createdAt,
+              validatedAt: surveyData.validatedAt || surveyData.verifiedAt || surveyData.createdAt,
+              namaJalan: surveyData.namaJalan || "-",
+              zona: surveyData.zona || "Propose",
+              kategori: "Survey APJ Propose",
+              statusIdTitik: surveyData.statusIdTitik || "-",
+              idTitik: surveyData.idTitik || "N/A",
+              dayaLampu: surveyData.dayaLampu || "-",
+              dataTiang: surveyData.dataTiang || "-",
+              dataRuas: surveyData.dataRuas || "-",
+              subRuas: surveyData.subRuas || "-",
+              jarakAntarTiang: surveyData.jarakAntarTiang || "-",
+              keterangan: surveyData.keterangan || "N/A",
+              kabupaten: surveyData.kabupatenName || surveyData.kabupaten || "-",
+              kecamatan: surveyData.kecamatan || "-",
+              desa: surveyData.desa || "-",
+              banjar: surveyData.banjar || "-",
+            };
+          }),
+          ...praExistingSnapshot.docs.map((doc) => {
+            const surveyData = doc.data();
+            const lat = surveyData.finalLatitude || surveyData.adminLatitude || surveyData.latitude || 0;
+            const lng = surveyData.finalLongitude || surveyData.adminLongitude || surveyData.longitude || 0;
+            return {
+              id: doc.id,
+              title: surveyData.title || `Survey Pra Existing - ${surveyData.jenisLampu || "Untitled"}`,
+              type: "pra-existing",
+              status: surveyData.status || targetStatus,
+              surveyorName: surveyData.surveyorName || "-",
+              validatedBy: surveyData.validatedBy || surveyData.editedBy || "Admin",
+              latitude: lat,
+              longitude: lng,
+              adminLatitude: surveyData.adminLatitude,
+              adminLongitude: surveyData.adminLongitude,
+              finalLatitude: surveyData.finalLatitude || lat,
+              finalLongitude: surveyData.finalLongitude || lng,
+              createdAt: surveyData.createdAt,
+              validatedAt: surveyData.validatedAt || surveyData.verifiedAt || surveyData.createdAt,
+              namaJalan: surveyData.lokasiLengkap || surveyData.title || "-",
+              zona: "Pra Existing",
+              kategori: "Survey Pra Existing",
+              statusIdTitik: "-",
+              idTitik: "N/A",
+              dayaLampu: surveyData.dayaLampu || "-",
+              dataTiang: surveyData.jenisTiang || "-",
+              dataRuas: "-",
+              subRuas: "-",
+              jarakAntarTiang: "-",
+              keterangan: surveyData.keterangan || surveyData.kondisi || "N/A",
+              kabupaten: surveyData.kabupatenName || surveyData.kabupaten || "-",
+              kecamatan: surveyData.kecamatan || "-",
+              desa: surveyData.desa || "-",
+              banjar: surveyData.banjar || "-",
+              kepemilikanDisplay: surveyData.kepemilikanDisplay || surveyData.keteranganTiang || surveyData.kepemilikanTiang || "-",
+              tipeTiangPLN: surveyData.tipeTiangPLN || "-",
+              jenisLampu: surveyData.jenisLampu || "-",
+              jumlahLampu: surveyData.jumlahLampu || "-",
+              fungsiLampu: surveyData.fungsiLampu || "-",
+              garduStatus: surveyData.garduStatus || "-",
+              kodeGardu: surveyData.kodeGardu || "-",
+            };
+          }),
+        ].filter((survey) => Number.isFinite(survey.latitude) && Number.isFinite(survey.longitude) && survey.latitude !== 0 && survey.longitude !== 0) as Survey[];
+
+        candidateSurveys = fallbackRows;
+        activeSource = "firestore";
+      }
+
       const normalizedKecamatan = filterKecamatan && filterKecamatan !== "Semua Kecamatan" ? filterKecamatan : "";
       const filteredSurveys = normalizedKecamatan
-        ? allSurveys.filter((survey) => survey.kecamatan === normalizedKecamatan)
-        : allSurveys;
+        ? candidateSurveys.filter((survey) => survey.kecamatan === normalizedKecamatan)
+        : candidateSurveys;
 
       setSurveys(filteredSurveys);
       setStats({
-        total: allSurveys.length,
+        total: candidateSurveys.length,
         visible: filteredSurveys.length,
         existing: filteredSurveys.filter((survey) => survey.type === "existing").length,
         propose: filteredSurveys.filter((survey) => survey.type === "propose").length,
         praExisting: filteredSurveys.filter((survey) => survey.type === "pra-existing").length,
       });
       setMapLoaded(true);
+      setDataSource(activeSource);
+      setOverviewLoaded(true);
+      setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
     } catch (error) {
       console.error("Error fetching surveys:", error);
     } finally {
       setLoading(false);
     }
-  }, [activeKabupaten, targetStatus]);
+  }, [activeKabupaten, isSuperAdmin, targetStatus, user?.uid]);
 
   useEffect(() => {
     setSurveys([]);
@@ -299,11 +367,9 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
       propose: 0,
       praExisting: 0,
     });
+    setDataSource("Belum ada");
+    setLastUpdatedAt(null);
   }, [activeKabupaten, targetStatus]);
-
-  useEffect(() => {
-    void hydrateStatsFromSummary();
-  }, [hydrateStatsFromSummary]);
 
   const handleResetView = () => {
     setSurveys([]);
@@ -316,6 +382,8 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
       propose: 0,
       praExisting: 0,
     });
+    setDataSource("Belum ada");
+    setLastUpdatedAt(null);
   };
 
   return (
@@ -343,6 +411,16 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
             </svg>
             Reset View
           </button>
+        </div>
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Sumber Data Panel</div>
+            <div className="mt-1 text-lg font-bold text-slate-900">{getReadableDataSourceLabel(dataSource)}</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Update Terakhir</div>
+            <div className="mt-1 text-lg font-bold text-slate-900">{formatPanelUpdatedAt(lastUpdatedAt)}</div>
+          </div>
         </div>
       </div>
 

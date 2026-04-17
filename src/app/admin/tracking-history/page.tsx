@@ -73,6 +73,16 @@ function TrackingHistoryContent() {
       const sessions = await fetchWithCache(
         TRACKING_SESSIONS_CACHE_KEY,
         async () => {
+          try {
+            const response = await fetch("/api/admin/tracking-sessions", { cache: "no-store" });
+            if (response.ok) {
+              const payload = (await response.json()) as { sessions?: TrackingSession[] };
+              if (Array.isArray(payload.sessions)) return payload.sessions;
+            }
+          } catch (error) {
+            console.error("Supabase tracking fetch failed, fallback to Firestore:", error);
+          }
+
           const sessionsQuery = query(
             collection(db, "tracking-sessions"),
             orderBy("startTime", "desc")

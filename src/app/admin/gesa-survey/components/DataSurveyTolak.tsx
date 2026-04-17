@@ -9,6 +9,7 @@ import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import SurveyExistingDetail from "./SurveyExistingDetail";
 import SurveyProposeDetail from "./SurveyProposeDetail";
 import SurveyPraExistingDetail from "./SurveyPraExistingDetail";
+import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 
 interface Survey {
   id: string;
@@ -46,6 +47,8 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
   const [statsLoaded, setStatsLoaded] = useState(false);
   const [statsLoading, setStatsLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [dataSource, setDataSource] = useState<string>("Belum ada");
   const activeKabupatenName = useMemo(
     () => KABUPATEN_OPTIONS.find((option) => option.id === activeKabupaten)?.name || null,
     [activeKabupaten]
@@ -134,6 +137,7 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
         praExisting,
       });
       setStatsLoaded(true);
+      setLastUpdatedAt(new Date());
     } catch (error) {
       console.error("Error hydrating rejected survey stats from summary:", error);
     }
@@ -142,15 +146,48 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
   const fetchStatistics = useCallback(async () => {
     try {
       setStatsLoading(true);
-      const [existingRows, proposeRows, praExistingRows] = await Promise.all([
-        fetchCollectionRows("survey-existing", "existing"),
-        fetchCollectionRows("survey-apj-propose", "propose"),
-        fetchCollectionRows("survey-pra-existing", "pra-existing"),
-      ]);
+      const params = new URLSearchParams({
+        includeDetails: "1",
+        status: "ditolak",
+      });
+      if (activeKabupaten) params.set("kabupaten", activeKabupaten);
+      if (!isSuperAdmin && user?.uid) params.set("adminId", user.uid);
 
-      const existingCount = existingRows.length;
-      const proposeCount = proposeRows.length;
-      const praExistingCount = praExistingRows.length;
+      const response = await fetch(`/api/admin/gesa-survey?${params.toString()}`, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Gagal memuat data survey ditolak dari Supabase.");
+      }
+      const payload = await response.json() as {
+        source?: string;
+        generatedAt?: string;
+        existing?: { totalData?: number };
+        propose?: { totalData?: number };
+        praExisting?: { totalData?: number };
+      };
+
+      const existingCount = payload.existing?.totalData || 0;
+      const proposeCount = payload.propose?.totalData || 0;
+      const praExistingCount = payload.praExisting?.totalData || 0;
+      const supabaseHasData = existingCount > 0 || proposeCount > 0 || praExistingCount > 0;
+
+      if (!supabaseHasData) {
+        const [existingRows, proposeRows, praExistingRows] = await Promise.all([
+          fetchCollectionRows("survey-existing", "existing"),
+          fetchCollectionRows("survey-apj-propose", "propose"),
+          fetchCollectionRows("survey-pra-existing", "pra-existing"),
+        ]);
+
+        setStats({
+          total: existingRows.length + proposeRows.length + praExistingRows.length,
+          existing: existingRows.length,
+          propose: proposeRows.length,
+          praExisting: praExistingRows.length,
+        });
+        setStatsLoaded(true);
+        setDataSource("firestore");
+        setLastUpdatedAt(new Date());
+        return;
+      }
 
       setStats({
         total: existingCount + proposeCount + praExistingCount,
@@ -159,12 +196,14 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
         praExisting: praExistingCount,
       });
       setStatsLoaded(true);
+      setDataSource(payload.source || "supabase");
+      setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
     } catch (error) {
       console.error("Error fetching statistics:", error);
     } finally {
       setStatsLoading(false);
     }
-  }, [fetchCollectionRows]);
+  }, [activeKabupaten, fetchCollectionRows, isSuperAdmin, user?.uid]);
 
   useEffect(() => {
     setStatsLoaded(false);
@@ -175,11 +214,9 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
       propose: 0,
       praExisting: 0,
     });
+    setDataSource("Belum ada");
+    setLastUpdatedAt(null);
   }, [activeKabupaten]);
-
-  useEffect(() => {
-    void hydrateStatsFromSummary();
-  }, [hydrateStatsFromSummary]);
 
   const handleCategoryClick = (category: "existing" | "propose" | "pra-existing") => {
     setSelectedCategory(category);
@@ -287,6 +324,16 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
               </svg>
               {exportLoading ? "Menyiapkan CSV..." : "Export CSV"}
             </button>
+          </div>
+        </div>
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Sumber Data Panel</div>
+            <div className="mt-1 text-lg font-bold text-slate-900">{getReadableDataSourceLabel(dataSource)}</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Update Terakhir</div>
+            <div className="mt-1 text-lg font-bold text-slate-900">{formatPanelUpdatedAt(lastUpdatedAt)}</div>
           </div>
         </div>
       </div>

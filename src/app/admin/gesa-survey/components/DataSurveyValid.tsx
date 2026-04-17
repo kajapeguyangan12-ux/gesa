@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import SurveyExistingDetail from "./SurveyExistingDetail";
 import SurveyProposeDetail from "./SurveyProposeDetail";
 import SurveyPraExistingDetail from "./SurveyPraExistingDetail";
+import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 
 interface Survey {
   id: string;
@@ -52,6 +53,8 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
   const [statsLoaded, setStatsLoaded] = useState(false);
   const [statsLoading, setStatsLoading] = useState(false);
   const [fullDataLoaded, setFullDataLoaded] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [dataSource, setDataSource] = useState<string>("Belum ada");
 
   const hydrateStatsFromSummary = useCallback(async () => {
     if (!isSuperAdmin) return;
@@ -80,6 +83,7 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
         praExisting,
       });
       setStatsLoaded(true);
+      setLastUpdatedAt(new Date());
     } catch (error) {
       console.error("Error hydrating valid survey stats from summary:", error);
     }
@@ -88,47 +92,119 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
   const fetchStatistics = useCallback(async () => {
     try {
       setStatsLoading(true);
-      // Fetch from all collections
-      const existingRef = collection(db, "survey-existing");
-      const proposeRef = collection(db, "survey-apj-propose");
-      const praExistingRef = collection(db, "survey-pra-existing");
-      
-      const qExisting = activeKabupaten
-        ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
-        : query(existingRef, where("status", "==", targetStatus));
-      const qPropose = activeKabupaten
-        ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
-        : query(proposeRef, where("status", "==", targetStatus));
-      const qPraExisting = activeKabupaten
-        ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
-        : query(praExistingRef, where("status", "==", targetStatus));
-      
-      console.log("🔍 Debug - Active Kabupaten:", activeKabupaten);
-      console.log("🔍 Debug - Query Pra Existing:", qPraExisting);
-      
-      const [existingSnapshot, proposeSnapshot, praExistingSnapshot] = await Promise.all([
-        getDocs(qExisting),
-        getDocs(qPropose),
-        getDocs(qPraExisting),
-      ]);
-      
-      console.log("🔍 Debug - Pra Existing Snapshot Size:", praExistingSnapshot.size);
-      console.log("🔍 Debug - Pra Existing ALL Status Check:", praExistingSnapshot.docs.map(doc => ({
-        id: doc.id,
-        status: doc.data().status,
-        kabupaten: doc.data().kabupaten,
-        kabupatenName: doc.data().kabupatenName,
-        title: doc.data().title,
-        jenisLampu: doc.data().jenisLampu,
-        createdAt: doc.data().createdAt
-      })));
-      
-      const existingCount = existingSnapshot.size;
-      const proposeCount = proposeSnapshot.size;
-      const praExistingCount = praExistingSnapshot.size;
-      
-      console.log("🔍 Debug - Counts:", { existingCount, proposeCount, praExistingCount });
-      
+      const params = new URLSearchParams({
+        includeDetails: "1",
+        status: targetStatus,
+      });
+      if (activeKabupaten) params.set("kabupaten", activeKabupaten);
+      if (!isSuperAdmin && user?.uid) params.set("adminId", user.uid);
+
+      const response = await fetch(`/api/admin/gesa-survey?${params.toString()}`, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Gagal memuat data valid dari Supabase.");
+      }
+
+      const payload = await response.json() as {
+        source?: string;
+        generatedAt?: string;
+        existing?: { totalData?: number };
+        propose?: { totalData?: number };
+        praExisting?: { totalData?: number };
+        allRows?: Survey[];
+      };
+
+      const existingCount = payload.existing?.totalData || 0;
+      const proposeCount = payload.propose?.totalData || 0;
+      const praExistingCount = payload.praExisting?.totalData || 0;
+      const supabaseRows = Array.isArray(payload.allRows) ? payload.allRows : [];
+      const supabaseHasData = supabaseRows.length > 0 || existingCount > 0 || proposeCount > 0 || praExistingCount > 0;
+
+      if (!supabaseHasData) {
+        const existingRef = collection(db, "survey-existing");
+        const proposeRef = collection(db, "survey-apj-propose");
+        const praExistingRef = collection(db, "survey-pra-existing");
+
+        const qExisting = activeKabupaten
+          ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
+          : query(existingRef, where("status", "==", targetStatus));
+        const qPropose = activeKabupaten
+          ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
+          : query(proposeRef, where("status", "==", targetStatus));
+        const qPraExisting = activeKabupaten
+          ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
+          : query(praExistingRef, where("status", "==", targetStatus));
+
+        const [existingSnapshot, proposeSnapshot, praExistingSnapshot] = await Promise.all([
+          getDocs(qExisting),
+          getDocs(qPropose),
+          getDocs(qPraExisting),
+        ]);
+
+        const fallbackRows = [
+          ...existingSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            title: doc.data().title || `Survey Existing - ${doc.data().namaJalan || "Untitled"}`,
+            type: "existing",
+            status: doc.data().status || targetStatus,
+            surveyorName: doc.data().surveyorName || "Unknown",
+            createdAt: doc.data().createdAt,
+            verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
+            validatedAt: doc.data().validatedAt || null,
+            taskId: doc.data().taskId || "",
+            taskTitle: doc.data().taskTitle || "",
+            kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
+            kecamatan: doc.data().kecamatan || "",
+            desa: doc.data().desa || "",
+            banjar: doc.data().banjar || "",
+          })),
+          ...proposeSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            title: doc.data().title || `Survey APJ Propose - ${doc.data().namaJalan || "Untitled"}`,
+            type: "propose",
+            status: doc.data().status || targetStatus,
+            surveyorName: doc.data().surveyorName || "Unknown",
+            createdAt: doc.data().createdAt,
+            verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
+            validatedAt: doc.data().validatedAt || null,
+            taskId: doc.data().taskId || "",
+            taskTitle: doc.data().taskTitle || "",
+            kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
+            kecamatan: doc.data().kecamatan || "",
+            desa: doc.data().desa || "",
+            banjar: doc.data().banjar || "",
+          })),
+          ...praExistingSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            title: doc.data().title || `Survey Pra Existing - ${doc.data().jenisLampu || "Untitled"}`,
+            type: "pra-existing",
+            status: doc.data().status || targetStatus,
+            surveyorName: doc.data().surveyorName || "Unknown",
+            createdAt: doc.data().createdAt,
+            verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
+            validatedAt: doc.data().validatedAt || null,
+            taskId: doc.data().taskId || "",
+            taskTitle: doc.data().taskTitle || "",
+            kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
+            kecamatan: doc.data().kecamatan || "",
+            desa: doc.data().desa || "",
+            banjar: doc.data().banjar || "",
+          })),
+        ] as Survey[];
+
+        setStats({
+          total: fallbackRows.length,
+          existing: fallbackRows.filter((row) => row.type === "existing").length,
+          propose: fallbackRows.filter((row) => row.type === "propose").length,
+          praExisting: fallbackRows.filter((row) => row.type === "pra-existing").length,
+        });
+        setStatsLoaded(true);
+        setFullDataLoaded(true);
+        setSurveys(fallbackRows);
+        setDataSource("firestore");
+        setLastUpdatedAt(new Date());
+        return;
+      }
+
       setStats({
         total: existingCount + proposeCount + praExistingCount,
         existing: existingCount,
@@ -137,65 +213,15 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
       });
       setStatsLoaded(true);
       setFullDataLoaded(true);
-
-      const allRows = [
-        ...existingSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          title: doc.data().title || `Survey Existing - ${doc.data().namaJalan || "Untitled"}`,
-          type: "existing",
-          status: doc.data().status || targetStatus,
-          surveyorName: doc.data().surveyorName || "Unknown",
-          createdAt: doc.data().createdAt,
-          verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
-          validatedAt: doc.data().validatedAt || null,
-          taskId: doc.data().taskId || "",
-          taskTitle: doc.data().taskTitle || "",
-          kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
-          kecamatan: doc.data().kecamatan || "",
-          desa: doc.data().desa || "",
-          banjar: doc.data().banjar || "",
-        })),
-        ...proposeSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          title: doc.data().title || `Survey APJ Propose - ${doc.data().namaJalan || "Untitled"}`,
-          type: "propose",
-          status: doc.data().status || targetStatus,
-          surveyorName: doc.data().surveyorName || "Unknown",
-          createdAt: doc.data().createdAt,
-          verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
-          validatedAt: doc.data().validatedAt || null,
-          taskId: doc.data().taskId || "",
-          taskTitle: doc.data().taskTitle || "",
-          kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
-          kecamatan: doc.data().kecamatan || "",
-          desa: doc.data().desa || "",
-          banjar: doc.data().banjar || "",
-        })),
-        ...praExistingSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          title: doc.data().title || `Survey Pra Existing - ${doc.data().jenisLampu || "Untitled"}`,
-          type: "pra-existing",
-          status: doc.data().status || targetStatus,
-          surveyorName: doc.data().surveyorName || "Unknown",
-          createdAt: doc.data().createdAt,
-          verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
-          validatedAt: doc.data().validatedAt || null,
-          taskId: doc.data().taskId || "",
-          taskTitle: doc.data().taskTitle || "",
-          kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
-          kecamatan: doc.data().kecamatan || "",
-          desa: doc.data().desa || "",
-          banjar: doc.data().banjar || "",
-        })),
-      ] as Survey[];
-
-      setSurveys(allRows);
+      setSurveys(Array.isArray(payload.allRows) ? payload.allRows : []);
+      setDataSource(payload.source || "supabase");
+      setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
     } catch (error) {
       console.error("Error fetching statistics:", error);
     } finally {
       setStatsLoading(false);
     }
-  }, [activeKabupaten, targetStatus]);
+  }, [activeKabupaten, isSuperAdmin, targetStatus, user?.uid]);
 
   useEffect(() => {
     setStatsLoaded(false);
@@ -208,11 +234,9 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
     });
     setSurveys([]);
     setSelectedSurveyor("Semua Petugas");
+    setDataSource("Belum ada");
+    setLastUpdatedAt(null);
   }, [activeKabupaten, targetStatus]);
-
-  useEffect(() => {
-    void hydrateStatsFromSummary();
-  }, [hydrateStatsFromSummary]);
 
   const surveyorOptions = useMemo(
     () => ["Semua Petugas", ...new Set(surveys.map((survey) => survey.surveyorName).filter(Boolean))],
@@ -341,6 +365,16 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
             </svg>
             Ekspor Semua (CSV)
           </button>
+        </div>
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Sumber Data Panel</div>
+            <div className="mt-1 text-lg font-bold text-slate-900">{getReadableDataSourceLabel(dataSource)}</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Update Terakhir</div>
+            <div className="mt-1 text-lg font-bold text-slate-900">{formatPanelUpdatedAt(lastUpdatedAt)}</div>
+          </div>
         </div>
       </div>
 

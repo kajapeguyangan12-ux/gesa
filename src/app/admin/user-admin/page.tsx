@@ -24,6 +24,7 @@ interface User {
 interface UsersPagePayload {
   hasMore: boolean;
   users: User[];
+  nextOffset?: number;
 }
 
 type UserRole = "super-admin" | "admin" | "petugas-existing" | "petugas-apj-propose" | "petugas-pra-existing" | "petugas-survey-cahaya" | "petugas-kontruksi" | "petugas-om" | "petugas-bmd-gudang";
@@ -132,6 +133,7 @@ function UserAdminContent() {
   const [hasMoreUsers, setHasMoreUsers] = useState(false);
   const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
   const [lastVisibleCreatedAt, setLastVisibleCreatedAt] = useState<any>(null);
+  const [supabaseOffset, setSupabaseOffset] = useState(0);
 
   const isSuperAdmin = user?.role === "super-admin";
 
@@ -175,6 +177,18 @@ function UserAdminContent() {
       const pagePayload = await fetchWithCache<UsersPagePayload>(
         USERS_CACHE_KEY,
         async () => {
+          try {
+            const response = await fetch(`/api/admin/user-admin?limit=${USER_FETCH_LIMIT}&offset=0`, {
+              cache: "no-store",
+            });
+            if (response.ok) {
+              const payload = (await response.json()) as UsersPagePayload;
+              return payload;
+            }
+          } catch (error) {
+            console.error("Supabase user-admin fetch failed, fallback to Firestore:", error);
+          }
+
           const usersQuery = query(
             collection(db, "User-Admin"),
             orderBy("createdAt", "desc"),
@@ -194,6 +208,7 @@ function UserAdminContent() {
       );
       applyUserBuckets(pagePayload.users);
       setHasMoreUsers(pagePayload.hasMore);
+      setSupabaseOffset(pagePayload.nextOffset || pagePayload.users.length);
       setLastVisibleCreatedAt(
         pagePayload.users.length > 0
           ? normalizeCreatedAtCursor(pagePayload.users[pagePayload.users.length - 1].createdAt)
@@ -212,6 +227,27 @@ function UserAdminContent() {
 
     setLoadingMoreUsers(true);
     try {
+      try {
+        const response = await fetch(`/api/admin/user-admin?limit=${USER_FETCH_LIMIT}&offset=${supabaseOffset}`, {
+          cache: "no-store",
+        });
+        if (response.ok) {
+          const payload = (await response.json()) as UsersPagePayload;
+          const nextUsers = payload.users || [];
+          if (nextUsers.length > 0) {
+            const mergedUsers = [...allUsers, ...nextUsers];
+            applyUserBuckets(mergedUsers);
+            setHasMoreUsers(Boolean(payload.hasMore));
+            setSupabaseOffset(payload.nextOffset || mergedUsers.length);
+            return;
+          }
+          setHasMoreUsers(false);
+          return;
+        }
+      } catch (error) {
+        console.error("Supabase load more users failed, fallback to Firestore:", error);
+      }
+
       const usersQuery = query(
         collection(db, "User-Admin"),
         orderBy("createdAt", "desc"),

@@ -3,6 +3,14 @@
 import { useState, useEffect } from "react";
 import { collection, query, orderBy, getDocs, limit, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import {
+  ADMIN_BUNDLE_VERSION,
+  type AdminReportsBundle,
+  type AdminReportsBundleItem,
+  getAdminReportsBundlePath,
+  readJsonBundle,
+  writeJsonBundle,
+} from "@/utils/adminBundles";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
@@ -35,7 +43,21 @@ interface FilterState {
   kabupaten: string;
 }
 
+async function fetchSurveysFromSupabase(limitValue: number): Promise<SurveyData[]> {
+  const response = await fetch(`/api/admin/reports?limit=${limitValue}`, {
+    cache: "no-store",
+  });
 
+  if (!response.ok) {
+    throw new Error("Gagal memuat reports dari Supabase.");
+  }
+
+  const payload = (await response.json()) as {
+    reports?: SurveyData[];
+  };
+
+  return Array.isArray(payload.reports) ? payload.reports : [];
+}
 
 function AdminPanelContent() {
   const REPORT_FETCH_LIMIT = 10;
@@ -47,7 +69,11 @@ function AdminPanelContent() {
   const [filteredSurveys, setFilteredSurveys] = useState<SurveyData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isGeneratingBundle, setIsGeneratingBundle] = useState(false);
   const [hasLoadedData, setHasLoadedData] = useState(false);
+  const [dataSource, setDataSource] = useState<"supabase" | "storage-bundle" | "firestore">("firestore");
+  const [bundleGeneratedAt, setBundleGeneratedAt] = useState<string>("");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string>("");
   const [filters, setFilters] = useState<FilterState>({
     judulLokasi: "",
     petugas: "",
@@ -264,6 +290,48 @@ function AdminPanelContent() {
     };
   };
 
+  const applyBundleResult = (bundle: AdminReportsBundle | null) => {
+    if (!bundle) return null;
+
+    const normalized = (bundle.reports || [])
+      .slice(0, REPORT_FETCH_LIMIT)
+      .map((item: AdminReportsBundleItem) => ({
+        ...item,
+        dateDisplay: item.dateDisplay || "",
+        timeDisplay: item.timeDisplay || "",
+      }));
+
+    setDataSource("storage-bundle");
+    setBundleGeneratedAt(bundle.generatedAt || "");
+    return normalized;
+  };
+
+  const readReportsFromStorageBundle = async () => {
+    return await readJsonBundle<AdminReportsBundle>(getAdminReportsBundlePath());
+  };
+
+  const fetchSurveysFromSupabaseSource = async () => {
+    const result = await fetchSurveysFromSupabase(REPORT_FETCH_LIMIT);
+    setDataSource("supabase");
+    setBundleGeneratedAt("");
+    setLastUpdatedAt(new Date().toISOString());
+    return result;
+  };
+
+  const fetchSurveysFromFirestore = async () => {
+    const surveysRef = collection(db, FIREBASE_COLLECTIONS.SURVEYS);
+    const q = query(surveysRef, orderBy("createdAt", "desc"), limit(REPORT_FETCH_LIMIT));
+    const querySnapshot = await getDocs(q);
+    const result: SurveyData[] = [];
+    querySnapshot.forEach((item) => {
+      result.push(mapReportToSurvey(item.id, item.data()));
+    });
+    setDataSource("firestore");
+    setBundleGeneratedAt("");
+    setLastUpdatedAt(new Date().toISOString());
+    return result;
+  };
+
   const fetchSurveys = async (forceRefresh = false) => {
     try {
       if (forceRefresh) {
@@ -275,14 +343,16 @@ function AdminPanelContent() {
       const surveysData = await fetchWithCache<SurveyData[]>(
         REPORTS_CACHE_KEY,
         async () => {
-          const surveysRef = collection(db, FIREBASE_COLLECTIONS.SURVEYS);
-          const q = query(surveysRef, orderBy("createdAt", "desc"), limit(REPORT_FETCH_LIMIT));
-          const querySnapshot = await getDocs(q);
-          const result: SurveyData[] = [];
-          querySnapshot.forEach((doc) => {
-            result.push(mapReportToSurvey(doc.id, doc.data()));
-          });
-          return result;
+          try {
+            const supabaseReports = await fetchSurveysFromSupabaseSource();
+            if (supabaseReports.length > 0) return supabaseReports;
+          } catch (error) {
+            console.error("Supabase reports fetch failed, fallback to bundle/firestore:", error);
+          }
+
+          const bundleResult = applyBundleResult(await readReportsFromStorageBundle());
+          if (bundleResult) return bundleResult;
+          return await fetchSurveysFromFirestore();
         },
         REPORTS_CACHE_TTL_MS
       );
@@ -295,6 +365,36 @@ function AdminPanelContent() {
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+    }
+  };
+
+  const handleGenerateBundle = async () => {
+    if (user?.role !== "super-admin") return;
+
+    try {
+      setIsGeneratingBundle(true);
+      const surveysRef = collection(db, FIREBASE_COLLECTIONS.SURVEYS);
+      const q = query(surveysRef, orderBy("createdAt", "desc"));
+      const querySnapshot = await getDocs(q);
+      const reports = querySnapshot.docs.map((item) => mapReportToSurvey(item.id, item.data()));
+
+      const payload: AdminReportsBundle = {
+        version: ADMIN_BUNDLE_VERSION,
+        generatedAt: new Date().toISOString(),
+        generatedBy: user?.email || user?.displayName || "super-admin",
+        source: "storage-bundle",
+        reports,
+      };
+
+      await writeJsonBundle(getAdminReportsBundlePath(), payload);
+      clearCachedData(REPORTS_CACHE_KEY);
+      await fetchSurveys(true);
+      alert("Bundle admin berhasil dibuat di Firebase Storage.");
+    } catch (error) {
+      console.error("Failed to generate admin reports bundle:", error);
+      alert("Gagal membuat bundle admin.");
+    } finally {
+      setIsGeneratingBundle(false);
     }
   };
 
@@ -370,6 +470,9 @@ function AdminPanelContent() {
 
   // Get user display name or email
   const displayName = user?.displayName || user?.email?.split('@')[0] || 'Admin';
+  const activeSourceLabel =
+    dataSource === "supabase" ? "Supabase" : dataSource === "storage-bundle" ? "Bundle Storage" : "Firestore langsung";
+  const activeTimestamp = bundleGeneratedAt || lastUpdatedAt;
 
   const handleDeleteReport = async (reportId: string, title: string) => {
     const ok = window.confirm(`Hapus laporan "${title}"? Tindakan ini tidak bisa dibatalkan.`);
@@ -446,18 +549,52 @@ function AdminPanelContent() {
           <div className="mb-4 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="text-sm text-blue-900">
               <span className="font-semibold">Mode hemat reads aktif.</span>{" "}
-              Daftar laporan memakai cache lokal selama 15 menit dan hanya memuat ulang dari Firestore saat `Refresh Data` ditekan.
+              Daftar laporan memprioritaskan baca dari Supabase, lalu fallback ke bundle Storage dan Firestore bila perlu.
+              {bundleGeneratedAt
+                ? ` Bundle terakhir dibuat ${new Date(bundleGeneratedAt).toLocaleString("id-ID")}.`
+                : dataSource === "supabase"
+                  ? " Data aktif sedang dibaca dari Supabase."
+                  : " Fallback ke Firestore hanya dipakai jika sumber utama belum tersedia."}
             </div>
-            <button
-              onClick={() => void handleRefreshData()}
-              disabled={isRefreshing || !hasLoadedData}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl transition-all font-semibold"
-            >
-              <svg className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              {isRefreshing ? "Memuat Ulang..." : "Refresh Data"}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {user?.role === "super-admin" ? (
+                <button
+                  onClick={() => void handleGenerateBundle()}
+                  disabled={isGeneratingBundle}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-xl transition-all font-semibold"
+                >
+                  <svg className={`w-4 h-4 ${isGeneratingBundle ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999A5.002 5.002 0 006 9H5a2 2 0 000 4h1m7-3v6m0 0l-3-3m3 3l3-3" />
+                  </svg>
+                  {isGeneratingBundle ? "Membuat Bundle..." : "Generate Bundle"}
+                </button>
+              ) : null}
+              <button
+                onClick={() => void handleRefreshData()}
+                disabled={isRefreshing || !hasLoadedData}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl transition-all font-semibold"
+              >
+                <svg className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {isRefreshing ? "Memuat Ulang..." : "Refresh Data"}
+              </button>
+            </div>
+          </div>
+          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">Sumber Data Aktif</div>
+              <div className="mt-1 text-base font-bold text-emerald-900">{activeSourceLabel}</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">Update Terakhir</div>
+              <div className="mt-1 text-base font-bold text-slate-900">
+                {activeTimestamp ? new Date(activeTimestamp).toLocaleString("id-ID") : "Belum ada"}
+              </div>
+            </div>
+          </div>
+          <div className="mb-4 text-xs font-medium text-gray-500">
+            Sumber aktif: {dataSource === "supabase" ? "Supabase" : dataSource === "storage-bundle" ? "Bundle Storage" : "Firestore langsung"}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">{/* Judul / Lokasi */}
             <div>

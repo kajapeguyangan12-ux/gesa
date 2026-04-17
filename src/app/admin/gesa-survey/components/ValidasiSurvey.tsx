@@ -23,6 +23,7 @@ import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { PRA_EXISTING_TABANAN_DATA } from "@/app/survey-pra-existing/location-data";
 import type { TaskNavigationInfo } from "@/utils/taskNavigation";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
+import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 
 // Define props type inline
 interface MapComponentProps {
@@ -201,6 +202,8 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   const [statsLoading, setStatsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [dataSource, setDataSource] = useState<string>("Belum ada");
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [selectedTaskNavigationInfo, setSelectedTaskNavigationInfo] = useState<TaskNavigationInfo | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -312,11 +315,13 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
             total: existingCount + proposeCount + praExistingCount,
           };
         },
-        5 * 60 * 1000
+        15 * 60 * 1000
       );
 
       setStats(cachedStats);
       setStatsLoaded(true);
+      setDataSource("firestore");
+      setLastUpdatedAt(new Date());
     } finally {
       setStatsLoading(false);
     }
@@ -380,11 +385,13 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
         clearCachedData(pageCacheKey);
       }
 
-      const cachedPage = await fetchWithCache(pageCacheKey, loadLivePage, 5 * 60 * 1000);
+      const cachedPage = await fetchWithCache(pageCacheKey, loadLivePage, 15 * 60 * 1000);
       setSurveys(cachedPage.surveys);
       setCurrentPage(page);
       setHasNextPage(cachedPage.hasMore);
       setShowAll(false);
+      setDataSource("firestore");
+      setLastUpdatedAt(new Date());
       return;
     }
 
@@ -397,6 +404,8 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     setCurrentPage(page);
     setHasNextPage(livePage.hasMore);
     setShowAll(false);
+    setDataSource("firestore");
+    setLastUpdatedAt(new Date());
   };
 
   const fetchAllTabData = async (forceRefresh = false) => {
@@ -421,13 +430,15 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
         const snapshot = await getDocs(query(ref, ...constraints));
         return snapshot.docs.map((docSnap) => mapSurveyDoc(docSnap, activeTab));
       },
-      5 * 60 * 1000
+      15 * 60 * 1000
     );
 
     setSurveys(cachedSurveys);
     setShowAll(true);
     setCurrentPage(1);
     setHasNextPage(false);
+    setDataSource("firestore");
+    setLastUpdatedAt(new Date());
   };
 
   const clearCurrentTabCaches = () => {
@@ -1049,6 +1060,16 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
             >
               {refreshing ? "Memuat ulang..." : "Refresh Data"}
             </button>
+          </div>
+        </div>
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Sumber Data Panel</div>
+            <div className="mt-1 text-lg font-bold text-slate-900">{getReadableDataSourceLabel(dataSource)}</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Update Terakhir</div>
+            <div className="mt-1 text-lg font-bold text-slate-900">{formatPanelUpdatedAt(lastUpdatedAt)}</div>
           </div>
         </div>
 
