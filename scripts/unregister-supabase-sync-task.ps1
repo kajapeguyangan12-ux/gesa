@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$taskName = "GesaSupabaseSync"
+$taskName = if ($env:SYNC_TASK_NAME) { $env:SYNC_TASK_NAME } else { "GesaSupabaseSync" }
 $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 
 if (-not $existingTask) {

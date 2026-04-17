@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { collection, getDocs, limit, orderBy, query, where, deleteDoc, doc, startAfter, QueryConstraint, QueryDocumentSnapshot } from "firebase/firestore";
+import { deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import * as XLSX from 'xlsx';
 import { useAuth } from "@/hooks/useAuth";
+import { fetchAdminSurveyRows } from "./supabaseSurveyClient";
 
 const DynamicDetailMap = dynamic(
   () => import("./SurveyDetailMap"),
@@ -98,9 +99,6 @@ export default function SurveyPraExistingDetail({
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [pageCursors, setPageCursors] = useState<QueryDocumentSnapshot[]>([]);
-  const [kabupatenField, setKabupatenField] = useState<"kabupaten" | "kabupatenName" | null>(null);
   const [floatingScrollbar, setFloatingScrollbar] = useState({
     visible: false,
     left: 0,
@@ -126,52 +124,19 @@ export default function SurveyPraExistingDetail({
     "Aksi",
   ];
 
-  const buildConstraints = (selectedKabupatenField: "kabupaten" | "kabupatenName" | null, page: number, pageSize: number) => {
-    const constraints: QueryConstraint[] = [where("status", "==", statusFilter), orderBy("createdAt", "desc")];
-
-    if (activeKabupaten && selectedKabupatenField) {
-      constraints.unshift(where(selectedKabupatenField, "==", activeKabupaten));
-    }
-
-    constraints.push(limit(pageSize));
-
-    const previousCursor = page > 1 ? pageCursors[page - 2] : null;
-    if (previousCursor) {
-      constraints.push(startAfter(previousCursor));
-    }
-
-    return constraints;
-  };
-
   const fetchSurveys = async () => {
     try {
       setLoading(true);
-      const surveysRef = collection(db, "survey-pra-existing");
-      const candidateFields: Array<"kabupaten" | "kabupatenName" | null> = activeKabupaten
-        ? ["kabupaten", "kabupatenName"]
-        : [null];
+      const payload = await fetchAdminSurveyRows({
+        activeKabupaten,
+        adminId: null,
+        statuses: [statusFilter],
+        type: "pra-existing",
+      });
 
-      let selectedField: "kabupaten" | "kabupatenName" | null = candidateFields[0];
-      let visibleDocs: QueryDocumentSnapshot[] = [];
-      let hasMore = false;
-
-      for (const field of candidateFields) {
-        const snapshot = await getDocs(query(surveysRef, ...buildConstraints(field, 1, itemsPerPage)));
-        visibleDocs = snapshot.docs;
-        hasMore = visibleDocs.length === itemsPerPage;
-
-        if (visibleDocs.length > 0 || field === candidateFields[candidateFields.length - 1]) {
-          selectedField = field;
-          break;
-        }
-      }
-
-      setKabupatenField(selectedField);
-      setSurveys(visibleDocs.map(mapDoc));
+      setSurveys(payload.rows as Survey[]);
       setCurrentPage(1);
-      setHasNextPage(hasMore);
-      setPageCursors(visibleDocs.length > 0 ? [visibleDocs[visibleDocs.length - 1]] : []);
-      setTotalCount(0);
+      setTotalCount(payload.rows.length);
     } catch (error) {
       console.error("Error fetching pra existing surveys:", error);
     } finally {
@@ -179,54 +144,9 @@ export default function SurveyPraExistingDetail({
     }
   };
 
-  const mapDoc = (docSnap: QueryDocumentSnapshot) => ({
-        id: docSnap.id,
-        title: docSnap.data().title || `Survey Pra Existing - ${docSnap.data().jenisLampu || "Untitled"}`,
-        type: "pra-existing",
-        status: docSnap.data().status || "diverifikasi",
-        surveyorName: docSnap.data().surveyorName || "Unknown",
-        surveyorEmail: docSnap.data().surveyorEmail,
-        createdAt: docSnap.data().createdAt,
-        verifiedAt: docSnap.data().verifiedAt || docSnap.data().createdAt,
-        verifiedBy: docSnap.data().verifiedBy || docSnap.data().editedBy || "Admin",
-        validatedAt: docSnap.data().validatedAt || docSnap.data().createdAt,
-        validatedBy: docSnap.data().validatedBy || docSnap.data().editedBy || "Admin",
-        latitude: docSnap.data().latitude || 0,
-        longitude: docSnap.data().longitude || 0,
-        adminLatitude: docSnap.data().adminLatitude,
-        adminLongitude: docSnap.data().adminLongitude,
-        finalLatitude: docSnap.data().finalLatitude,
-        finalLongitude: docSnap.data().finalLongitude,
-        accuracy: docSnap.data().accuracy,
-        kabupaten: docSnap.data().kabupaten,
-        kabupatenName: docSnap.data().kabupatenName,
-        kecamatan: docSnap.data().kecamatan,
-        desa: docSnap.data().desa,
-        banjar: docSnap.data().banjar,
-        namaJalan: docSnap.data().namaJalan,
-        kepemilikanTiang: docSnap.data().kepemilikanTiang,
-        kepemilikanDisplay: docSnap.data().kepemilikanDisplay || docSnap.data().keteranganTiang,
-        tipeTiangPLN: docSnap.data().tipeTiangPLN,
-        jenisLampu: docSnap.data().jenisLampu,
-        jumlahLampu: docSnap.data().jumlahLampu,
-        dayaLampu: docSnap.data().dayaLampu,
-        fungsiLampu: docSnap.data().fungsiLampu,
-        lebarJalan: docSnap.data().lebarJalan,
-        kondisi: docSnap.data().kondisi,
-        jenisTiang: docSnap.data().jenisTiang,
-        garduStatus: docSnap.data().garduStatus,
-        kodeGardu: docSnap.data().kodeGardu,
-        keterangan: docSnap.data().keterangan,
-        fotoAktual: docSnap.data().fotoAktual,
-        fotoKemerataan: docSnap.data().fotoKemerataan,
-      }) as Survey;
-
   useEffect(() => {
     setSurveys([]);
     setCurrentPage(1);
-    setHasNextPage(false);
-    setPageCursors([]);
-    setKabupatenField(null);
   }, [statusFilter, activeKabupaten, itemsPerPage]);
 
   useEffect(() => {
@@ -402,7 +322,8 @@ export default function SurveyPraExistingDetail({
     if (!confirm("Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.")) return;
     try {
       await deleteDoc(doc(db, "survey-pra-existing", id));
-      await fetchSurveys();
+      setSurveys((current) => current.filter((survey) => survey.id !== id));
+      setTotalCount((current) => Math.max(0, current - 1));
       alert("Data berhasil dihapus!");
     } catch (error) {
       console.error("Error deleting survey:", error);
@@ -466,45 +387,15 @@ export default function SurveyPraExistingDetail({
   });
 
   // Pagination logic
-  const totalItems = totalCount > 0 ? totalCount : (hasNextPage ? currentPage * itemsPerPage + 1 : ((currentPage - 1) * itemsPerPage) + surveys.length);
-  const totalPages = Math.max(1, totalCount > 0 ? Math.ceil(totalItems / itemsPerPage) : currentPage + (hasNextPage ? 1 : 0));
+  const totalItems = filteredSurveys.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
   const startIndex = filteredSurveys.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
   const endIndex = filteredSurveys.length === 0 ? 0 : Math.min(startIndex + itemsPerPage - 1, totalItems);
-  const paginatedSurveys = filteredSurveys;
+  const paginatedSurveys = filteredSurveys.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const handlePageChange = (page: number) => {
     if (page < 1 || page > totalPages || page === currentPage) return;
-
-    void (async () => {
-      try {
-        setLoading(true);
-        const surveysRef = collection(db, "survey-pra-existing");
-        const snapshot = await getDocs(query(surveysRef, ...buildConstraints(kabupatenField, page, itemsPerPage)));
-        const visibleDocs = snapshot.docs;
-        const nextHasMore = visibleDocs.length === itemsPerPage;
-
-        if (page > 1 && visibleDocs.length === 0) {
-          setHasNextPage(false);
-          return;
-        }
-
-        setSurveys(visibleDocs.map(mapDoc));
-        setCurrentPage(page);
-        setHasNextPage(nextHasMore);
-        setPageCursors((current) => {
-          const next = current.slice(0, Math.max(page - 1, 0));
-          const lastVisible = visibleDocs[visibleDocs.length - 1];
-          if (lastVisible) {
-            next[page - 1] = lastVisible;
-          }
-          return next;
-        });
-      } catch (error) {
-        console.error("Error changing pra existing page:", error);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    setCurrentPage(page);
   };
 
   // Get unique kecamatans from surveys
@@ -673,6 +564,10 @@ export default function SurveyPraExistingDetail({
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          Data daftar memakai Supabase
+        </div>
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1 relative">
             <svg className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -949,7 +844,7 @@ export default function SurveyPraExistingDetail({
                   
                   <button
                     onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages || !hasNextPage}
+                    disabled={currentPage === totalPages}
                     className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Next

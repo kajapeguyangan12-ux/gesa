@@ -1,11 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { collection, doc, getDoc, getDocs, query, where, QueryDocumentSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { fetchWithCache } from "@/utils/firestoreCache";
 import { useAuth } from "@/hooks/useAuth";
-import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import SurveyExistingDetail from "./SurveyExistingDetail";
 import SurveyProposeDetail from "./SurveyProposeDetail";
 import SurveyPraExistingDetail from "./SurveyPraExistingDetail";
@@ -22,12 +18,6 @@ interface Survey {
   kecamatan?: string;
   desa?: string;
   banjar?: string;
-}
-
-interface DashboardSummaryDocument {
-  propose?: { totalDitolak?: number };
-  existing?: { totalDitolak?: number };
-  praExisting?: { totalDitolak?: number };
 }
 
 export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?: string | null }) {
@@ -48,100 +38,7 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
   const [statsLoading, setStatsLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
-  const [dataSource, setDataSource] = useState<string>("Belum ada");
-  const activeKabupatenName = useMemo(
-    () => KABUPATEN_OPTIONS.find((option) => option.id === activeKabupaten)?.name || null,
-    [activeKabupaten]
-  );
-
-  const mapSurveyDoc = useCallback((docSnap: QueryDocumentSnapshot, type: Survey["type"]) => {
-    const data = docSnap.data();
-
-    return {
-      id: docSnap.id,
-      title:
-        data.title ||
-        (type === "existing"
-          ? `Survey Existing - ${data.namaJalan || "Untitled"}`
-          : type === "propose"
-            ? `Survey APJ Propose - ${data.namaJalan || "Untitled"}`
-            : `Survey Pra Existing - ${data.jenisLampu || "Untitled"}`),
-      type,
-      status: data.status || "ditolak",
-      surveyorName: data.surveyorName || "Unknown",
-      createdAt: data.createdAt,
-      kabupaten: data.kabupatenName || data.kabupaten || "",
-      kecamatan: data.kecamatan || "",
-      desa: data.desa || "",
-      banjar: data.banjar || "",
-    } as Survey;
-  }, []);
-
-  const fetchCollectionRows = useCallback(
-    async (collectionName: string, type: Survey["type"]) => {
-      const collectionRef = collection(db, collectionName);
-      const docMap = new Map<string, Survey>();
-
-      const candidateQueries = activeKabupaten
-        ? [
-            query(collectionRef, where("kabupaten", "==", activeKabupaten), where("status", "==", "ditolak")),
-            ...(activeKabupatenName
-              ? [query(collectionRef, where("kabupatenName", "==", activeKabupatenName), where("status", "==", "ditolak"))]
-              : []),
-          ]
-        : [query(collectionRef, where("status", "==", "ditolak"))];
-
-      const snapshots = await Promise.allSettled(candidateQueries.map((candidateQuery) => getDocs(candidateQuery)));
-
-      snapshots.forEach((result) => {
-        if (result.status !== "fulfilled") {
-          return;
-        }
-
-        result.value.docs.forEach((docSnap) => {
-          if (!docMap.has(docSnap.id)) {
-            docMap.set(docSnap.id, mapSurveyDoc(docSnap, type));
-          }
-        });
-      });
-
-      return Array.from(docMap.values());
-    },
-    [activeKabupaten, activeKabupatenName, mapSurveyDoc]
-  );
-
-  const hydrateStatsFromSummary = useCallback(async () => {
-    if (!isSuperAdmin) return;
-
-    try {
-      const summaryDocId = `gesa-survey_${activeKabupaten || "all"}_super`;
-      const summary = await fetchWithCache<DashboardSummaryDocument | null>(
-        `dashboard_summary_${summaryDocId}`,
-        async () => {
-          const snapshot = await getDoc(doc(db, "dashboard-summaries", summaryDocId));
-          return snapshot.exists() ? (snapshot.data() as DashboardSummaryDocument) : null;
-        },
-        10 * 60_000
-      );
-
-      if (!summary) return;
-
-      const existing = summary.existing?.totalDitolak || 0;
-      const propose = summary.propose?.totalDitolak || 0;
-      const praExisting = summary.praExisting?.totalDitolak || 0;
-
-      setStats({
-        total: existing + propose + praExisting,
-        existing,
-        propose,
-        praExisting,
-      });
-      setStatsLoaded(true);
-      setLastUpdatedAt(new Date());
-    } catch (error) {
-      console.error("Error hydrating rejected survey stats from summary:", error);
-    }
-  }, [activeKabupaten, isSuperAdmin]);
+  const [dataSource, setDataSource] = useState<string>("supabase");
 
   const fetchStatistics = useCallback(async () => {
     try {
@@ -151,7 +48,6 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
         status: "ditolak",
       });
       if (activeKabupaten) params.set("kabupaten", activeKabupaten);
-      if (!isSuperAdmin && user?.uid) params.set("adminId", user.uid);
 
       const response = await fetch(`/api/admin/gesa-survey?${params.toString()}`, { cache: "no-store" });
       if (!response.ok) {
@@ -168,26 +64,6 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
       const existingCount = payload.existing?.totalData || 0;
       const proposeCount = payload.propose?.totalData || 0;
       const praExistingCount = payload.praExisting?.totalData || 0;
-      const supabaseHasData = existingCount > 0 || proposeCount > 0 || praExistingCount > 0;
-
-      if (!supabaseHasData) {
-        const [existingRows, proposeRows, praExistingRows] = await Promise.all([
-          fetchCollectionRows("survey-existing", "existing"),
-          fetchCollectionRows("survey-apj-propose", "propose"),
-          fetchCollectionRows("survey-pra-existing", "pra-existing"),
-        ]);
-
-        setStats({
-          total: existingRows.length + proposeRows.length + praExistingRows.length,
-          existing: existingRows.length,
-          propose: proposeRows.length,
-          praExisting: praExistingRows.length,
-        });
-        setStatsLoaded(true);
-        setDataSource("firestore");
-        setLastUpdatedAt(new Date());
-        return;
-      }
 
       setStats({
         total: existingCount + proposeCount + praExistingCount,
@@ -203,7 +79,7 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
     } finally {
       setStatsLoading(false);
     }
-  }, [activeKabupaten, fetchCollectionRows, isSuperAdmin, user?.uid]);
+  }, [activeKabupaten]);
 
   useEffect(() => {
     setStatsLoaded(false);
@@ -214,7 +90,7 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
       propose: 0,
       praExisting: 0,
     });
-    setDataSource("Belum ada");
+    setDataSource("supabase");
     setLastUpdatedAt(null);
   }, [activeKabupaten]);
 
@@ -225,12 +101,19 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
   const handleExportCsv = async () => {
     try {
       setExportLoading(true);
-      const [existingRows, proposeRows, praExistingRows] = await Promise.all([
-        fetchCollectionRows("survey-existing", "existing"),
-        fetchCollectionRows("survey-apj-propose", "propose"),
-        fetchCollectionRows("survey-pra-existing", "pra-existing"),
-      ]);
-      const allRows = [...existingRows, ...proposeRows, ...praExistingRows];
+      const params = new URLSearchParams({
+        includeDetails: "1",
+        status: "ditolak",
+      });
+      if (activeKabupaten) params.set("kabupaten", activeKabupaten);
+
+      const response = await fetch(`/api/admin/gesa-survey?${params.toString()}`, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Gagal memuat data survey ditolak dari Supabase.");
+      }
+
+      const payload = await response.json() as { allRows?: Survey[] };
+      const allRows = Array.isArray(payload.allRows) ? payload.allRows : [];
 
       if (allRows.length === 0) {
         alert("Tidak ada data survey ditolak untuk diekspor.");

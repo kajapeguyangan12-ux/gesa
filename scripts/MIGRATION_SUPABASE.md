@@ -56,6 +56,15 @@ create table if not exists public.sync_state (
 
 ## 4. Jalankan migrasi / sync lokal
 
+Aktifkan incremental sync di `.env.migration.local`:
+
+```env
+SYNC_STATE_BACKEND=supabase
+SUPABASE_SYNC_STATE_TABLE=sync_state
+INCREMENTAL_SYNC=true
+SYNC_MODE=incremental
+```
+
 Dry run:
 
 ```bash
@@ -74,6 +83,18 @@ Sync incremental sekali jalan:
 npm run sync:supabase:once
 ```
 
+Sync khusus halaman kerja survey:
+
+```bash
+npm run sync:supabase:once:survey-work
+```
+
+Sync khusus dashboard/backoffice:
+
+```bash
+npm run sync:supabase:once:backoffice
+```
+
 Default collection yang ikut sync:
 - `tasks`
 - `reports`
@@ -87,6 +108,39 @@ Override collection:
 ```powershell
 $env:SYNC_COLLECTIONS="tasks,reports,survey-pra-existing"
 npm run sync:supabase:once
+```
+
+## 4a. Scheduled task Windows lokal
+
+Kalau Anda menjalankan sync dari Windows Task Scheduler, sekarang task bisa dibedakan per profile.
+
+Task 5 menit untuk halaman kerja survey:
+
+```powershell
+$env:SYNC_TASK_NAME="GesaSupabaseSyncSurvey5m"
+$env:SYNC_PROFILE="survey-work"
+$env:SYNC_INTERVAL_MINUTES="5"
+$env:SYNC_MODE="incremental"
+$env:INCREMENTAL_SYNC="true"
+npm run sync:supabase:register-task
+```
+
+Task 15 menit untuk dashboard/backoffice:
+
+```powershell
+$env:SYNC_TASK_NAME="GesaSupabaseSyncBackoffice15m"
+$env:SYNC_PROFILE="backoffice"
+$env:SYNC_INTERVAL_MINUTES="15"
+$env:SYNC_MODE="incremental"
+$env:INCREMENTAL_SYNC="true"
+npm run sync:supabase:register-task
+```
+
+Hapus task:
+
+```powershell
+$env:SYNC_TASK_NAME="GesaSupabaseSyncSurvey5m"
+npm run sync:supabase:unregister-task
 ```
 
 ## 5. Aktifkan mode cloud yang benar
@@ -143,24 +197,42 @@ Catatan:
 - `SYNC_ENDPOINT_TOKEN` dipakai untuk melindungi endpoint `/sync`
 - jika mau lebih ketat, Cloud Scheduler juga bisa pakai OIDC service account; token header tetap boleh dipakai sebagai lapisan tambahan
 
-## 7. Buat Cloud Scheduler tiap 2 jam
+## 7. Buat Cloud Scheduler 2 jalur
 
-Setelah Cloud Run service aktif, buat scheduler:
+Skema yang direkomendasikan:
+- `tasks`, `survey-existing`, `survey-apj-propose`, `survey-pra-existing`: tiap 5 menit
+- `reports`, `user-admin`: tiap 15 menit
+
+Dengan ini:
+- halaman kerja verifikasi/validasi di Supabase akan mengejar perubahan maksimal 5 menit
+- filter admin biasa tetap akurat karena ownership tugas ikut tersync di jalur 5 menit
+- dashboard dan halaman umum tetap hemat read dengan job 15 menit
+
+### Scheduler 5 menit untuk halaman kerja survey
 
 ```bash
-gcloud scheduler jobs create http gesa-supabase-sync-2h ^
+gcloud scheduler jobs create http gesa-supabase-sync-survey-5m ^
   --location asia-southeast1 ^
-  --schedule "0 */2 * * *" ^
-  --uri "https://YOUR_CLOUD_RUN_URL/sync" ^
+  --schedule "*/5 * * * *" ^
+  --uri "https://YOUR_CLOUD_RUN_URL/sync?profile=survey-work" ^
   --http-method POST ^
   --headers "Authorization=Bearer YOUR_LONG_RANDOM_TOKEN"
 ```
 
-Cron `0 */2 * * *` artinya jalan setiap 2 jam.
+### Scheduler 15 menit untuk dashboard/backoffice
+
+```bash
+gcloud scheduler jobs create http gesa-supabase-sync-backoffice-15m ^
+  --location asia-southeast1 ^
+  --schedule "*/15 * * * *" ^
+  --uri "https://YOUR_CLOUD_RUN_URL/sync?profile=backoffice" ^
+  --http-method POST ^
+  --headers "Authorization=Bearer YOUR_LONG_RANDOM_TOKEN"
+```
 
 Dengan arsitektur ini:
 1. user tetap input ke Firebase
-2. Cloud Scheduler memicu Cloud Run tiap 2 jam
+2. Cloud Scheduler memicu Cloud Run sesuai profile
 3. Cloud Run hanya sync data yang berubah
 4. halaman aplikasi baca dari Supabase
 

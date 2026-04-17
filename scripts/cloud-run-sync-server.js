@@ -1,5 +1,5 @@
 const http = require("http");
-const { runSyncOnce, getCollections, getSyncMode } = require("./sync-firebase-to-supabase-once");
+const { runSyncOnce, getCollections, getCollectionsFromProfile, getSyncMode } = require("./sync-firebase-to-supabase-once");
 
 const port = Math.max(1, parseInt(process.env.PORT || "8080", 10));
 const syncToken = process.env.SYNC_ENDPOINT_TOKEN || "";
@@ -22,12 +22,14 @@ function isAuthorized(request) {
 }
 
 const server = http.createServer(async (request, response) => {
-  if (request.url === "/healthz" && request.method === "GET") {
+  const requestUrl = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+
+  if (requestUrl.pathname === "/healthz" && request.method === "GET") {
     sendJson(response, 200, { ok: true, running });
     return;
   }
 
-  if (request.url !== "/sync") {
+  if (requestUrl.pathname !== "/sync") {
     sendJson(response, 404, { ok: false, error: "Not found" });
     return;
   }
@@ -49,14 +51,23 @@ const server = http.createServer(async (request, response) => {
 
   running = true;
   const startedAt = new Date().toISOString();
+  const explicitCollections = requestUrl.searchParams.get("collections");
+  const requestedProfile = requestUrl.searchParams.get("profile");
 
   try {
-    await runSyncOnce(getCollections());
+    const collections =
+      explicitCollections
+        ? explicitCollections.split(",").map((item) => item.trim()).filter(Boolean)
+        : getCollectionsFromProfile(requestedProfile) || getCollections();
+
+    await runSyncOnce(collections);
     sendJson(response, 200, {
       ok: true,
       startedAt,
       finishedAt: new Date().toISOString(),
       mode: getSyncMode(),
+      profile: requestedProfile || null,
+      collections,
     });
   } catch (error) {
     console.error("Cloud Run sync failed:", error);

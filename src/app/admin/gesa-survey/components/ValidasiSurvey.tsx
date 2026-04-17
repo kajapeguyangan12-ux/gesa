@@ -2,19 +2,9 @@
 
 import { useState, useEffect, useMemo } from "react";
 import {
-  collection,
   deleteDoc,
   doc,
-  getCountFromServer,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  QueryConstraint,
-  QueryDocumentSnapshot,
   runTransaction,
-  startAfter,
-  where,
   updateDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -22,8 +12,8 @@ import dynamic from "next/dynamic";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { PRA_EXISTING_TABANAN_DATA } from "@/app/survey-pra-existing/location-data";
 import type { TaskNavigationInfo } from "@/utils/taskNavigation";
-import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
+import { fetchAdminSurveyRows, type AdminSurveyRow } from "./supabaseSurveyClient";
 
 // Define props type inline
 interface MapComponentProps {
@@ -232,96 +222,45 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showAll, setShowAll] = useState(false);
   const [hasNextPage, setHasNextPage] = useState(false);
-  const [pageCursors, setPageCursors] = useState<QueryDocumentSnapshot[]>([]);
-  const cacheScope = activeKabupaten || "all";
-  const validasiStatsCacheKey = `validasi_survey_stats_${cacheScope}`;
-  const buildPageCacheKey = (tab: "existing" | "propose" | "pra-existing", page: number, perPage: number) =>
-    `validasi_survey_page_${tab}_${cacheScope}_${perPage}_${page}`;
-  const buildAllDataCacheKey = (tab: "existing" | "propose" | "pra-existing") =>
-    `validasi_survey_all_${tab}_${cacheScope}`;
+  const getCurrentUser = () => {
+    const storedUser = localStorage.getItem("gesa_user");
+    return storedUser ? JSON.parse(storedUser) : null;
+  };
 
-  const mapSurveyDoc = (docSnap: QueryDocumentSnapshot, tab: "existing" | "propose" | "pra-existing") => {
-    const data = docSnap.data();
+  const mapSupabaseSurvey = (survey: AdminSurveyRow) => survey as Survey;
 
-    if (tab === "existing") {
+  const removeSurveyFromWorkingSet = (surveyId: string) => {
+    setSurveys((current) => current.filter((item) => item.id !== surveyId));
+    setStats((current) => {
+      const removedSurvey = surveys.find((item) => item.id === surveyId);
+      if (!removedSurvey) return current;
+
       return {
-        id: docSnap.id,
-        ...data,
-        title: data.title || `Survey existing - ${data.namaJalan || "Untitled"}`,
-        type: "existing",
-        status: data.status || "menunggu",
-        surveyorName: data.surveyorName || "Unknown",
-        kepemilikan: data.kepemilikan || data.keteranganTiang || "N/A",
-        jenis: data.jenis || data.jenisTitik || "N/A",
-        tinggiArm: data.tinggiArm || data.tinggiARM || "N/A",
-      } as Survey;
-    }
-
-    if (tab === "propose") {
-      return {
-        id: docSnap.id,
-        ...data,
-        title: data.title || `Survey propose - ${data.namaJalan || "Untitled"}`,
-        type: "propose",
-        status: data.status || "menunggu",
-        surveyorName: data.surveyorName || "Unknown",
-        kepemilikan: data.kepemilikan || data.keteranganTiang || "N/A",
-        jenis: data.jenis || data.jenisTitik || "N/A",
-        tinggiArm: data.tinggiArm || data.tinggiARM || "N/A",
-      } as Survey;
-    }
-
-    return {
-      id: docSnap.id,
-      ...data,
-      title: data.title || `Survey pra existing - ${data.jenisLampu || "Untitled"}`,
-      type: "pra-existing",
-      status: data.status || "menunggu",
-      surveyorName: data.surveyorName || "Unknown",
-    } as Survey;
+        total: Math.max(0, current.total - 1),
+        existing: removedSurvey.type === "existing" ? Math.max(0, current.existing - 1) : current.existing,
+        propose: removedSurvey.type === "propose" ? Math.max(0, current.propose - 1) : current.propose,
+        praExisting:
+          removedSurvey.type === "pra-existing" ? Math.max(0, current.praExisting - 1) : current.praExisting,
+      };
+    });
+    setSelectedSurvey((current) => (current?.id === surveyId ? null : current));
+    setShowDetailModal((current) => (selectedSurvey?.id === surveyId ? false : current));
   };
 
   const fetchStatistics = async (forceRefresh = false) => {
     try {
       setStatsLoading(true);
-      if (forceRefresh) {
-        clearCachedData(validasiStatsCacheKey);
-      }
+      const currentUser = getCurrentUser();
+      const payload = await fetchAdminSurveyRows({
+        activeKabupaten,
+        adminId: null,
+        statuses: ["menunggu"],
+      });
 
-      const cachedStats = await fetchWithCache(
-        validasiStatsCacheKey,
-        async () => {
-          const buildCountQuery = (collectionName: string) => {
-            const ref = collection(db, collectionName);
-            const constraints: QueryConstraint[] = [where("status", "==", "menunggu")];
-            if (activeKabupaten) constraints.unshift(where("kabupaten", "==", activeKabupaten));
-            return query(ref, ...constraints);
-          };
-
-          const countResults = await Promise.allSettled([
-            getCountFromServer(buildCountQuery("survey-existing")),
-            getCountFromServer(buildCountQuery("survey-apj-propose")),
-            getCountFromServer(buildCountQuery("survey-pra-existing")),
-          ]);
-
-          const existingCount = countResults[0].status === "fulfilled" ? countResults[0].value.data().count : 0;
-          const proposeCount = countResults[1].status === "fulfilled" ? countResults[1].value.data().count : 0;
-          const praExistingCount = countResults[2].status === "fulfilled" ? countResults[2].value.data().count : 0;
-
-          return {
-            existing: existingCount,
-            propose: proposeCount,
-            praExisting: praExistingCount,
-            total: existingCount + proposeCount + praExistingCount,
-          };
-        },
-        15 * 60 * 1000
-      );
-
-      setStats(cachedStats);
+      setStats(payload.counts);
       setStatsLoaded(true);
-      setDataSource("firestore");
-      setLastUpdatedAt(new Date());
+      setDataSource(payload.source);
+      setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
     } finally {
       setStatsLoading(false);
     }
@@ -344,116 +283,60 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   };
 
   const fetchPage = async (page: number, forceRefresh = false) => {
-    const collectionName =
-      activeTab === "existing"
-        ? "survey-existing"
-        : activeTab === "propose"
-        ? "survey-apj-propose"
-        : "survey-pra-existing";
+    const currentUser = getCurrentUser();
+    const payload = await fetchAdminSurveyRows({
+      activeKabupaten,
+      adminId: null,
+      statuses: ["menunggu"],
+      type: activeTab,
+    });
+    const offset = Math.max(0, (page - 1) * itemsPerPage);
+    const pageRows = payload.rows.slice(offset, offset + itemsPerPage).map(mapSupabaseSurvey);
 
-    const loadLivePage = async () => {
-      const ref = collection(db, collectionName);
-      const constraints: QueryConstraint[] = [where("status", "==", "menunggu"), orderBy("createdAt", "desc"), limit(itemsPerPage)];
-      if (activeKabupaten) constraints.unshift(where("kabupaten", "==", activeKabupaten));
-
-      const previousCursor = page > 1 ? pageCursors[page - 2] : null;
-      if (previousCursor) {
-        constraints.push(startAfter(previousCursor));
-      }
-
-      const snapshot = await getDocs(query(ref, ...constraints));
-      const visibleDocs = snapshot.docs;
-
-      setPageCursors((current) => {
-        const next = current.slice(0, Math.max(page - 1, 0));
-        const lastVisible = visibleDocs[visibleDocs.length - 1];
-        if (lastVisible) {
-          next[page - 1] = lastVisible;
-        }
-        return next;
-      });
-
-      return {
-        surveys: visibleDocs.map((docSnap) => mapSurveyDoc(docSnap, activeTab)),
-        hasMore: visibleDocs.length === itemsPerPage,
-      };
-    };
-
-    if (page === 1) {
-      const pageCacheKey = buildPageCacheKey(activeTab, page, itemsPerPage);
-      if (forceRefresh) {
-        clearCachedData(pageCacheKey);
-      }
-
-      const cachedPage = await fetchWithCache(pageCacheKey, loadLivePage, 15 * 60 * 1000);
-      setSurveys(cachedPage.surveys);
-      setCurrentPage(page);
-      setHasNextPage(cachedPage.hasMore);
-      setShowAll(false);
-      setDataSource("firestore");
-      setLastUpdatedAt(new Date());
-      return;
-    }
-
-    const livePage = await loadLivePage();
-    if (page > 1 && livePage.surveys.length === 0) {
+    if (page > 1 && pageRows.length === 0) {
       setHasNextPage(false);
       return;
     }
-    setSurveys(livePage.surveys);
+
+    setSurveys(pageRows);
     setCurrentPage(page);
-    setHasNextPage(livePage.hasMore);
+    setHasNextPage(offset + itemsPerPage < payload.rows.length);
     setShowAll(false);
-    setDataSource("firestore");
-    setLastUpdatedAt(new Date());
+    setDataSource(payload.source);
+    setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
+    setStats({
+      total: payload.rows.length,
+      existing: payload.rows.filter((row) => row.type === "existing").length,
+      propose: payload.rows.filter((row) => row.type === "propose").length,
+      praExisting: payload.rows.filter((row) => row.type === "pra-existing").length,
+    });
+    setStatsLoaded(true);
   };
 
   const fetchAllTabData = async (forceRefresh = false) => {
-    const collectionName =
-      activeTab === "existing"
-        ? "survey-existing"
-        : activeTab === "propose"
-        ? "survey-apj-propose"
-        : "survey-pra-existing";
-    const allDataCacheKey = buildAllDataCacheKey(activeTab);
-    if (forceRefresh) {
-      clearCachedData(allDataCacheKey);
-    }
+    const currentUser = getCurrentUser();
+    const payload = await fetchAdminSurveyRows({
+      activeKabupaten,
+      adminId: null,
+      statuses: ["menunggu"],
+      type: activeTab,
+    });
 
-    const cachedSurveys = await fetchWithCache(
-      allDataCacheKey,
-      async () => {
-        const ref = collection(db, collectionName);
-        const constraints: QueryConstraint[] = [where("status", "==", "menunggu"), orderBy("createdAt", "desc")];
-        if (activeKabupaten) constraints.unshift(where("kabupaten", "==", activeKabupaten));
-
-        const snapshot = await getDocs(query(ref, ...constraints));
-        return snapshot.docs.map((docSnap) => mapSurveyDoc(docSnap, activeTab));
-      },
-      15 * 60 * 1000
-    );
-
-    setSurveys(cachedSurveys);
+    setSurveys(payload.rows.map(mapSupabaseSurvey));
     setShowAll(true);
     setCurrentPage(1);
     setHasNextPage(false);
-    setDataSource("firestore");
-    setLastUpdatedAt(new Date());
+    setDataSource(payload.source);
+    setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
+    setStatsLoaded(true);
   };
 
-  const clearCurrentTabCaches = () => {
-    clearCachedData(validasiStatsCacheKey);
-    clearCachedData(buildAllDataCacheKey(activeTab));
-    [10, 25, 50, 100].forEach((perPage) => {
-      clearCachedData(buildPageCacheKey(activeTab, 1, perPage));
-    });
-  };
+  const clearCurrentTabCaches = () => undefined;
 
   useEffect(() => {
     setCurrentPage(1);
     setSurveys([]);
     setHasNextPage(false);
-    setPageCursors([]);
     setStatsLoaded(false);
     setStats({
       total: 0,
@@ -555,7 +438,6 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     setItemsPerPage(value);
     setCurrentPage(1);
     setShowAll(false);
-    setPageCursors([]);
   };
 
   // Pagination controls component
@@ -832,11 +714,13 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
         editedBy: currentUser?.name || currentUser?.email || 'Admin',
         updatedAt: new Date()
       });
-      
-      // Refresh surveys
-      setPageCursors([]);
-      clearCurrentTabCaches();
-      await fetchSurveys(1, true);
+
+      setSurveys((current) =>
+        current.map((survey) => (survey.id === editFormData.id ? { ...survey, ...editFormData } : survey))
+      );
+      if (selectedSurvey?.id === editFormData.id) {
+        setSelectedSurvey((current) => (current ? { ...current, ...editFormData } : current));
+      }
       setShowEditModal(false);
       setEditFormData(null);
       
@@ -906,11 +790,8 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
           verifiedAt: new Date()
         });
       });
-      
-      // Refresh surveys
-      setPageCursors([]);
-      clearCurrentTabCaches();
-      await fetchSurveys(1, true);
+
+      removeSurveyFromWorkingSet(survey.id);
       setShowDetailModal(false);
       setSelectedSurvey(null);
       
@@ -939,11 +820,8 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
       
       // Hard delete - hapus dokumen permanen
       await deleteDoc(surveyDoc);
-      
-      // Refresh surveys
-      setPageCursors([]);
-      clearCurrentTabCaches();
-      await fetchSurveys(1, true);
+
+      removeSurveyFromWorkingSet(survey.id);
       
       alert("Survey berhasil dihapus permanen!");
     } catch (error) {
@@ -978,11 +856,8 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
         rejectedAt: new Date(),
         rejectionReason: alasan
       });
-      
-      // Refresh surveys
-      setPageCursors([]);
-      clearCurrentTabCaches();
-      await fetchSurveys(1, true);
+
+      removeSurveyFromWorkingSet(survey.id);
       setShowDetailModal(false);
       setSelectedSurvey(null);
       

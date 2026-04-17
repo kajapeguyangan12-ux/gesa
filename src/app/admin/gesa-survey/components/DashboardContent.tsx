@@ -544,7 +544,6 @@ export default function DashboardContent({
   const dashboardApiQuery = useMemo(() => {
     const params = new URLSearchParams();
     if (activeKabupaten) params.set("kabupaten", activeKabupaten);
-    if (!isSuperAdmin && user?.uid) params.set("adminId", user.uid);
     return params.toString();
   }, [activeKabupaten, isSuperAdmin, user?.uid]);
 

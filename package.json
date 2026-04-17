@@ -22,6 +22,8 @@
     "migrate:supabase:tracking-sessions": "node scripts/migrate-firebase-to-supabase.js tracking-sessions",
     "migrate:supabase:tracking-sessions:dry-run": "node scripts/migrate-firebase-to-supabase.js tracking-sessions --dry-run",
     "sync:supabase:once": "node scripts/sync-firebase-to-supabase-once.js",
+    "sync:supabase:once:survey-work": "set SYNC_PROFILE=survey-work&& node scripts/sync-firebase-to-supabase-once.js",
+    "sync:supabase:once:backoffice": "set SYNC_PROFILE=backoffice&& node scripts/sync-firebase-to-supabase-once.js",
     "sync:supabase:cloud-server": "node scripts/cloud-run-sync-server.js",
     "sync:supabase:scheduler": "node scripts/sync-firebase-to-supabase-scheduler.js",
     "sync:supabase:register-task": "powershell -ExecutionPolicy Bypass -File scripts/register-supabase-sync-task.ps1",

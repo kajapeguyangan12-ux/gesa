@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs, doc, updateDoc, deleteDoc, query, where, orderBy, limit } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import dynamic from "next/dynamic";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 
@@ -115,31 +114,15 @@ type TimestampLike =
   | null
   | undefined;
 
-interface Task {
-  id: string;
-  surveyorId: string;
-  surveyorName: string;
-  surveyorEmail: string;
-  type: string;
-  status: string;
-  createdByAdminId?: string;
-  createdByAdminName?: string;
-  createdByAdminEmail?: string;
-}
-
 export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupaten?: string | null }) {
-  const VALIDASI_CACHE_PREFIX = "data_survey_validasi_v2";
-  const TASK_FETCH_LIMIT = 10;
   const DEFAULT_FETCH_LIMIT = 10;
   const LOAD_MORE_BATCH = 10;
   const [surveys, setSurveys] = useState<Survey[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [dataSource, setDataSource] = useState<string>("Belum ada");
-  const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -171,7 +154,6 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
 
   useEffect(() => {
     setSurveys([]);
-    setTasks([]);
     setCurrentPage(1);
     setLoadedLimit(DEFAULT_FETCH_LIMIT);
     setDataLoaded(false);
@@ -193,25 +175,19 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       
       const storedUser = localStorage.getItem('gesa_user');
       const currentAdmin = storedUser ? JSON.parse(storedUser) : null;
-      const adminId = currentAdmin?.uid || null;
       const superAdmin = currentAdmin?.role === "super-admin";
-      setCurrentAdminId(adminId);
       const normalizedLimit = Math.max(requestedLimit, DEFAULT_FETCH_LIMIT);
       const params = new URLSearchParams({
         includeDetails: "1",
         status: "diverifikasi",
       });
       if (activeKabupaten) params.set("kabupaten", activeKabupaten);
-      if (!superAdmin && adminId) params.set("adminId", adminId);
-
       const response = await fetch(`/api/admin/gesa-survey?${params.toString()}`, { cache: "no-store" });
       if (!response.ok) {
         throw new Error("Gagal memuat data validasi dari Supabase.");
       }
       const payload = await response.json() as { allRows?: Survey[]; source?: string; generatedAt?: string };
       const allSurveys = Array.isArray(payload.allRows) ? payload.allRows : [];
-      setTasks([]);
-      
       const limitedSurveys = allSurveys.slice(0, normalizedLimit);
       setLoadedLimit(normalizedLimit);
       setSurveys(limitedSurveys);
@@ -233,11 +209,22 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     }
   };
 
-  const clearValidasiCaches = () => {
-    clearCachedData(`${VALIDASI_CACHE_PREFIX}_tasks_${currentAdminId || "all"}`);
-    clearCachedData(`${VALIDASI_CACHE_PREFIX}_surveys_${currentAdminId || "all"}_${activeKabupaten || "all"}_${DEFAULT_FETCH_LIMIT}`);
-    clearCachedData(`${VALIDASI_CACHE_PREFIX}_surveys_${currentAdminId || "all"}_${activeKabupaten || "all"}_${loadedLimit}`);
-    clearCachedData(`${VALIDASI_CACHE_PREFIX}_surveys_${currentAdminId || "all"}_${activeKabupaten || "all"}_${loadedLimit + LOAD_MORE_BATCH}`);
+  const removeSurveyFromList = (surveyId: string) => {
+    setSurveys((current) => current.filter((survey) => survey.id !== surveyId));
+    setStats((current) => {
+      const removedSurvey = surveys.find((survey) => survey.id === surveyId);
+      if (!removedSurvey) return current;
+
+      return {
+        total: Math.max(0, current.total - 1),
+        existing: removedSurvey.type === "existing" ? Math.max(0, current.existing - 1) : current.existing,
+        propose: removedSurvey.type === "propose" ? Math.max(0, current.propose - 1) : current.propose,
+        praExisting:
+          removedSurvey.type === "pra-existing" ? Math.max(0, current.praExisting - 1) : current.praExisting,
+      };
+    });
+    setSelectedSurvey((current) => (current?.id === surveyId ? null : current));
+    setShowDetailModal((current) => (selectedSurvey?.id === surveyId ? false : current));
   };
 
   const handleViewDetail = (survey: Survey) => {
@@ -306,9 +293,13 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         editedBy: currentUser?.name || currentUser?.email || 'Admin',
         updatedAt: new Date()
       });
-      
-      clearValidasiCaches();
-      await fetchAllSurveys(loadedLimit, true);
+
+      setSurveys((current) =>
+        current.map((survey) => (survey.id === editFormData.id ? { ...survey, ...editFormData } : survey))
+      );
+      if (selectedSurvey?.id === editFormData.id) {
+        setSelectedSurvey((current) => (current ? { ...current, ...editFormData } : current));
+      }
       setShowEditModal(false);
       setEditFormData(null);
       
@@ -356,9 +347,8 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         validatedBy: currentUser?.name || currentUser?.email || 'Admin',
         validatedAt: new Date()
       });
-      
-      clearValidasiCaches();
-      await fetchAllSurveys(loadedLimit, true);
+
+      removeSurveyFromList(survey.id);
       
       alert('Survey berhasil divalidasi! Survey dipindahkan ke Data Survey Valid.');
     } catch (error) {
@@ -415,8 +405,19 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       );
 
       setSelectedSurveyIds([]);
-      clearValidasiCaches();
-      await fetchAllSurveys(loadedLimit, true);
+      setSurveys((current) => current.filter((survey) => !selectedSurveyIds.includes(survey.id)));
+      setStats((current) => {
+        const removedSurveys = filteredSurveys.filter((survey) => selectedSurveyIds.includes(survey.id));
+        return removedSurveys.reduce(
+          (acc, survey) => ({
+            total: Math.max(0, acc.total - 1),
+            existing: survey.type === "existing" ? Math.max(0, acc.existing - 1) : acc.existing,
+            propose: survey.type === "propose" ? Math.max(0, acc.propose - 1) : acc.propose,
+            praExisting: survey.type === "pra-existing" ? Math.max(0, acc.praExisting - 1) : acc.praExisting,
+          }),
+          current
+        );
+      });
       alert(`${selectedSurveys.length} data berhasil divalidasi.`);
     } catch (error) {
       console.error("Error bulk validating surveys:", error);
@@ -479,9 +480,8 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         rejectedAt: new Date(),
         rejectionReason: alasan
       });
-      
-      clearValidasiCaches();
-      await fetchAllSurveys(loadedLimit, true);
+
+      removeSurveyFromList(survey.id);
       setShowDetailModal(false);
       setSelectedSurvey(null);
       
@@ -505,8 +505,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       const surveyDoc = doc(db, collectionName, survey.id);
       
       await deleteDoc(surveyDoc);
-      clearValidasiCaches();
-      await fetchAllSurveys(loadedLimit, true);
+      removeSurveyFromList(survey.id);
       
       alert('Survey berhasil dihapus!');
     } catch (error) {

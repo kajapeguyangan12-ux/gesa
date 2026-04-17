@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, getDocs, query, where, deleteDoc, doc, orderBy, limit, startAfter, QueryConstraint, QueryDocumentSnapshot } from "firebase/firestore";
+import { deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/hooks/useAuth";
+import { fetchAdminSurveyRows } from "./supabaseSurveyClient";
 
 // Dynamic import for Map component
 const DynamicDetailMap = dynamic(
@@ -90,14 +91,10 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalItems, setTotalItems] = useState(0);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [pageCursors, setPageCursors] = useState<QueryDocumentSnapshot[]>([]);
 
   useEffect(() => {
     setSurveys([]);
     setCurrentPage(1);
-    setHasNextPage(false);
-    setPageCursors([]);
   }, [statusFilter, activeKabupaten, itemsPerPage]);
 
   useEffect(() => {
@@ -118,76 +115,16 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
   const fetchPage = async (page: number) => {
     try {
       setLoading(true);
-      const surveysRef = collection(db, "survey-existing");
-      const constraints: QueryConstraint[] = [where("status", "==", statusFilter), orderBy("createdAt", "desc"), limit(itemsPerPage)];
-      if (activeKabupaten) constraints.unshift(where("kabupaten", "==", activeKabupaten));
-      const previousCursor = page > 1 ? pageCursors[page - 2] : null;
-      if (previousCursor) constraints.push(startAfter(previousCursor));
-      const snapshot = await getDocs(query(surveysRef, ...constraints));
-      const visibleDocs = snapshot.docs;
-      const hasMore = visibleDocs.length === itemsPerPage;
-
-      if (page > 1 && visibleDocs.length === 0) {
-        setHasNextPage(false);
-        return;
-      }
-      
-      const data = visibleDocs.map((doc) => ({
-        id: doc.id,
-        title: doc.data().title || `Survey Existing - ${doc.data().namaJalan || "Untitled"}`,
-        namaJalan: doc.data().namaJalan,
-        namaGang: doc.data().namaGang,
-        lokasiJalan: doc.data().lokasiJalan,
+      const payload = await fetchAdminSurveyRows({
+        activeKabupaten,
+        adminId: null,
+        statuses: [statusFilter],
         type: "existing",
-        status: doc.data().status || statusFilter,
-        surveyorName: doc.data().surveyorName || "Unknown",
-        surveyorEmail: doc.data().surveyorEmail,
-        createdAt: doc.data().createdAt,
-        verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
-        verifiedBy: doc.data().verifiedBy || doc.data().editedBy || "Admin",
-        validatedAt: doc.data().validatedAt || doc.data().createdAt,
-        validatedBy: doc.data().validatedBy || doc.data().editedBy || "Admin",
-        latitude: doc.data().latitude || 0,
-        longitude: doc.data().longitude || 0,
-        accuracy: doc.data().accuracy,
-        kepemilikan: doc.data().kepemilikan || doc.data().keteranganTiang,
-        keteranganTiang: doc.data().keteranganTiang,
-        jenis: doc.data().jenis || doc.data().jenisTitik,
-        jenisTitik: doc.data().jenisTitik,
-        jenisExisting: doc.data().jenisExisting,
-        tinggiArm: doc.data().tinggiArm || doc.data().tinggiARM,
-        tinggiARM: doc.data().tinggiARM,
-        tinggiAPM: doc.data().tinggiAPM,
-        kategori: doc.data().kategori || "Survey Existing",
-        zona: doc.data().zona || "N/A",
-        photoUrl: doc.data().photoUrl,
-        fotoTiangAPM: doc.data().fotoTiangAPM,
-        fotoTitikActual: doc.data().fotoTitikActual,
-        palet: doc.data().palet,
-        lumina: doc.data().lumina,
-        metodeUkur: doc.data().metodeUkur,
-        tinggiMedian: doc.data().tinggiMedian,
-        lebarMedian: doc.data().lebarMedian,
-        lebarJalan1: doc.data().lebarJalan1,
-        lebarJalan2: doc.data().lebarJalan2,
-        lebarTrotoar: doc.data().lebarTrotoar,
-        lamnyaBerdekatan: doc.data().lamnyaBerdekatan,
-        lebarBahuBertiang: doc.data().lebarBahuBertiang,
-        lebarTrotoarBertiang: doc.data().lebarTrotoarBertiang,
-        lainnyaBertiang: doc.data().lainnyaBertiang,
-        keterangan: doc.data().keterangan,
-      })) as Survey[];
-      
-      setSurveys(data);
-      setCurrentPage(page);
-      setHasNextPage(hasMore);
-      setTotalItems(0);
-      setPageCursors((current) => {
-        const next = current.slice(0, Math.max(page - 1, 0));
-        const lastVisible = visibleDocs[visibleDocs.length - 1];
-        if (lastVisible) next[page - 1] = lastVisible;
-        return next;
       });
+
+      setSurveys(payload.rows as Survey[]);
+      setCurrentPage(page);
+      setTotalItems(payload.rows.length);
     } catch (error) {
       console.error("Error fetching surveys:", error);
     } finally {
@@ -261,7 +198,8 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
     
     try {
       await deleteDoc(doc(db, "survey-existing", id));
-      await fetchSurveys();
+      setSurveys((current) => current.filter((survey) => survey.id !== id));
+      setTotalItems((current) => Math.max(0, current - 1));
       alert("Data berhasil dihapus!");
     } catch (error) {
       console.error("Error deleting survey:", error);
@@ -284,15 +222,15 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
   });
 
   // Pagination logic
-  const effectiveTotalItems = totalItems > 0 ? totalItems : (hasNextPage ? currentPage * itemsPerPage + 1 : ((currentPage - 1) * itemsPerPage) + surveys.length);
-  const totalPages = Math.max(1, totalItems > 0 ? Math.ceil(effectiveTotalItems / itemsPerPage) : currentPage + (hasNextPage ? 1 : 0));
+  const effectiveTotalItems = filteredSurveys.length;
+  const totalPages = Math.max(1, Math.ceil(effectiveTotalItems / itemsPerPage));
   const startIndex = filteredSurveys.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
   const endIndex = filteredSurveys.length === 0 ? 0 : Math.min(startIndex + itemsPerPage - 1, effectiveTotalItems);
-  const paginatedSurveys = filteredSurveys.slice(0, itemsPerPage);
+  const paginatedSurveys = filteredSurveys.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const handlePageChange = (page: number) => {
     if (page < 1 || page > totalPages || page === currentPage) return;
-    void fetchPage(page);
+    setCurrentPage(page);
   };
 
   const getStatusBadge = (status: string) => {
@@ -343,6 +281,10 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
 
       {/* Search and Filter Bar */}
       <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+          <span className="h-2 w-2 rounded-full bg-blue-500" />
+          Data daftar memakai Supabase
+        </div>
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1 relative">
             <svg className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -581,7 +523,7 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
                   
                   <button
                     onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages || !hasNextPage}
+                    disabled={currentPage === totalPages}
                     className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Next

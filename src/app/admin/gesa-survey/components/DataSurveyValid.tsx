@@ -1,9 +1,6 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { fetchWithCache } from "@/utils/firestoreCache";
 import { useAuth } from "@/hooks/useAuth";
 import SurveyExistingDetail from "./SurveyExistingDetail";
 import SurveyProposeDetail from "./SurveyProposeDetail";
@@ -27,12 +24,6 @@ interface Survey {
   banjar?: string;
 }
 
-interface DashboardSummaryDocument {
-  propose?: { totalDiverifikasi?: number; totalTervalidasi?: number };
-  existing?: { totalDiverifikasi?: number; totalTervalidasi?: number };
-  praExisting?: { totalDiverifikasi?: number; totalTervalidasi?: number };
-}
-
 export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?: string | null }) {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "super-admin";
@@ -54,40 +45,7 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
   const [statsLoading, setStatsLoading] = useState(false);
   const [fullDataLoaded, setFullDataLoaded] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
-  const [dataSource, setDataSource] = useState<string>("Belum ada");
-
-  const hydrateStatsFromSummary = useCallback(async () => {
-    if (!isSuperAdmin) return;
-
-    try {
-      const summaryDocId = `gesa-survey_${activeKabupaten || "all"}_super`;
-      const summary = await fetchWithCache<DashboardSummaryDocument | null>(
-        `dashboard_summary_${summaryDocId}`,
-        async () => {
-          const snapshot = await getDoc(doc(db, "dashboard-summaries", summaryDocId));
-          return snapshot.exists() ? (snapshot.data() as DashboardSummaryDocument) : null;
-        },
-        10 * 60_000
-      );
-
-      if (!summary) return;
-
-      const existing = summary.existing?.totalTervalidasi || 0;
-      const propose = summary.propose?.totalTervalidasi || 0;
-      const praExisting = summary.praExisting?.totalTervalidasi || 0;
-
-      setStats({
-        total: existing + propose + praExisting,
-        existing,
-        propose,
-        praExisting,
-      });
-      setStatsLoaded(true);
-      setLastUpdatedAt(new Date());
-    } catch (error) {
-      console.error("Error hydrating valid survey stats from summary:", error);
-    }
-  }, [activeKabupaten, isSuperAdmin]);
+  const [dataSource, setDataSource] = useState<string>("supabase");
 
   const fetchStatistics = useCallback(async () => {
     try {
@@ -97,7 +55,6 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
         status: targetStatus,
       });
       if (activeKabupaten) params.set("kabupaten", activeKabupaten);
-      if (!isSuperAdmin && user?.uid) params.set("adminId", user.uid);
 
       const response = await fetch(`/api/admin/gesa-survey?${params.toString()}`, { cache: "no-store" });
       if (!response.ok) {
@@ -116,94 +73,6 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
       const existingCount = payload.existing?.totalData || 0;
       const proposeCount = payload.propose?.totalData || 0;
       const praExistingCount = payload.praExisting?.totalData || 0;
-      const supabaseRows = Array.isArray(payload.allRows) ? payload.allRows : [];
-      const supabaseHasData = supabaseRows.length > 0 || existingCount > 0 || proposeCount > 0 || praExistingCount > 0;
-
-      if (!supabaseHasData) {
-        const existingRef = collection(db, "survey-existing");
-        const proposeRef = collection(db, "survey-apj-propose");
-        const praExistingRef = collection(db, "survey-pra-existing");
-
-        const qExisting = activeKabupaten
-          ? query(existingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
-          : query(existingRef, where("status", "==", targetStatus));
-        const qPropose = activeKabupaten
-          ? query(proposeRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
-          : query(proposeRef, where("status", "==", targetStatus));
-        const qPraExisting = activeKabupaten
-          ? query(praExistingRef, where("kabupaten", "==", activeKabupaten), where("status", "==", targetStatus))
-          : query(praExistingRef, where("status", "==", targetStatus));
-
-        const [existingSnapshot, proposeSnapshot, praExistingSnapshot] = await Promise.all([
-          getDocs(qExisting),
-          getDocs(qPropose),
-          getDocs(qPraExisting),
-        ]);
-
-        const fallbackRows = [
-          ...existingSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            title: doc.data().title || `Survey Existing - ${doc.data().namaJalan || "Untitled"}`,
-            type: "existing",
-            status: doc.data().status || targetStatus,
-            surveyorName: doc.data().surveyorName || "Unknown",
-            createdAt: doc.data().createdAt,
-            verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
-            validatedAt: doc.data().validatedAt || null,
-            taskId: doc.data().taskId || "",
-            taskTitle: doc.data().taskTitle || "",
-            kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
-            kecamatan: doc.data().kecamatan || "",
-            desa: doc.data().desa || "",
-            banjar: doc.data().banjar || "",
-          })),
-          ...proposeSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            title: doc.data().title || `Survey APJ Propose - ${doc.data().namaJalan || "Untitled"}`,
-            type: "propose",
-            status: doc.data().status || targetStatus,
-            surveyorName: doc.data().surveyorName || "Unknown",
-            createdAt: doc.data().createdAt,
-            verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
-            validatedAt: doc.data().validatedAt || null,
-            taskId: doc.data().taskId || "",
-            taskTitle: doc.data().taskTitle || "",
-            kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
-            kecamatan: doc.data().kecamatan || "",
-            desa: doc.data().desa || "",
-            banjar: doc.data().banjar || "",
-          })),
-          ...praExistingSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            title: doc.data().title || `Survey Pra Existing - ${doc.data().jenisLampu || "Untitled"}`,
-            type: "pra-existing",
-            status: doc.data().status || targetStatus,
-            surveyorName: doc.data().surveyorName || "Unknown",
-            createdAt: doc.data().createdAt,
-            verifiedAt: doc.data().verifiedAt || doc.data().createdAt,
-            validatedAt: doc.data().validatedAt || null,
-            taskId: doc.data().taskId || "",
-            taskTitle: doc.data().taskTitle || "",
-            kabupaten: doc.data().kabupatenName || doc.data().kabupaten || "",
-            kecamatan: doc.data().kecamatan || "",
-            desa: doc.data().desa || "",
-            banjar: doc.data().banjar || "",
-          })),
-        ] as Survey[];
-
-        setStats({
-          total: fallbackRows.length,
-          existing: fallbackRows.filter((row) => row.type === "existing").length,
-          propose: fallbackRows.filter((row) => row.type === "propose").length,
-          praExisting: fallbackRows.filter((row) => row.type === "pra-existing").length,
-        });
-        setStatsLoaded(true);
-        setFullDataLoaded(true);
-        setSurveys(fallbackRows);
-        setDataSource("firestore");
-        setLastUpdatedAt(new Date());
-        return;
-      }
 
       setStats({
         total: existingCount + proposeCount + praExistingCount,
@@ -221,7 +90,7 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
     } finally {
       setStatsLoading(false);
     }
-  }, [activeKabupaten, isSuperAdmin, targetStatus, user?.uid]);
+  }, [activeKabupaten, targetStatus]);
 
   useEffect(() => {
     setStatsLoaded(false);
@@ -234,7 +103,7 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
     });
     setSurveys([]);
     setSelectedSurveyor("Semua Petugas");
-    setDataSource("Belum ada");
+    setDataSource("supabase");
     setLastUpdatedAt(null);
   }, [activeKabupaten, targetStatus]);
 

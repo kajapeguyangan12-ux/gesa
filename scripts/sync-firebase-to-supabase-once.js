@@ -19,6 +19,25 @@ const DEFAULT_COLLECTIONS = [
   "user-admin",
 ];
 
+const SYNC_PROFILES = {
+  "survey-work": [
+    "tasks",
+    "survey-existing",
+    "survey-apj-propose",
+    "survey-pra-existing",
+  ],
+  backoffice: [
+    "reports",
+    "user-admin",
+  ],
+  full: DEFAULT_COLLECTIONS,
+};
+
+function getCollectionsFromProfile(profileName) {
+  const normalizedProfile = (profileName || "").trim().toLowerCase();
+  return SYNC_PROFILES[normalizedProfile] || null;
+}
+
 function getCollections() {
   const raw = process.env.SYNC_COLLECTIONS?.trim();
   if (!raw) return DEFAULT_COLLECTIONS;
@@ -26,6 +45,19 @@ function getCollections() {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function resolveCollections(explicitCollections) {
+  if (Array.isArray(explicitCollections) && explicitCollections.length > 0) {
+    return explicitCollections;
+  }
+
+  const profileCollections = getCollectionsFromProfile(process.env.SYNC_PROFILE);
+  if (profileCollections) {
+    return profileCollections;
+  }
+
+  return getCollections();
 }
 
 function getSyncMode() {
@@ -65,7 +97,7 @@ function runCollectionSync(collectionName) {
   });
 }
 
-async function runSyncOnce(collections = getCollections()) {
+async function runSyncOnce(collections = resolveCollections()) {
   if (collections.length === 0) {
     console.log("No collections configured for sync.");
     return;
@@ -85,8 +117,11 @@ async function runSyncOnce(collections = getCollections()) {
 
 module.exports = {
   DEFAULT_COLLECTIONS,
+  SYNC_PROFILES,
   getCollections,
+  getCollectionsFromProfile,
   getSyncMode,
+  resolveCollections,
   runCollectionSync,
   runSyncOnce,
 };

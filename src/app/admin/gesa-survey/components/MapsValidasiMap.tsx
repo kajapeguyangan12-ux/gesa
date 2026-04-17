@@ -18,17 +18,17 @@ interface Survey {
   createdAt: TimestampLike;
   validatedAt: TimestampLike;
   // Data sesuai modal
-  namaJalan: string;
-  zona: string;
-  kategori: string;
-  statusIdTitik: string;
-  idTitik: string;
-  dayaLampu: string;
-  dataTiang: string;
-  dataRuas: string;
-  subRuas: string;
-  jarakAntarTiang: string;
-  keterangan: string;
+  namaJalan?: string;
+  zona?: string;
+  kategori?: string;
+  statusIdTitik?: string;
+  idTitik?: string;
+  dayaLampu?: string;
+  dataTiang?: string;
+  dataRuas?: string;
+  subRuas?: string;
+  jarakAntarTiang?: string;
+  keterangan?: string;
   kabupaten?: string;
   kecamatan?: string;
   desa?: string;
