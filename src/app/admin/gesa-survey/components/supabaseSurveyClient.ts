@@ -97,6 +97,9 @@ interface FetchAdminSurveyRowsOptions {
   adminId?: string | null;
   statuses?: string[];
   type?: AdminSurveyType;
+  includeDetails?: boolean;
+  offset?: number;
+  limit?: number;
 }
 
 function normalizeNumber(value: unknown) {
@@ -161,10 +164,13 @@ export function normalizeAdminSurveyRow(raw: AdminSurveyRow): AdminSurveyRow {
 }
 
 export async function fetchAdminSurveyRows(options: FetchAdminSurveyRowsOptions) {
-  const params = new URLSearchParams({ includeDetails: "1" });
+  const params = new URLSearchParams({ includeDetails: options.includeDetails === false ? "0" : "1" });
   if (options.activeKabupaten) params.set("kabupaten", options.activeKabupaten);
   if (options.adminId) params.set("adminId", options.adminId);
   if (options.statuses?.length) params.set("status", options.statuses.join(","));
+  if (options.type) params.set("type", options.type);
+  if (typeof options.offset === "number" && options.offset >= 0) params.set("offset", String(options.offset));
+  if (typeof options.limit === "number" && options.limit > 0) params.set("limit", String(options.limit));
 
   const response = await fetch(`/api/admin/gesa-survey?${params.toString()}`, {
     cache: "no-store",
@@ -187,13 +193,14 @@ export async function fetchAdminSurveyRows(options: FetchAdminSurveyRowsOptions)
     source?: string;
     generatedAt?: string;
     allRows?: AdminSurveyRow[];
+    totalRows?: number;
     existing?: { totalData?: number };
     propose?: { totalData?: number };
     praExisting?: { totalData?: number };
   };
 
   let rows = Array.isArray(payload.allRows) ? payload.allRows.map(normalizeAdminSurveyRow) : [];
-  if (options.type) {
+  if (options.type && options.includeDetails === false) {
     rows = rows.filter((row) => row.type === options.type);
   }
 
@@ -201,8 +208,12 @@ export async function fetchAdminSurveyRows(options: FetchAdminSurveyRowsOptions)
     source: payload.source || "supabase",
     generatedAt: payload.generatedAt || "",
     rows,
+    totalRows: typeof payload.totalRows === "number" ? payload.totalRows : rows.length,
     counts: {
-      total: rows.length,
+      total:
+        (payload.existing?.totalData ?? 0) +
+        (payload.propose?.totalData ?? 0) +
+        (payload.praExisting?.totalData ?? 0),
       existing: payload.existing?.totalData ?? rows.filter((row) => row.type === "existing").length,
       propose: payload.propose?.totalData ?? rows.filter((row) => row.type === "propose").length,
       praExisting:

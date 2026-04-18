@@ -253,6 +253,10 @@ export async function GET(request: NextRequest) {
     const includeDetails = request.nextUrl.searchParams.get("includeDetails") === "1";
     const activeKabupaten = request.nextUrl.searchParams.get("kabupaten")?.trim() || null;
     const adminId = request.nextUrl.searchParams.get("adminId")?.trim() || null;
+    const requestedType = request.nextUrl.searchParams.get("type")?.trim() || null;
+    const offset = Math.max(0, Number.parseInt(request.nextUrl.searchParams.get("offset") || "0", 10) || 0);
+    const limitParam = Number.parseInt(request.nextUrl.searchParams.get("limit") || "0", 10) || 0;
+    const limit = limitParam > 0 ? limitParam : null;
     const statusFilters = new Set(
       (request.nextUrl.searchParams.get("status") || "")
         .split(",")
@@ -315,13 +319,31 @@ export async function GET(request: NextRequest) {
       return mappedRows.filter((row) => row.taskId && allowedTaskIds?.has(row.taskId));
     };
 
-    const [proposeRows, existingRows, praExistingRows] = await Promise.all([
-      loadTable("survey_apj_propose", "apj-propose"),
-      loadTable("survey_existing", "existing"),
-      loadTable("survey_pra_existing", "pra-existing"),
-    ]);
+    const tablesToLoad: Array<{ table: string; type: SurveyType }> = [];
+    if (!requestedType || requestedType === "propose") {
+      tablesToLoad.push({ table: "survey_apj_propose", type: "apj-propose" });
+    }
+    if (!requestedType || requestedType === "existing") {
+      tablesToLoad.push({ table: "survey_existing", type: "existing" });
+    }
+    if (!requestedType || requestedType === "pra-existing") {
+      tablesToLoad.push({ table: "survey_pra_existing", type: "pra-existing" });
+    }
 
-    const allRows = includeDetails ? [...proposeRows, ...existingRows, ...praExistingRows] : [];
+    const loadedResults = await Promise.all(tablesToLoad.map(({ table, type }) => loadTable(table, type)));
+    const proposeRows = requestedType && requestedType !== "propose" ? [] : loadedResults[tablesToLoad.findIndex((item) => item.type === "apj-propose")] || [];
+    const existingRows = requestedType && requestedType !== "existing" ? [] : loadedResults[tablesToLoad.findIndex((item) => item.type === "existing")] || [];
+    const praExistingRows = requestedType && requestedType !== "pra-existing" ? [] : loadedResults[tablesToLoad.findIndex((item) => item.type === "pra-existing")] || [];
+
+    const combinedRows = [...proposeRows, ...existingRows, ...praExistingRows].sort((a, b) => {
+      const left = typeof a.createdAt === "string" ? new Date(a.createdAt).getTime() : 0;
+      const right = typeof b.createdAt === "string" ? new Date(b.createdAt).getTime() : 0;
+      return right - left;
+    });
+    const totalRows = combinedRows.length;
+    const allRows = includeDetails
+      ? (limit ? combinedRows.slice(offset, offset + limit) : combinedRows.slice(offset))
+      : [];
 
     return NextResponse.json({
       source: "supabase",
@@ -335,6 +357,7 @@ export async function GET(request: NextRequest) {
       existing: buildSummary(existingRows),
       praExisting: buildSummary(praExistingRows),
       praExistingByKecamatan: buildKecamatanSummary(praExistingRows),
+      totalRows,
       allRows,
     });
   } catch (error) {

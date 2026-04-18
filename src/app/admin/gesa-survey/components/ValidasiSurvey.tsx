@@ -317,6 +317,7 @@ export default function ValidasiSurvey({
         activeKabupaten,
         adminId: null,
         statuses: ["menunggu"],
+        includeDetails: false,
       });
 
       setStats(payload.counts);
@@ -353,14 +354,16 @@ export default function ValidasiSurvey({
   };
 
   const fetchPage = async (page: number, forceRefresh = false) => {
+    const offset = Math.max(0, (page - 1) * itemsPerPage);
     const payload = await fetchAdminSurveyRows({
       activeKabupaten,
       adminId: null,
       statuses: ["menunggu"],
       type: activeTab,
+      offset,
+      limit: itemsPerPage,
     });
-    const offset = Math.max(0, (page - 1) * itemsPerPage);
-    const pageRows = payload.rows.slice(offset, offset + itemsPerPage).map(mapSupabaseSurvey);
+    const pageRows = payload.rows.map(mapSupabaseSurvey);
 
     if (page > 1 && pageRows.length === 0) {
       setHasNextPage(false);
@@ -369,7 +372,7 @@ export default function ValidasiSurvey({
 
     setSurveys(pageRows);
     setCurrentPage(page);
-    setHasNextPage(offset + itemsPerPage < payload.rows.length);
+    setHasNextPage(offset + itemsPerPage < payload.totalRows);
     setShowAll(false);
     setDataSource(payload.source);
     setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
@@ -381,6 +384,7 @@ export default function ValidasiSurvey({
       adminId: null,
       statuses: ["menunggu"],
       type: activeTab,
+      limit: 10000,
     });
 
     setSurveys(payload.rows.map(mapSupabaseSurvey));
