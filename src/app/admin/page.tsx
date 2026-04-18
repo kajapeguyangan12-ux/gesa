@@ -548,13 +548,11 @@ function AdminPanelContent() {
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 border border-gray-200">
           <div className="mb-4 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="text-sm text-blue-900">
-              <span className="font-semibold">Mode hemat reads aktif.</span>{" "}
-              Daftar laporan memprioritaskan baca dari Supabase, lalu fallback ke bundle Storage dan Firestore bila perlu.
+              <span className="font-semibold">Sumber aktif: Supabase.</span>{" "}
+              Daftar laporan ditampilkan dari Supabase.
               {bundleGeneratedAt
                 ? ` Bundle terakhir dibuat ${new Date(bundleGeneratedAt).toLocaleString("id-ID")}.`
-                : dataSource === "supabase"
-                  ? " Data aktif sedang dibaca dari Supabase."
-                  : " Fallback ke Firestore hanya dipakai jika sumber utama belum tersedia."}
+                : " Data aktif sedang dibaca dari Supabase."}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {user?.role === "super-admin" ? (

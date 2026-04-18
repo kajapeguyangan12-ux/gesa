@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } fro
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, doc, getDoc, getDocs, query, serverTimestamp, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, serverTimestamp } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
@@ -141,6 +141,8 @@ const emptyTaskGeometries: ParsedTaskGeometries = {
   polylines: [],
   points: [],
 };
+
+const SUBMITTED_SURVEYS_REFRESH_INTERVAL_MS = 10_000;
 
 function SurveyPraExistingContent() {
   const router = useRouter();
@@ -614,63 +616,56 @@ function SurveyPraExistingContent() {
   }, [trackingEnabled]);
 
   useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+    let cancelled = false;
+
     const loadSubmittedSurveys = async () => {
       if (!user?.uid) {
-        setSubmittedSurveys([]);
+        if (!cancelled) {
+          setSubmittedSurveys([]);
+        }
         return;
       }
 
       try {
-        setLoadingSubmittedSurveys(true);
+        if (!cancelled) {
+          setLoadingSubmittedSurveys(true);
+        }
         const selectedKabupaten = formData.kabupaten || activeKabupaten;
-        let rows: SubmittedSurveyItem[] = [];
-
-        try {
-          const response = await fetch(
-            `/api/pra-existing/submitted-surveys?surveyorUid=${encodeURIComponent(user.uid)}&kabupaten=${encodeURIComponent(selectedKabupaten || "")}`,
-            { cache: "no-store" }
-          );
-          if (response.ok) {
-            const payload = (await response.json()) as { surveys?: SubmittedSurveyItem[] };
-            if (Array.isArray(payload.surveys)) {
-              rows = payload.surveys;
-            }
-          }
-        } catch (error) {
-          console.error("Supabase pra-existing submitted surveys fetch failed, fallback to Firestore:", error);
+        const response = await fetch(
+          `/api/pra-existing/submitted-surveys?surveyorUid=${encodeURIComponent(user.uid)}&kabupaten=${encodeURIComponent(selectedKabupaten || "")}`,
+          { cache: "no-store" }
+        );
+        if (!response.ok) {
+          throw new Error("Gagal memuat survey pra-existing dari Supabase.");
         }
 
-        if (rows.length === 0) {
-          const surveysRef = collection(db, "survey-pra-existing");
-          const q = query(surveysRef, where("surveyorUid", "==", user.uid));
-          const snapshot = await getDocs(q);
-          const rawRows = snapshot.docs.map((entry) => ({ id: entry.id, ...(entry.data() as Record<string, unknown>) })) as Array<Record<string, unknown> & { id: string }>;
-          rows = rawRows
-            .filter((item) => !selectedKabupaten || item.kabupaten === selectedKabupaten)
-            .map((item) => ({
-              id: String(item.id),
-              latitude: Number(item.latitude || 0),
-              longitude: Number(item.longitude || 0),
-              kecamatan: typeof item.kecamatan === "string" ? item.kecamatan : "",
-              desa: typeof item.desa === "string" ? item.desa : "",
-              banjar: typeof item.banjar === "string" ? item.banjar : "",
-              kepemilikanTiang: typeof item.keteranganTiang === "string" ? item.keteranganTiang : typeof item.kepemilikanDisplay === "string" ? item.kepemilikanDisplay : typeof item.kepemilikanTiang === "string" ? item.kepemilikanTiang : "",
-              surveyorName: typeof item.surveyorName === "string" ? item.surveyorName : "",
-              createdAt: item.createdAt as SubmittedSurveyItem["createdAt"],
-              status: typeof item.status === "string" ? item.status : "",
-            }))
-            .filter((item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude) && item.latitude !== 0 && item.longitude !== 0);
+        const payload = (await response.json()) as { surveys?: SubmittedSurveyItem[] };
+        if (cancelled) {
+          return;
         }
 
-        setSubmittedSurveys(rows);
+        setSubmittedSurveys(Array.isArray(payload.surveys) ? payload.surveys : []);
       } catch (error) {
         console.error("Gagal memuat survey pra-existing:", error);
       } finally {
-        setLoadingSubmittedSurveys(false);
+        if (!cancelled) {
+          setLoadingSubmittedSurveys(false);
+        }
       }
     };
 
-    loadSubmittedSurveys();
+    void loadSubmittedSurveys();
+    intervalId = setInterval(() => {
+      void loadSubmittedSurveys();
+    }, SUBMITTED_SURVEYS_REFRESH_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
   }, [user?.uid, formData.kabupaten, activeKabupaten]);
 
   const handleCompletePoint = useCallback(

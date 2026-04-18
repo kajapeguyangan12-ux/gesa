@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, where } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, updateDoc, doc } from "firebase/firestore";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
@@ -35,11 +35,24 @@ interface ActiveTask {
   kabupatenName?: string;
 }
 
+interface ApjProposeSurveyItem {
+  id: string;
+  latitude: number;
+  longitude: number;
+  idTitik?: string;
+  namaJalan?: string;
+  dayaLampu?: string;
+  surveyorName?: string;
+  createdAt?: string | Date | { toDate?: () => Date } | null;
+}
+
 const emptyTaskGeometries: ParsedTaskGeometries = {
   polygons: [],
   polylines: [],
   points: [],
 };
+
+const SUBMITTED_SURVEYS_REFRESH_INTERVAL_MS = 10_000;
 
 const DynamicUnifiedMap = dynamic(
   () => import("@/components/SurveyTaskUnifiedMap"),
@@ -82,7 +95,7 @@ function SurveyAPJProposeContent() {
   const [completedPoints, setCompletedPoints] = useState<string[]>([]);
   
   // State for survey data
-  const [surveyData, setSurveyData] = useState<any[]>([]);
+  const [surveyData, setSurveyData] = useState<ApjProposeSurveyItem[]>([]);
   const [loadingSurveys, setLoadingSurveys] = useState(true);
   
   // State for GPS tracking
@@ -362,33 +375,54 @@ function SurveyAPJProposeContent() {
   
   // Load survey data from Firestore
   useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+    let cancelled = false;
+
     const loadSurveyData = async () => {
       try {
         if (!effectiveKabupaten) {
-          setSurveyData([]);
+          if (!cancelled) {
+            setSurveyData([]);
+          }
           return;
         }
-        setLoadingSurveys(true);
-        const surveysQuery = query(
-          collection(db, "survey-apj-propose"),
-          where("kabupaten", "==", effectiveKabupaten),
-          orderBy("createdAt", "desc")
+        if (!cancelled) {
+          setLoadingSurveys(true);
+        }
+        const response = await fetch(
+          `/api/survey-apj-propose/submitted-surveys?kabupaten=${encodeURIComponent(effectiveKabupaten)}`,
+          { cache: "no-store" }
         );
-        const querySnapshot = await getDocs(surveysQuery);
-        const surveys = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        if (!response.ok) {
+          throw new Error("Gagal memuat survey APJ propose dari Supabase.");
+        }
+
+        const payload = (await response.json()) as { surveys?: ApjProposeSurveyItem[] };
+        const surveys = Array.isArray(payload.surveys) ? payload.surveys : [];
+        if (cancelled) return;
+
         setSurveyData(surveys);
         console.log("Loaded APJ Propose surveys:", surveys.length);
       } catch (error) {
         console.error("Error loading survey data:", error);
       } finally {
-        setLoadingSurveys(false);
+        if (!cancelled) {
+          setLoadingSurveys(false);
+        }
       }
     };
 
-    loadSurveyData();
+    void loadSurveyData();
+    intervalId = setInterval(() => {
+      void loadSurveyData();
+    }, SUBMITTED_SURVEYS_REFRESH_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
   }, [effectiveKabupaten]);
   
   // Handle completing a task point
@@ -481,14 +515,14 @@ function SurveyAPJProposeContent() {
   // Setup window function for completing task points
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      (window as any).completeTaskPoint = (pointId: string, pointName: string, lat: number, lng: number) => {
+      window.completeTaskPoint = (pointId: string, pointName: string, lat: number, lng: number) => {
         handleCompletePoint(pointId, pointName, lat, lng);
       };
     }
     
     return () => {
       if (typeof window !== 'undefined') {
-        delete (window as any).completeTaskPoint;
+        delete window.completeTaskPoint;
       }
     };
   }, [handleCompletePoint]);
@@ -913,19 +947,14 @@ function SurveyAPJProposeContent() {
       };
 
       await addDoc(collection(db, "survey-apj-propose"), surveyData);
-
-      // Reload survey data to show on map
-      const surveysQuery = query(
-        collection(db, "survey-apj-propose"),
-        where("kabupaten", "==", kabupaten),
-        orderBy("createdAt", "desc")
-      );
-      const querySnapshot = await getDocs(surveysQuery);
-      const surveys = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setSurveyData(surveys);
+      setSurveyData((previous) => [
+        {
+          id: `local-${Date.now()}`,
+          ...surveyData,
+          createdAt: new Date().toISOString(),
+        },
+        ...previous,
+      ]);
 
       alert("Data survey berhasil disimpan!");
       router.push("/survey-selection");

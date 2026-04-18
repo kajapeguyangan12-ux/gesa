@@ -4,9 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { db } from "@/lib/firebase";
-import { fetchWithCache } from "@/utils/firestoreCache";
-import { collection, getCountFromServer, query, Timestamp, where } from "firebase/firestore";
 
 interface PanelStats {
   totalSurvey: number;
@@ -24,7 +21,7 @@ const initialStats: PanelStats = {
   menungguValidasi: 0,
 };
 
-const PANEL_STATS_TTL_MS = 60_000;
+const PANEL_REFRESH_INTERVAL_MS = 10_000;
 
 const cardColorMap = {
   blue: {
@@ -52,72 +49,66 @@ function PraExistingPanelContent() {
   };
 
   useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+    let cancelled = false;
+
     const fetchStats = async () => {
       if (!user?.uid) {
-        setStats(initialStats);
-        setLoading(false);
+        if (!cancelled) {
+          setStats(initialStats);
+          setLoading(false);
+          setDataSource("supabase");
+          setLastUpdatedAt("");
+        }
         return;
       }
 
-      setLoading(true);
+      if (!cancelled) {
+        setLoading(true);
+      }
 
       try {
-        const statsData = await fetchWithCache<PanelStats>(
-          `pra_existing_panel_stats_${user.uid}`,
-          async () => {
-            try {
-              const response = await fetch(`/api/pra-existing/panel?userId=${encodeURIComponent(user.uid)}`, {
-                cache: "no-store",
-              });
-              if (response.ok) {
-                const payload = (await response.json()) as PanelStats & { source?: "supabase" | "firestore" };
-                setDataSource(payload.source || "supabase");
-                setLastUpdatedAt(new Date().toISOString());
-                return payload;
-              }
-            } catch (error) {
-              console.error("Supabase pra-existing panel fetch failed, fallback to Firestore:", error);
-            }
-
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const startOfToday = Timestamp.fromDate(today);
-
-            const surveysRef = collection(db, "survey-pra-existing");
-            const tasksRef = collection(db, "tasks");
-
-            const [surveySnapshot, surveyTodaySnapshot, menungguValidasiSnapshot, tugasSnapshot, tugasSelesaiSnapshot] = await Promise.all([
-              getCountFromServer(query(surveysRef, where("surveyorUid", "==", user.uid))),
-              getCountFromServer(query(surveysRef, where("surveyorUid", "==", user.uid), where("createdAt", ">=", startOfToday))),
-              getCountFromServer(query(surveysRef, where("surveyorUid", "==", user.uid), where("status", "==", "menunggu"))),
-              getCountFromServer(query(tasksRef, where("surveyorId", "==", user.uid), where("type", "==", "pra-existing"))),
-              getCountFromServer(query(tasksRef, where("surveyorId", "==", user.uid), where("type", "==", "pra-existing"), where("status", "==", "completed"))),
-            ]);
-
-            return {
-              totalSurvey: surveySnapshot.data().count,
-              surveyHariIni: surveyTodaySnapshot.data().count,
-              menungguValidasi: menungguValidasiSnapshot.data().count,
-              totalTugas: tugasSnapshot.data().count,
-              tugasSelesai: tugasSelesaiSnapshot.data().count,
-            };
-          },
-          PANEL_STATS_TTL_MS
-        );
-
-        if (dataSource !== "supabase") {
-          setDataSource("firestore");
-          setLastUpdatedAt(new Date().toISOString());
+        const response = await fetch(`/api/pra-existing/panel?userId=${encodeURIComponent(user.uid)}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          throw new Error("Gagal memuat panel pra-existing dari Supabase.");
         }
-        setStats(statsData);
+
+        const payload = (await response.json()) as PanelStats & { source?: "supabase" | "firestore" };
+        if (cancelled) {
+          return;
+        }
+
+        setStats({
+          totalSurvey: payload.totalSurvey ?? 0,
+          surveyHariIni: payload.surveyHariIni ?? 0,
+          menungguValidasi: payload.menungguValidasi ?? 0,
+          totalTugas: payload.totalTugas ?? 0,
+          tugasSelesai: payload.tugasSelesai ?? 0,
+        });
+        setDataSource(payload.source || "supabase");
+        setLastUpdatedAt(new Date().toISOString());
       } catch (error) {
         console.error("Error fetching pra-existing dashboard stats:", error);
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
-    fetchStats();
+    void fetchStats();
+    intervalId = setInterval(() => {
+      void fetchStats();
+    }, PANEL_REFRESH_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
   }, [user?.uid]);
 
   const StatCard = ({

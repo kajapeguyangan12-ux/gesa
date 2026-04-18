@@ -26,6 +26,7 @@
     "sync:supabase:once:backoffice": "set SYNC_PROFILE=backoffice&& node scripts/sync-firebase-to-supabase-once.js",
     "sync:supabase:cloud-server": "node scripts/cloud-run-sync-server.js",
     "sync:supabase:scheduler": "node scripts/sync-firebase-to-supabase-scheduler.js",
+    "sync:supabase:deploy-cloud": "powershell -ExecutionPolicy Bypass -File scripts/deploy-cloud-sync.ps1",
     "sync:supabase:register-task": "powershell -ExecutionPolicy Bypass -File scripts/register-supabase-sync-task.ps1",
     "sync:supabase:unregister-task": "powershell -ExecutionPolicy Bypass -File scripts/unregister-supabase-sync-task.ps1"
   },

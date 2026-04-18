@@ -197,43 +197,59 @@ Catatan:
 - `SYNC_ENDPOINT_TOKEN` dipakai untuk melindungi endpoint `/sync`
 - jika mau lebih ketat, Cloud Scheduler juga bisa pakai OIDC service account; token header tetap boleh dipakai sebagai lapisan tambahan
 
-## 7. Buat Cloud Scheduler 2 jalur
+## 7. Buat Cloud Scheduler 5 menit
 
-Skema yang direkomendasikan:
-- `tasks`, `survey-existing`, `survey-apj-propose`, `survey-pra-existing`: tiap 5 menit
-- `reports`, `user-admin`: tiap 15 menit
+Skema yang dipakai sekarang:
+- semua collection sync lewat Cloud Run
+- Cloud Scheduler memicu `POST /sync?profile=full`
+- interval: **setiap 5 menit**
 
-Dengan ini:
-- halaman kerja verifikasi/validasi di Supabase akan mengejar perubahan maksimal 5 menit
-- filter admin biasa tetap akurat karena ownership tugas ikut tersync di jalur 5 menit
-- dashboard dan halaman umum tetap hemat read dengan job 15 menit
-
-### Scheduler 5 menit untuk halaman kerja survey
+### Opsi A. Manual dengan gcloud
 
 ```bash
-gcloud scheduler jobs create http gesa-supabase-sync-survey-5m ^
+gcloud scheduler jobs create http gesa-supabase-sync-5m ^
   --location asia-southeast1 ^
   --schedule "*/5 * * * *" ^
-  --uri "https://YOUR_CLOUD_RUN_URL/sync?profile=survey-work" ^
+  --time-zone "Asia/Singapore" ^
+  --uri "https://YOUR_CLOUD_RUN_URL/sync?profile=full" ^
   --http-method POST ^
   --headers "Authorization=Bearer YOUR_LONG_RANDOM_TOKEN"
 ```
 
-### Scheduler 15 menit untuk dashboard/backoffice
+Kalau job sudah ada, pakai:
 
 ```bash
-gcloud scheduler jobs create http gesa-supabase-sync-backoffice-15m ^
+gcloud scheduler jobs update http gesa-supabase-sync-5m ^
   --location asia-southeast1 ^
-  --schedule "*/15 * * * *" ^
-  --uri "https://YOUR_CLOUD_RUN_URL/sync?profile=backoffice" ^
+  --schedule "*/5 * * * *" ^
+  --time-zone "Asia/Singapore" ^
+  --uri "https://YOUR_CLOUD_RUN_URL/sync?profile=full" ^
   --http-method POST ^
   --headers "Authorization=Bearer YOUR_LONG_RANDOM_TOKEN"
+```
+
+### Opsi B. Pakai script repo
+
+Repo ini sekarang punya script:
+- [deploy-cloud-sync.ps1](/c:/Kerja/gesa/gesa-main/scripts/deploy-cloud-sync.ps1)
+
+Contoh:
+
+```powershell
+$env:GCP_PROJECT_ID="YOUR_GCP_PROJECT"
+$env:GCP_REGION="asia-southeast1"
+$env:SUPABASE_URL="https://YOUR_PROJECT.supabase.co"
+$env:SUPABASE_SERVICE_ROLE_KEY="YOUR_SERVICE_ROLE_KEY"
+$env:FIREBASE_SERVICE_ACCOUNT_BASE64="BASE64_SERVICE_ACCOUNT_JSON"
+$env:SYNC_ENDPOINT_TOKEN="YOUR_LONG_RANDOM_TOKEN"
+
+powershell -ExecutionPolicy Bypass -File scripts/deploy-cloud-sync.ps1
 ```
 
 Dengan arsitektur ini:
 1. user tetap input ke Firebase
-2. Cloud Scheduler memicu Cloud Run sesuai profile
-3. Cloud Run hanya sync data yang berubah
+2. Cloud Scheduler memicu Cloud Run tiap 5 menit
+3. Cloud Run menjalankan incremental sync ke Supabase
 4. halaman aplikasi baca dari Supabase
 
 ## 8. Verifikasi hasil

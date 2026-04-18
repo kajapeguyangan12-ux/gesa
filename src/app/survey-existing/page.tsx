@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy, updateDoc, doc, where } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, updateDoc, doc } from "firebase/firestore";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
@@ -35,11 +35,25 @@ interface ActiveTask {
   kabupatenName?: string;
 }
 
+interface ExistingSurveyItem {
+  id: string;
+  latitude: number;
+  longitude: number;
+  namaJalan?: string;
+  namaGang?: string;
+  keteranganTiang?: string;
+  surveyorName?: string;
+  status?: string;
+  createdAt?: string | Date | { toDate?: () => Date } | null;
+}
+
 const emptyTaskGeometries: ParsedTaskGeometries = {
   polygons: [],
   polylines: [],
   points: [],
 };
+
+const SUBMITTED_SURVEYS_REFRESH_INTERVAL_MS = 10_000;
 
 const DynamicUnifiedMap = dynamic(
   () => import("@/components/SurveyTaskUnifiedMap"),
@@ -92,7 +106,7 @@ function SurveyExistingContent() {
   const [jenisExisting, setJenisExisting] = useState<"Murni" | "Tidak Murni" | "">("");
   
   // State for survey data
-  const [surveyData, setSurveyData] = useState<any[]>([]);
+  const [surveyData, setSurveyData] = useState<ExistingSurveyItem[]>([]);
   const [loadingSurveys, setLoadingSurveys] = useState(true);
   
   // State for submit loading
@@ -556,14 +570,14 @@ function SurveyExistingContent() {
   // Setup window function for completing task points
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      (window as any).completeTaskPoint = (pointId: string, pointName: string, lat: number, lng: number) => {
+      window.completeTaskPoint = (pointId: string, pointName: string, lat: number, lng: number) => {
         handleCompletePoint(pointId, pointName, lat, lng);
       };
     }
     
     return () => {
       if (typeof window !== 'undefined') {
-        delete (window as any).completeTaskPoint;
+        delete window.completeTaskPoint;
       }
     };
   }, [handleCompletePoint]);
@@ -571,38 +585,55 @@ function SurveyExistingContent() {
   // Fetch all survey data with real-time listener and user filtering
   useEffect(() => {
     if (!user?.uid) return;
-    
+
+    let intervalId: NodeJS.Timeout | null = null;
+    let cancelled = false;
+
     const fetchSurveyData = async () => {
       try {
         if (!effectiveKabupaten) {
-          setSurveyData([]);
+          if (!cancelled) {
+            setSurveyData([]);
+          }
           return;
         }
-        setLoadingSurveys(true);
-        const surveysRef = collection(db, "survey-existing");
-        const q = query(
-          surveysRef, 
-          where("surveyorUid", "==", user.uid),
-          where("kabupaten", "==", effectiveKabupaten),
-          orderBy("createdAt", "desc")
+        if (!cancelled) {
+          setLoadingSurveys(true);
+        }
+        const response = await fetch(
+          `/api/survey-existing/submitted-surveys?surveyorUid=${encodeURIComponent(user.uid)}&kabupaten=${encodeURIComponent(effectiveKabupaten)}`,
+          { cache: "no-store" }
         );
-        const querySnapshot = await getDocs(q);
-        
-        const surveys = querySnapshot.docs.map((doc: any) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        
+        if (!response.ok) {
+          throw new Error("Gagal memuat survey existing dari Supabase.");
+        }
+
+        const payload = (await response.json()) as { surveys?: ExistingSurveyItem[] };
+        const surveys = Array.isArray(payload.surveys) ? payload.surveys : [];
+        if (cancelled) return;
+
         setSurveyData(surveys);
         console.log(`[Survey-Existing] Fetched ${surveys.length} survey data points for user ${user.uid} at ${effectiveKabupaten}`);
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error("Error fetching surveys:", error);
       } finally {
-        setLoadingSurveys(false);
+        if (!cancelled) {
+          setLoadingSurveys(false);
+        }
       }
     };
 
-    fetchSurveyData();
+    void fetchSurveyData();
+    intervalId = setInterval(() => {
+      void fetchSurveyData();
+    }, SUBMITTED_SURVEYS_REFRESH_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
   }, [effectiveKabupaten, user?.uid]);
 
   // Start GPS tracking with continuous updates
@@ -1071,22 +1102,15 @@ function SurveyExistingContent() {
       };
 
       await addDoc(collection(db, "survey-existing"), surveyData);
-
-      // Refresh survey data to update map
       setSubmitProgress("Memperbarui peta...");
-      const surveysRef = collection(db, "survey-existing");
-      const q = query(
-        surveysRef,
-        where("surveyorUid", "==", user.uid),
-        where("kabupaten", "==", kabupaten),
-        orderBy("createdAt", "desc")
-      );
-      const querySnapshot = await getDocs(q);
-      const surveys = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setSurveyData(surveys);
+      setSurveyData((previous) => [
+        {
+          id: `local-${Date.now()}`,
+          ...surveyData,
+          createdAt: new Date().toISOString(),
+        },
+        ...previous,
+      ]);
       
       setSubmitProgress("Berhasil disimpan!");
       
@@ -1096,17 +1120,18 @@ function SurveyExistingContent() {
       setIsSubmitting(false);
       alert("Survey berhasil disimpan!");
       router.push("/survey-selection");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error saving survey:", error);
       setIsSubmitting(false);
       
       // More specific error messages
       let errorMessage = "Gagal menyimpan survey. Silakan coba lagi.";
-      if (error.message?.includes("canvas")) {
+      const errorMessageText = error instanceof Error ? error.message : "";
+      if (errorMessageText.includes("canvas")) {
         errorMessage = "Gagal mengkonversi gambar. Browser Anda mungkin tidak mendukung fitur ini.";
-      } else if (error.message?.includes("storage/unauthorized")) {
+      } else if (errorMessageText.includes("storage/unauthorized")) {
         errorMessage = "Tidak memiliki akses untuk mengupload gambar. Silakan login kembali.";
-      } else if (error.message?.includes("Failed to load image")) {
+      } else if (errorMessageText.includes("Failed to load image")) {
         errorMessage = "Gagal memuat gambar. Pastikan format gambar valid.";
       }
       

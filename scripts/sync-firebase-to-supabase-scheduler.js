@@ -2,14 +2,14 @@
  * Interval-based sync scheduler for local/server execution.
  *
  * Env:
- *   SYNC_INTERVAL_MINUTES=120
+ *   SYNC_INTERVAL_MINUTES=5
  *   SYNC_COLLECTIONS=tasks,reports,survey-existing,survey-apj-propose,survey-pra-existing,user-admin
  */
 
 const path = require("path");
 const { spawn } = require("child_process");
 
-const intervalMinutes = Math.max(1, parseInt(process.env.SYNC_INTERVAL_MINUTES || "120", 10));
+const intervalMinutes = Math.max(1, parseInt(process.env.SYNC_INTERVAL_MINUTES || "5", 10));
 const runnerPath = path.resolve(__dirname, "sync-firebase-to-supabase-once.js");
 
 let running = false;

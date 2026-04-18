@@ -4,9 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { collection, getDocs, query, where, orderBy, limit, doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
-import { fetchWithCache } from "@/utils/firestoreCache";
 import { ref, getDownloadURL } from "firebase/storage";
 import dynamic from "next/dynamic";
 
@@ -40,9 +39,35 @@ interface Task {
   excelFileUrl?: string;
   kabupaten?: string;
   kabupatenName?: string;
-  createdAt: any;
-  startedAt?: any;
-  completedAt?: any;
+  createdAt: string | { toDate?: () => Date } | Date | null;
+  startedAt?: string | { toDate?: () => Date } | Date | null;
+  completedAt?: string | { toDate?: () => Date } | Date | null;
+}
+
+const TASKS_REFRESH_INTERVAL_MS = 10_000;
+
+function formatTaskDate(
+  value: string | Date | { toDate?: () => Date } | null | undefined,
+  options?: Intl.DateTimeFormatOptions
+) {
+  if (!value) {
+    return "N/A";
+  }
+
+  const date =
+    value instanceof Date
+      ? value
+      : typeof value === "string"
+        ? new Date(value)
+        : typeof value.toDate === "function"
+          ? value.toDate()
+          : null;
+
+  if (!date || Number.isNaN(date.getTime())) {
+    return "N/A";
+  }
+
+  return date.toLocaleDateString("id-ID", options);
 }
 
 function TasksContent() {
@@ -66,11 +91,50 @@ function TasksContent() {
   // Cache untuk menyimpan file KMZ yang sudah di-load
   const [kmzCache, setKmzCache] = useState<Map<string, File>>(new Map());
 
-  useEffect(() => {
-    if (user) {
-      fetchTasks();
+  const fetchTasks = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      const params = new URLSearchParams();
+      if (user?.uid) params.set("surveyorId", user.uid);
+      if (user?.email) params.set("surveyorEmail", user.email);
+
+      const response = await fetch(`/api/tasks?${params.toString()}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error("Gagal memuat tugas dari Supabase.");
+      }
+
+      const payload = (await response.json()) as { tasks?: Task[] };
+      const tasksData = Array.isArray(payload.tasks) ? payload.tasks : [];
+
+      setTasks(tasksData);
+    } catch (error) {
+      console.error("Error fetching tasks:", error);
+      setTasks([]);
+    } finally {
+      setLoading(false);
     }
-  }, [user]);
+  }, [user?.email, user?.uid]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    let intervalId: NodeJS.Timeout | null = null;
+    void fetchTasks();
+    intervalId = setInterval(() => {
+      void fetchTasks();
+    }, TASKS_REFRESH_INTERVAL_MS);
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [user, fetchTasks]);
 
   // Auto-load KMZ files when detail modal opens
   useEffect(() => {
@@ -92,49 +156,6 @@ function TasksContent() {
       });
     }
   }, [selectedTask, loadingKmz, kmzFile, kmzFile2]);
-
-  const fetchTasks = async () => {
-    try {
-      setLoading(true);
-
-      const tasksData = await fetchWithCache<Task[]>(
-        `tasks_${user?.uid}`,
-        async () => {
-          const tasksRef = collection(db, "tasks");
-          let q = query(
-            tasksRef,
-            where("surveyorId", "==", user?.uid),
-            orderBy("createdAt", "desc"),
-            limit(100)
-          );
-          let snapshot = await getDocs(q);
-
-          if (snapshot.empty && user?.email) {
-            q = query(
-              tasksRef,
-              where("surveyorEmail", "==", user.email),
-              orderBy("createdAt", "desc"),
-              limit(100)
-            );
-            snapshot = await getDocs(q);
-          }
-
-          return snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as Task[];
-        },
-        120_000
-      );
-
-      setTasks(tasksData);
-    } catch (error) {
-      console.error("Error fetching tasks:", error);
-      setTasks([]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const loadDetailKmzFiles = async (task: Task) => {
     console.log("=== Loading Detail KMZ Files ===");
@@ -323,10 +344,23 @@ function TasksContent() {
   const handleStartTask = async (task: Task) => {
     try {
       const taskRef = doc(db, "tasks", task.id);
+      const startedAt = new Date().toISOString();
       await updateDoc(taskRef, {
         status: "in-progress",
         startedAt: new Date(),
       });
+
+      setTasks((previous) =>
+        previous.map((entry) =>
+          entry.id === task.id
+            ? {
+                ...entry,
+                status: "in-progress",
+                startedAt,
+              }
+            : entry
+        )
+      );
       
       localStorage.setItem("activeTask", JSON.stringify({
         id: task.id,
@@ -361,12 +395,21 @@ function TasksContent() {
         status: "completed",
         completedAt: new Date(),
       });
+
+      setTasks((previous) =>
+        previous.map((entry) =>
+          entry.id === task.id
+            ? {
+                ...entry,
+                status: "completed",
+                completedAt: new Date().toISOString(),
+              }
+            : entry
+        )
+      );
       
       // Remove active task from localStorage
       localStorage.removeItem("activeTask");
-      
-      // Refresh tasks list
-      await fetchTasks();
       
       // Close modal
       handleCloseModal();
@@ -464,7 +507,7 @@ function TasksContent() {
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
-                      {task.createdAt?.toDate?.()?.toLocaleDateString('id-ID') || "N/A"}
+                      {formatTaskDate(task.createdAt)}
                     </span>
                     {task.kmzFileUrl && (
                       <span className="flex items-center gap-1 text-purple-600">
@@ -523,19 +566,19 @@ function TasksContent() {
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Tanggal Dibuat</span>
                     <span className="font-medium text-gray-900">
-                      {selectedTask.createdAt?.toDate?.()?.toLocaleDateString('id-ID', {
+                      {formatTaskDate(selectedTask.createdAt, {
                         weekday: 'long',
                         year: 'numeric',
                         month: 'long',
                         day: 'numeric'
-                      }) || "N/A"}
+                      })}
                     </span>
                   </div>
                   {selectedTask?.startedAt && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Dimulai</span>
                       <span className="font-medium text-gray-900">
-                        {selectedTask?.startedAt?.toDate?.()?.toLocaleDateString('id-ID') || "N/A"}
+                        {formatTaskDate(selectedTask.startedAt)}
                       </span>
                     </div>
                   )}

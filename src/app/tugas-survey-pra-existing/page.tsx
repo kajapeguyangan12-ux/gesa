@@ -5,9 +5,8 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
-import { collection, doc, getDocs, orderBy, query, updateDoc, where, limit } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { fetchWithCache } from "@/utils/firestoreCache";
 
 const RemoteKMZMapPreview = dynamic(() => import("@/components/RemoteKMZMapPreview"), {
   ssr: false,
@@ -39,6 +38,8 @@ interface Task {
   startedAt?: DateValue;
 }
 
+const TASKS_REFRESH_INTERVAL_MS = 10_000;
+
 function TugasSurveyPraExistingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -53,37 +54,15 @@ function TugasSurveyPraExistingContent() {
   const fetchTasks = useCallback(async () => {
     try {
       setLoading(true);
-      const tasksData = await fetchWithCache<Task[]>(
-        `pra_existing_tasks_${user?.uid}`,
-        async () => {
-          try {
-            const response = await fetch(`/api/pra-existing/tasks?surveyorId=${encodeURIComponent(user?.uid || "")}`, {
-              cache: "no-store",
-            });
-            if (response.ok) {
-              const payload = (await response.json()) as { tasks?: Task[] };
-              if (Array.isArray(payload.tasks)) return payload.tasks;
-            }
-          } catch (error) {
-            console.error("Supabase pra-existing tasks fetch failed, fallback to Firestore:", error);
-          }
+      const response = await fetch(`/api/pra-existing/tasks?surveyorId=${encodeURIComponent(user?.uid || "")}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error("Gagal memuat tugas pra-existing dari Supabase.");
+      }
 
-          const tasksRef = collection(db, "tasks");
-          const q = query(
-            tasksRef,
-            where("surveyorId", "==", user?.uid),
-            where("type", "==", "pra-existing"),
-            orderBy("createdAt", "desc"),
-            limit(100)
-          );
-          const snapshot = await getDocs(q);
-          return snapshot.docs.map((entry) => ({
-            id: entry.id,
-            ...(entry.data() as Omit<Task, "id">),
-          }));
-        },
-        120_000
-      );
+      const payload = (await response.json()) as { tasks?: Task[] };
+      const tasksData = Array.isArray(payload.tasks) ? payload.tasks : [];
       setTasks(tasksData);
 
       const storedTask = localStorage.getItem("activeTask");
@@ -107,9 +86,21 @@ function TugasSurveyPraExistingContent() {
   }, [user?.uid]);
 
   useEffect(() => {
-    if (user) {
-      fetchTasks();
+    if (!user) {
+      return;
     }
+
+    let intervalId: NodeJS.Timeout | null = null;
+    void fetchTasks();
+    intervalId = setInterval(() => {
+      void fetchTasks();
+    }, TASKS_REFRESH_INTERVAL_MS);
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
   }, [user, fetchTasks]);
 
   useEffect(() => {
@@ -155,8 +146,16 @@ function TugasSurveyPraExistingContent() {
         }
       }
       
-      // Refresh data
-      await fetchTasks();
+      setTasks((previous) =>
+        previous.map((entry) =>
+          entry.id === task.id
+            ? {
+                ...entry,
+                status: "completed",
+              }
+            : entry
+        )
+      );
       
       // Close modal
       setShowModal(false);
@@ -177,10 +176,23 @@ function TugasSurveyPraExistingContent() {
     try {
       if (task.status === "pending") {
         const taskRef = doc(db, "tasks", task.id);
+        const startedAt = new Date().toISOString();
         await updateDoc(taskRef, {
           status: "in-progress",
           startedAt: new Date(),
         });
+
+        setTasks((previous) =>
+          previous.map((entry) =>
+            entry.id === task.id
+              ? {
+                  ...entry,
+                  status: "in-progress",
+                  startedAt,
+                }
+              : entry
+          )
+        );
       }
 
       localStorage.setItem(

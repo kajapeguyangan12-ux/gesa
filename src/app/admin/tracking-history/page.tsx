@@ -173,7 +173,7 @@ function TrackingHistoryContent() {
         {/* Filters */}
         <div className="bg-white rounded-2xl shadow-md p-5 border border-gray-200">
           <div className="mb-4 px-3 py-2 rounded-xl bg-purple-50 border border-purple-200 text-xs font-medium text-purple-700 inline-flex">
-            Mode hemat reads aktif. Tracking session memakai cache 5 menit.
+            Data tracking ditampilkan dari Supabase.
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

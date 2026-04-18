@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $taskName = if ($env:SYNC_TASK_NAME) { $env:SYNC_TASK_NAME } else { "GesaSupabaseSync" }
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$intervalMinutes = if ($env:SYNC_INTERVAL_MINUTES) { [int]$env:SYNC_INTERVAL_MINUTES } else { 120 }
+$intervalMinutes = if ($env:SYNC_INTERVAL_MINUTES) { [int]$env:SYNC_INTERVAL_MINUTES } else { 5 }
 $syncProfile = if ($env:SYNC_PROFILE) { $env:SYNC_PROFILE } else { "" }
 $syncMode = if ($env:SYNC_MODE) { $env:SYNC_MODE } else { "incremental" }
 $incrementalSync = if ($env:INCREMENTAL_SYNC) { $env:INCREMENTAL_SYNC } else { "true" }

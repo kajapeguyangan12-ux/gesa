@@ -1051,7 +1051,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                 Filter:
               </div>
               <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs font-medium text-blue-700">
-                Mode hemat reads aktif. Data halaman dan statistik memakai cache 5 menit.
+                Data halaman dan statistik ditampilkan dari Supabase.
               </div>
               <select 
                 value={filterStatus}

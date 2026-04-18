@@ -175,7 +175,7 @@ export default function TrackingHistory() {
         </div>
 
         <div className="mb-4 px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-xs font-medium text-purple-50 inline-flex">
-          Mode hemat reads aktif. Tracking session memakai cache 5 menit.
+          Data tracking ditampilkan dari Supabase.
         </div>
         <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="rounded-xl border border-white/20 bg-white/10 px-4 py-3 backdrop-blur">

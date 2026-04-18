@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { collection, getDocs, query, where, doc, updateDoc, limit, orderBy } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { fetchWithCache } from "@/utils/firestoreCache";
 import dynamic from "next/dynamic";
 
 // Dynamic import for KMZ Map Preview
@@ -39,9 +38,35 @@ interface Task {
   excelFileUrl?: string;
   kabupaten?: string;
   kabupatenName?: string;
-  createdAt: any;
-  startedAt?: any;
-  completedAt?: any;
+  createdAt: string | { toDate?: () => Date } | Date | null;
+  startedAt?: string | { toDate?: () => Date } | Date | null;
+  completedAt?: string | { toDate?: () => Date } | Date | null;
+}
+
+const TASKS_REFRESH_INTERVAL_MS = 10_000;
+
+function formatTaskDate(
+  value: string | Date | { toDate?: () => Date } | null | undefined,
+  options?: Intl.DateTimeFormatOptions
+) {
+  if (!value) {
+    return "N/A";
+  }
+
+  const date =
+    value instanceof Date
+      ? value
+      : typeof value === "string"
+        ? new Date(value)
+        : typeof value.toDate === "function"
+          ? value.toDate()
+          : null;
+
+  if (!date || Number.isNaN(date.getTime())) {
+    return "N/A";
+  }
+
+  return date.toLocaleDateString("id-ID", options);
 }
 
 function TugasSurveyContent() {
@@ -55,35 +80,24 @@ function TugasSurveyContent() {
   const [kmzFile, setKmzFile] = useState<File | null>(null);
   const [kmzFile2, setKmzFile2] = useState<File | null>(null);
 
-  useEffect(() => {
-    if (user) {
-      fetchTasks();
-    }
-  }, [user]);
-
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
       setLoading(true);
       
-      const tasksData = await fetchWithCache<Task[]>(
-        `tasks_${user?.uid}`,
-        async () => {
-          const tasksRef = collection(db, "tasks");
-          const q = query(
-            tasksRef,
-            where("surveyorId", "==", user?.uid),
-            orderBy("createdAt", "desc"),
-            limit(100)
-          );
-          const snapshot = await getDocs(q);
-          return snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as Task[];
-        },
-        120_000
-      );
-      
+      const params = new URLSearchParams();
+      if (user?.uid) params.set("surveyorId", user.uid);
+      if (user?.email) params.set("surveyorEmail", user.email);
+
+      const response = await fetch(`/api/tasks?${params.toString()}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error("Gagal memuat tugas dari Supabase.");
+      }
+
+      const payload = (await response.json()) as { tasks?: Task[] };
+      const tasksData = Array.isArray(payload.tasks) ? payload.tasks : [];
+
       setTasks(tasksData);
     } catch (error) {
       console.error("Error fetching tasks:", error);
@@ -91,7 +105,25 @@ function TugasSurveyContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.email, user?.uid]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    let intervalId: NodeJS.Timeout | null = null;
+    void fetchTasks();
+    intervalId = setInterval(() => {
+      void fetchTasks();
+    }, TASKS_REFRESH_INTERVAL_MS);
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [user, fetchTasks]);
 
   const handleViewDetail = async (task: Task) => {
     setSelectedTask(task);
@@ -125,10 +157,23 @@ function TugasSurveyContent() {
     try {
       // Update task status to in-progress
       const taskRef = doc(db, "tasks", task.id);
+      const startedAt = new Date().toISOString();
       await updateDoc(taskRef, {
         status: "in-progress",
         startedAt: new Date(),
       });
+
+      setTasks((previous) =>
+        previous.map((entry) =>
+          entry.id === task.id
+            ? {
+                ...entry,
+                status: "in-progress",
+                startedAt,
+              }
+            : entry
+        )
+      );
       
       // Store task data in localStorage for survey page
       localStorage.setItem("activeTask", JSON.stringify({
@@ -358,7 +403,7 @@ function TugasSurveyContent() {
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
-                          <span>{task.createdAt?.toDate?.()?.toLocaleDateString('id-ID') || "N/A"}</span>
+                          <span>{formatTaskDate(task.createdAt)}</span>
                         </div>
                         {task.kmzFileUrl && (
                           <div className="flex items-center gap-2 text-purple-600">
@@ -474,12 +519,12 @@ function TugasSurveyContent() {
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">Tanggal Dibuat:</span>
                       <span className="font-medium text-gray-900">
-                        {selectedTask.createdAt?.toDate?.()?.toLocaleDateString('id-ID', {
+                        {formatTaskDate(selectedTask.createdAt, {
                           weekday: 'long',
                           year: 'numeric',
                           month: 'long',
                           day: 'numeric'
-                        }) || "N/A"}
+                        })}
                       </span>
                     </div>
                   </div>
