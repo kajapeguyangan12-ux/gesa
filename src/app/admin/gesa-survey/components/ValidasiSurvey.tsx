@@ -180,7 +180,15 @@ function buildPraExistingOwnershipDisplay(kepemilikanTiang: string, tipeTiangPLN
   return kepemilikanTiang === "PLN" && tipeTiangPLN ? `PLN - ${tipeTiangPLN}` : kepemilikanTiang;
 }
 
-export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: string | null }) {
+const LIVE_REFRESH_INTERVAL_MS = 5000;
+
+export default function ValidasiSurvey({
+  activeKabupaten,
+  isActive = true,
+}: {
+  activeKabupaten?: string | null;
+  isActive?: boolean;
+}) {
   const [activeTab, setActiveTab] = useState<"existing" | "propose" | "pra-existing">("existing");
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [stats, setStats] = useState({
@@ -207,6 +215,18 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     if (typeof survey.finalLongitude === "number" && Number.isFinite(survey.finalLongitude)) return survey.finalLongitude;
     if (typeof survey.adminLongitude === "number" && Number.isFinite(survey.adminLongitude)) return survey.adminLongitude;
     return survey.longitude;
+  };
+  const hasDisplayedAdminCoordinate = (survey: Survey) => {
+    if (survey.type !== "pra-existing") return false;
+    if (!Number.isFinite(survey.adminLatitude) || !Number.isFinite(survey.adminLongitude)) return false;
+
+    const displayLatitude = getDisplayLatitude(survey);
+    const displayLongitude = getDisplayLongitude(survey);
+
+    return (
+      Math.abs(displayLatitude - Number(survey.adminLatitude)) <= 0.0000001 &&
+      Math.abs(displayLongitude - Number(survey.adminLongitude)) <= 0.0000001
+    );
   };
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showDetailMap, setShowDetailMap] = useState(false);
@@ -241,22 +261,52 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
 
   const mapSupabaseSurvey = (survey: AdminSurveyRow) => survey as Survey;
 
-  const removeSurveyFromWorkingSet = (surveyId: string) => {
-    setSurveys((current) => current.filter((item) => item.id !== surveyId));
+  const matchesExactPraExistingDuplicate = (targetSurvey: Survey, candidate: Survey) => {
+    return (
+      targetSurvey.type === "pra-existing" &&
+      candidate.type === "pra-existing" &&
+      candidate.taskId === targetSurvey.taskId &&
+      candidate.surveyorName === targetSurvey.surveyorName &&
+      candidate.title === targetSurvey.title &&
+      candidate.latitude === targetSurvey.latitude &&
+      candidate.longitude === targetSurvey.longitude
+    );
+  };
+
+  const removeSurveyFromWorkingSet = (
+    targetSurvey: Survey,
+    mode: "single" | "exact-pra-existing-group" = "single"
+  ) => {
+    const surveysToRemove = surveys.filter((item) =>
+      mode === "exact-pra-existing-group"
+        ? item.id === targetSurvey.id || matchesExactPraExistingDuplicate(targetSurvey, item)
+        : item.id === targetSurvey.id
+    );
+
+    setSurveys((current) =>
+      current.filter((item) =>
+        mode === "exact-pra-existing-group"
+          ? !(item.id === targetSurvey.id || matchesExactPraExistingDuplicate(targetSurvey, item))
+          : item.id !== targetSurvey.id
+      )
+    );
+
     setStats((current) => {
-      const removedSurvey = surveys.find((item) => item.id === surveyId);
-      if (!removedSurvey) return current;
+      if (surveysToRemove.length === 0) return current;
+
+      const removedExisting = surveysToRemove.filter((item) => item.type === "existing").length;
+      const removedPropose = surveysToRemove.filter((item) => item.type === "propose").length;
+      const removedPraExisting = surveysToRemove.filter((item) => item.type === "pra-existing").length;
 
       return {
-        total: Math.max(0, current.total - 1),
-        existing: removedSurvey.type === "existing" ? Math.max(0, current.existing - 1) : current.existing,
-        propose: removedSurvey.type === "propose" ? Math.max(0, current.propose - 1) : current.propose,
-        praExisting:
-          removedSurvey.type === "pra-existing" ? Math.max(0, current.praExisting - 1) : current.praExisting,
+        total: Math.max(0, current.total - surveysToRemove.length),
+        existing: Math.max(0, current.existing - removedExisting),
+        propose: Math.max(0, current.propose - removedPropose),
+        praExisting: Math.max(0, current.praExisting - removedPraExisting),
       };
     });
-    setSelectedSurvey((current) => (current?.id === surveyId ? null : current));
-    setShowDetailModal((current) => (selectedSurvey?.id === surveyId ? false : current));
+    setSelectedSurvey((current) => (current?.id === targetSurvey.id ? null : current));
+    setShowDetailModal((current) => (selectedSurvey?.id === targetSurvey.id ? false : current));
   };
 
   const fetchStatistics = async (forceRefresh = false) => {
@@ -323,13 +373,6 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     setShowAll(false);
     setDataSource(payload.source);
     setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
-    setStats({
-      total: payload.rows.length,
-      existing: payload.rows.filter((row) => row.type === "existing").length,
-      propose: payload.rows.filter((row) => row.type === "propose").length,
-      praExisting: payload.rows.filter((row) => row.type === "pra-existing").length,
-    });
-    setStatsLoaded(true);
   };
 
   const fetchAllTabData = async (forceRefresh = false) => {
@@ -346,7 +389,6 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     setHasNextPage(false);
     setDataSource(payload.source);
     setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
-    setStatsLoaded(true);
   };
 
   const clearCurrentTabCaches = () => undefined;
@@ -365,8 +407,23 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   }, [activeTab, activeKabupaten, itemsPerPage, filterSort]);
 
   useEffect(() => {
-    void fetchSurveys();
+    void Promise.all([fetchStatistics(), fetchSurveys()]);
   }, [activeTab, activeKabupaten, itemsPerPage, filterSort]);
+
+  useEffect(() => {
+    if (!isActive) return;
+
+    const intervalId = window.setInterval(() => {
+      void fetchStatistics();
+      if (showAll) {
+        void fetchAllTabData();
+        return;
+      }
+      void fetchPage(currentPage);
+    }, LIVE_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [isActive, showAll, currentPage, activeTab, activeKabupaten, itemsPerPage, filterSort]);
 
   // Filter and sort surveys
   const filteredSurveys = surveys.filter(survey => {
@@ -802,7 +859,10 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
         throw new Error("Gagal memverifikasi survey di Supabase.");
       }
 
-      removeSurveyFromWorkingSet(survey.id);
+      removeSurveyFromWorkingSet(
+        survey,
+        survey.type === "pra-existing" ? "exact-pra-existing-group" : "single"
+      );
       setShowDetailModal(false);
       setSelectedSurvey(null);
       
@@ -828,7 +888,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
         throw new Error("Gagal menghapus survey di Supabase.");
       }
 
-      removeSurveyFromWorkingSet(survey.id);
+      removeSurveyFromWorkingSet(survey);
       
       alert("Survey berhasil dihapus permanen!");
     } catch (error) {
@@ -861,7 +921,10 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
         throw new Error("Gagal menolak survey di Supabase.");
       }
 
-      removeSurveyFromWorkingSet(survey.id);
+      removeSurveyFromWorkingSet(
+        survey,
+        survey.type === "pra-existing" ? "exact-pra-existing-group" : "single"
+      );
       setShowDetailModal(false);
       setSelectedSurvey(null);
       
@@ -933,7 +996,9 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
               {statsLoading ? "Menghitung..." : "Hitung Statistik"}
             </button>
             <button
-              onClick={() => void fetchSurveys(1, true)}
+              onClick={() => {
+                void Promise.all([fetchStatistics(true), fetchSurveys(1, true)]);
+              }}
               disabled={loading || refreshing}
               className="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
@@ -1295,20 +1360,26 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                           </svg>
                           <span>{formatDate(survey.createdAt)}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-gray-600">
+                        <div className="flex items-start gap-2 text-gray-600">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                           </svg>
-                          <span>{getDisplayLatitude(survey).toFixed(7)}, {getDisplayLongitude(survey).toFixed(7)}</span>
+                          <div className="leading-tight">
+                            <div className="font-medium text-gray-700">
+                              {getDisplayLatitude(survey).toFixed(7)}, {getDisplayLongitude(survey).toFixed(7)}
+                            </div>
+                            {hasDisplayedAdminCoordinate(survey) ? (
+                              <div className="mt-1 text-[11px] font-semibold text-emerald-700">
+                                Final admin
+                                {Number.isFinite(survey.originalLatitude) && Number.isFinite(survey.originalLongitude)
+                                  ? ` • Petugas ${survey.originalLatitude?.toFixed(7)}, ${survey.originalLongitude?.toFixed(7)}`
+                                  : ""}
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
-
-                      {survey.type === "pra-existing" && survey.hasAdminCoordinateOverride && Number.isFinite(survey.adminLatitude) && Number.isFinite(survey.adminLongitude) && (
-                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                          Koordinat final admin: {survey.adminLatitude?.toFixed(7)}, {survey.adminLongitude?.toFixed(7)}
-                        </div>
-                      )}
 
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-xs text-gray-600">

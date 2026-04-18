@@ -674,7 +674,7 @@ export default function DashboardContent({
       try {
         setReportState((current) => ({
           ...current,
-          loading: true,
+          loading: current.allRows.length === 0,
           error: "",
         }));
 

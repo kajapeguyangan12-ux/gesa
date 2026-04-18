@@ -232,7 +232,7 @@ function GesaSurveyContent() {
           )}
           {visitedMenus.includes("validasi-survey") && (
             <section className={activeMenu === "validasi-survey" ? "block" : "hidden"} aria-hidden={activeMenu !== "validasi-survey"}>
-              <ValidasiSurvey activeKabupaten={activeKabupaten} />
+              <ValidasiSurvey activeKabupaten={activeKabupaten} isActive={activeMenu === "validasi-survey"} />
             </section>
           )}
           {visitedMenus.includes("data-survey-valid") && (
