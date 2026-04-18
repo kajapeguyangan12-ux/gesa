@@ -1,11 +1,11 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
-import { doc, updateDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 const RemoteKMZMapPreview = dynamic(() => import("@/components/RemoteKMZMapPreview"), {
@@ -38,7 +38,47 @@ interface Task {
   startedAt?: DateValue;
 }
 
-const TASKS_REFRESH_INTERVAL_MS = 10_000;
+type FirestoreTimestamp = { toDate?: () => Date } | null | undefined;
+
+function toComparableTime(value: DateValue | FirestoreTimestamp) {
+  if (!value) return 0;
+  if (typeof value === "object" && value !== null && "toDate" in value && typeof value.toDate === "function") {
+    const date = value.toDate();
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? 0 : value.getTime();
+  }
+
+  if (typeof value !== "string" && typeof value !== "number") {
+    return 0;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function mapFirestoreTask(
+  id: string,
+  data: Record<string, unknown>
+): Task {
+  return {
+    id,
+    title: typeof data.title === "string" ? data.title : "Tanpa Judul",
+    description: typeof data.description === "string" ? data.description : "",
+    surveyorId: typeof data.surveyorId === "string" ? data.surveyorId : "",
+    surveyorName: typeof data.surveyorName === "string" ? data.surveyorName : "",
+    surveyorEmail: typeof data.surveyorEmail === "string" ? data.surveyorEmail : "",
+    status: typeof data.status === "string" ? data.status : "",
+    type: typeof data.type === "string" ? data.type : "",
+    kmzFileUrl: typeof data.kmzFileUrl === "string" ? data.kmzFileUrl : "",
+    kmzFileUrl2: typeof data.kmzFileUrl2 === "string" ? data.kmzFileUrl2 : "",
+    offlineEnabled: typeof data.offlineEnabled === "boolean" ? data.offlineEnabled : false,
+    createdAt: data.createdAt as DateValue,
+    startedAt: data.startedAt as DateValue,
+  };
+}
 
 function TugasSurveyPraExistingContent() {
   const router = useRouter();
@@ -51,57 +91,49 @@ function TugasSurveyPraExistingContent() {
   const [showModal, setShowModal] = useState(false);
   const [completingTask, setCompletingTask] = useState(false);
 
-  const fetchTasks = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/pra-existing/tasks?surveyorId=${encodeURIComponent(user?.uid || "")}`, {
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        throw new Error("Gagal memuat tugas pra-existing dari Supabase.");
-      }
-
-      const payload = (await response.json()) as { tasks?: Task[] };
-      const tasksData = Array.isArray(payload.tasks) ? payload.tasks : [];
-      setTasks(tasksData);
-
-      const storedTask = localStorage.getItem("activeTask");
-      if (storedTask) {
-        try {
-          const parsedTask = JSON.parse(storedTask) as { id?: string };
-          const matchedTask = tasksData.find((task) => task.id === parsedTask.id);
-          if (matchedTask && matchedTask.type === "pra-existing" && matchedTask.status !== "in-progress") {
-            localStorage.removeItem("activeTask");
-          }
-        } catch (storageError) {
-          console.error("Error validating active task cache:", storageError);
-          localStorage.removeItem("activeTask");
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching pra existing tasks:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.uid]);
-
   useEffect(() => {
-    if (!user) {
+    if (!user?.uid) {
+      setTasks([]);
+      setLoading(false);
       return;
     }
 
-    let intervalId: NodeJS.Timeout | null = null;
-    void fetchTasks();
-    intervalId = setInterval(() => {
-      void fetchTasks();
-    }, TASKS_REFRESH_INTERVAL_MS);
+    setLoading(true);
+    const tasksQuery = query(collection(db, "tasks"), where("surveyorId", "==", user.uid));
+    const unsubscribe = onSnapshot(
+      tasksQuery,
+      (snapshot) => {
+        const tasksData = snapshot.docs
+          .map((taskDoc) => mapFirestoreTask(taskDoc.id, taskDoc.data() as Record<string, unknown>))
+          .filter((task) => task.type === "pra-existing")
+          .sort((left, right) => toComparableTime(right.createdAt) - toComparableTime(left.createdAt));
 
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
+        setTasks(tasksData);
+
+        const storedTask = localStorage.getItem("activeTask");
+        if (storedTask) {
+          try {
+            const parsedTask = JSON.parse(storedTask) as { id?: string };
+            const matchedTask = tasksData.find((task) => task.id === parsedTask.id);
+            if (matchedTask && matchedTask.status !== "in-progress") {
+              localStorage.removeItem("activeTask");
+            }
+          } catch (storageError) {
+            console.error("Error validating active task cache:", storageError);
+            localStorage.removeItem("activeTask");
+          }
+        }
+
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error listening pra existing tasks:", error);
+        setLoading(false);
       }
-    };
-  }, [user, fetchTasks]);
+    );
+
+    return () => unsubscribe();
+  }, [user?.uid]);
 
   useEffect(() => {
     const targetTaskId = searchParams.get("taskId");

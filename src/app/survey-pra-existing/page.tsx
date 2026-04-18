@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } fro
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, doc, getDoc, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, onSnapshot, serverTimestamp } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
@@ -396,19 +396,11 @@ function SurveyPraExistingContent() {
       return;
     }
 
-    // Use polling instead of onSnapshot to reduce Firestore reads
     const taskRef = doc(db, "tasks", activeTask.id);
-    const cleanup = setupPolling(
-      `pra_existing_task_${activeTask.id}`,
-      async () => {
-        const snapshot = await getDoc(taskRef);
+    const unsubscribe = onSnapshot(
+      taskRef,
+      (snapshot) => {
         if (!snapshot.exists()) {
-          return null;
-        }
-        return snapshot.data() as ActiveTask | null;
-      },
-      (taskData) => {
-        if (!taskData) {
           window.localStorage.removeItem("activeTask");
           setActiveTask(null);
           setCompletedPoints([]);
@@ -418,6 +410,7 @@ function SurveyPraExistingContent() {
           return;
         }
 
+        const taskData = snapshot.data() as ActiveTask;
         setActiveTask((previous) =>
           previous
             ? {
@@ -435,11 +428,12 @@ function SurveyPraExistingContent() {
             : previous
         );
       },
-      120_000, // 2 minute TTL
-      60_000 // poll every 60 seconds (less aggressive than settings)
+      (error) => {
+        console.error("Gagal mendengarkan perubahan tugas aktif:", error);
+      }
     );
 
-    return cleanup;
+    return () => unsubscribe();
   }, [activeTask?.id]);
 
   useEffect(() => {

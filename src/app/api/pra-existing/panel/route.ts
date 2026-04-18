@@ -1,5 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { getAdminDb } from "@/lib/firebaseAdmin";
+
+interface SurveyPayload {
+  surveyorUid?: unknown;
+  status?: unknown;
+  createdAt?: { toDate?: () => Date } | null;
+}
+
+interface TaskPayload {
+  surveyorId?: unknown;
+  type?: unknown;
+  status?: unknown;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,47 +20,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "userId wajib diisi." }, { status: 400 });
     }
 
-    const supabase = getSupabaseAdminClient();
+    const adminDb = getAdminDb();
+    const [taskSnapshot, surveySnapshot] = await Promise.all([
+      adminDb.collection("tasks").where("surveyorId", "==", userId).where("type", "==", "pra-existing").get(),
+      adminDb.collection("survey-pra-existing").where("surveyorUid", "==", userId).get(),
+    ]);
+
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    const [
-      totalSurveyResult,
-      surveyHariIniResult,
-      menungguValidasiResult,
-      totalTugasResult,
-      tugasSelesaiResult,
-    ] = await Promise.all([
-      supabase.from("survey_pra_existing").select("*", { count: "exact", head: true }).eq("surveyor_uid", userId),
-      supabase.from("survey_pra_existing").select("*", { count: "exact", head: true }).eq("surveyor_uid", userId).gte("created_at", startOfToday.toISOString()),
-      supabase.from("survey_pra_existing").select("*", { count: "exact", head: true }).eq("surveyor_uid", userId).eq("status", "menunggu"),
-      supabase.from("tasks").select("*", { count: "exact", head: true }).eq("surveyor_id", userId).eq("type", "pra-existing"),
-      supabase.from("tasks").select("*", { count: "exact", head: true }).eq("surveyor_id", userId).eq("type", "pra-existing").eq("status", "completed"),
-    ]);
+    const tasks = taskSnapshot.docs.map((doc) => doc.data() as TaskPayload);
+    const surveys = surveySnapshot.docs.map((doc) => doc.data() as SurveyPayload);
 
-    const errors = [
-      totalSurveyResult.error,
-      surveyHariIniResult.error,
-      menungguValidasiResult.error,
-      totalTugasResult.error,
-      tugasSelesaiResult.error,
-    ].filter(Boolean);
+    const surveyHariIni = surveys.filter((survey) => {
+      const createdAt = survey.createdAt;
+      if (!createdAt || typeof createdAt !== "object" || !("toDate" in createdAt) || typeof createdAt.toDate !== "function") {
+        return false;
+      }
 
-    if (errors.length > 0) {
-      throw new Error(errors[0]?.message || "Gagal memuat panel pra-existing dari Supabase.");
-    }
+      return createdAt.toDate() >= startOfToday;
+    }).length;
 
     return NextResponse.json({
-      source: "supabase",
-      totalSurvey: totalSurveyResult.count || 0,
-      surveyHariIni: surveyHariIniResult.count || 0,
-      menungguValidasi: menungguValidasiResult.count || 0,
-      totalTugas: totalTugasResult.count || 0,
-      tugasSelesai: tugasSelesaiResult.count || 0,
+      source: "firestore",
+      totalSurvey: surveys.length,
+      surveyHariIni,
+      menungguValidasi: surveys.filter((survey) => survey.status === "menunggu").length,
+      totalTugas: tasks.length,
+      tugasSelesai: tasks.filter((task) => task.status === "completed").length,
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Gagal memuat panel pra-existing." },
+      { error: error instanceof Error ? error.message : "Gagal memuat panel pra-existing dari Firestore." },
       { status: 500 }
     );
   }

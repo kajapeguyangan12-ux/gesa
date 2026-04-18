@@ -91,10 +91,13 @@ export async function readJsonBundle<T>(path: string): Promise<T | null> {
   if (!storage) return null;
 
   try {
-    const downloadUrl = await getDownloadURL(ref(storage, path));
-    const response = await fetch(downloadUrl, { cache: "no-store" });
+    const response = await fetch(`/api/proxy-storage-json?path=${encodeURIComponent(path)}`, { cache: "no-store" });
+    if (response.status === 404) {
+      return null;
+    }
+
     if (!response.ok) {
-      throw new Error(`Failed to fetch bundle ${path}: ${response.status}`);
+      throw new Error(`Failed to fetch bundle ${path} via proxy: ${response.status}`);
     }
 
     return (await response.json()) as T;
@@ -104,7 +107,24 @@ export async function readJsonBundle<T>(path: string): Promise<T | null> {
       return null;
     }
 
-    console.error(`Failed to read JSON bundle at ${path}:`, error);
+    try {
+      const downloadUrl = await getDownloadURL(ref(storage, path));
+      const response = await fetch(downloadUrl, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`Failed to fetch bundle ${path}: ${response.status}`);
+      }
+
+      return (await response.json()) as T;
+    } catch (fallbackError) {
+      const fallbackCode =
+        typeof fallbackError === "object" && fallbackError && "code" in fallbackError ? String(fallbackError.code) : "";
+      if (fallbackCode === "storage/object-not-found") {
+        return null;
+      }
+
+      console.error(`Failed to read JSON bundle at ${path}:`, fallbackError);
+    }
+
     return null;
   }
 }

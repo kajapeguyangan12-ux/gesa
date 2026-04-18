@@ -1,20 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { getAdminDb } from "@/lib/firebaseAdmin";
 
-interface TaskRow {
-  fb_doc_id: string | null;
-  title: string | null;
-  description: string | null;
-  surveyor_id: string | null;
-  surveyor_name: string | null;
-  surveyor_email: string | null;
-  status: string | null;
-  type: string | null;
-  kmz_file_url: string | null;
-  kmz_file_url_2: string | null;
-  offline_enabled: boolean | null;
-  created_at: string | null;
-  raw_payload?: Record<string, unknown> | null;
+interface TaskPayload {
+  title?: unknown;
+  description?: unknown;
+  surveyorId?: unknown;
+  surveyorName?: unknown;
+  surveyorEmail?: unknown;
+  status?: unknown;
+  type?: unknown;
+  kmzFileUrl?: unknown;
+  kmzFileUrl2?: unknown;
+  offlineEnabled?: unknown;
+  createdAt?: { toDate?: () => Date } | string | number | null;
+  startedAt?: { toDate?: () => Date } | string | number | null;
+}
+
+function normalizeTimestamp(value: TaskPayload["createdAt"] | TaskPayload["startedAt"]) {
+  if (!value) return null;
+  if (typeof value === "object" && value !== null && "toDate" in value && typeof value.toDate === "function") {
+    return value.toDate().toISOString();
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
+  return null;
 }
 
 export async function GET(request: NextRequest) {
@@ -24,45 +37,45 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "surveyorId wajib diisi." }, { status: 400 });
     }
 
-    const supabase = getSupabaseAdminClient();
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("fb_doc_id, title, description, surveyor_id, surveyor_name, surveyor_email, status, type, kmz_file_url, kmz_file_url_2, offline_enabled, created_at, raw_payload")
-      .eq("surveyor_id", surveyorId)
-      .eq("type", "pra-existing")
-      .order("created_at", { ascending: false })
-      .limit(100);
+    const adminDb = getAdminDb();
+    const snapshot = await adminDb
+      .collection("tasks")
+      .where("surveyorId", "==", surveyorId)
+      .where("type", "==", "pra-existing")
+      .get();
 
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    const tasks = ((data || []) as TaskRow[]).map((row) => ({
-      id: row.fb_doc_id || "",
-      title: row.title || "Tanpa Judul",
-      description: row.description || "",
-      surveyorId: row.surveyor_id || "",
-      surveyorName: row.surveyor_name || "",
-      surveyorEmail: row.surveyor_email || "",
-      status: row.status || "",
-      type: row.type || "",
-      kmzFileUrl: row.kmz_file_url || "",
-      kmzFileUrl2: row.kmz_file_url_2 || "",
-      offlineEnabled: Boolean(row.offline_enabled),
-      createdAt: row.created_at,
-      startedAt:
-        typeof row.raw_payload?.startedAt === "string"
-          ? row.raw_payload.startedAt
-          : row.raw_payload?.startedAt || null,
-    }));
+    const tasks = snapshot.docs
+      .map((doc) => {
+        const data = doc.data() as TaskPayload;
+        return {
+          id: doc.id,
+          title: typeof data.title === "string" ? data.title : "Tanpa Judul",
+          description: typeof data.description === "string" ? data.description : "",
+          surveyorId: typeof data.surveyorId === "string" ? data.surveyorId : "",
+          surveyorName: typeof data.surveyorName === "string" ? data.surveyorName : "",
+          surveyorEmail: typeof data.surveyorEmail === "string" ? data.surveyorEmail : "",
+          status: typeof data.status === "string" ? data.status : "",
+          type: typeof data.type === "string" ? data.type : "",
+          kmzFileUrl: typeof data.kmzFileUrl === "string" ? data.kmzFileUrl : "",
+          kmzFileUrl2: typeof data.kmzFileUrl2 === "string" ? data.kmzFileUrl2 : "",
+          offlineEnabled: typeof data.offlineEnabled === "boolean" ? data.offlineEnabled : false,
+          createdAt: normalizeTimestamp(data.createdAt),
+          startedAt: normalizeTimestamp(data.startedAt),
+        };
+      })
+      .sort((left, right) => {
+        const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+        const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+        return rightTime - leftTime;
+      });
 
     return NextResponse.json({
-      source: "supabase",
+      source: "firestore",
       tasks,
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Gagal memuat tugas pra-existing dari Supabase." },
+      { error: error instanceof Error ? error.message : "Gagal memuat tugas pra-existing dari Firestore." },
       { status: 500 }
     );
   }

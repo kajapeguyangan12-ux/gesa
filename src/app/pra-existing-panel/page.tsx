@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 interface PanelStats {
   totalSurvey: number;
@@ -21,8 +23,6 @@ const initialStats: PanelStats = {
   menungguValidasi: 0,
 };
 
-const PANEL_REFRESH_INTERVAL_MS = 10_000;
-
 const cardColorMap = {
   blue: {
     wrapper: "bg-blue-100 text-blue-600",
@@ -34,6 +34,32 @@ const cardColorMap = {
     wrapper: "bg-yellow-100 text-yellow-600",
   },
 } as const;
+
+function StatCard({
+  icon,
+  label,
+  value,
+  color,
+  loading,
+}: {
+  icon: string;
+  label: string;
+  value: number;
+  color: keyof typeof cardColorMap;
+  loading: boolean;
+}) {
+  return (
+    <div className="flex items-center rounded-xl border border-gray-200 bg-white p-4">
+      <div className={`mr-4 flex h-12 w-12 items-center justify-center rounded-lg ${cardColorMap[color].wrapper}`}>
+        <p className="text-2xl">{icon}</p>
+      </div>
+      <div>
+        <p className="text-sm font-medium text-gray-500">{label}</p>
+        {loading ? <div className="mt-1 h-8 w-8 animate-pulse rounded-md bg-gray-200"></div> : <p className="text-2xl font-bold text-gray-800">{value}</p>}
+      </div>
+    </div>
+  );
+}
 
 function PraExistingPanelContent() {
   const router = useRouter();
@@ -49,89 +75,83 @@ function PraExistingPanelContent() {
   };
 
   useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
-    let cancelled = false;
+    if (!user?.uid) {
+      return;
+    }
 
-    const fetchStats = async () => {
-      if (!user?.uid) {
-        if (!cancelled) {
-          setStats(initialStats);
-          setLoading(false);
-          setDataSource("supabase");
-          setLastUpdatedAt("");
-        }
+    let latestTasks: Array<Record<string, unknown>> = [];
+    let latestSurveys: Array<Record<string, unknown>> = [];
+    let hasTasksSnapshot = false;
+    let hasSurveysSnapshot = false;
+
+    const computeStats = () => {
+      if (!hasTasksSnapshot || !hasSurveysSnapshot) {
         return;
       }
 
-      if (!cancelled) {
-        setLoading(true);
-      }
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
 
-      try {
-        const response = await fetch(`/api/pra-existing/panel?userId=${encodeURIComponent(user.uid)}`, {
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error("Gagal memuat panel pra-existing dari Supabase.");
-        }
+      const praExistingTasks = latestTasks.filter((task) => task.type === "pra-existing");
+      const relevantSurveys = latestSurveys.filter((survey) => {
+        const surveyorUid = typeof survey.surveyorUid === "string" ? survey.surveyorUid : "";
+        return surveyorUid === user.uid;
+      });
 
-        const payload = (await response.json()) as PanelStats & { source?: "supabase" | "firestore" };
-        if (cancelled) {
-          return;
+      const surveyHariIni = relevantSurveys.filter((survey) => {
+        const createdAt = survey.createdAt;
+        if (!createdAt || typeof createdAt !== "object" || !("toDate" in createdAt) || typeof createdAt.toDate !== "function") {
+          return false;
         }
+        return createdAt.toDate() >= startOfToday;
+      }).length;
 
-        setStats({
-          totalSurvey: payload.totalSurvey ?? 0,
-          surveyHariIni: payload.surveyHariIni ?? 0,
-          menungguValidasi: payload.menungguValidasi ?? 0,
-          totalTugas: payload.totalTugas ?? 0,
-          tugasSelesai: payload.tugasSelesai ?? 0,
-        });
-        setDataSource(payload.source || "supabase");
-        setLastUpdatedAt(new Date().toISOString());
-      } catch (error) {
-        console.error("Error fetching pra-existing dashboard stats:", error);
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
+      const menungguValidasi = relevantSurveys.filter((survey) => survey.status === "menunggu").length;
+      const tugasSelesai = praExistingTasks.filter((task) => task.status === "completed").length;
+
+      setStats({
+        totalSurvey: relevantSurveys.length,
+        surveyHariIni,
+        menungguValidasi,
+        totalTugas: praExistingTasks.length,
+        tugasSelesai,
+      });
+      setDataSource("firestore");
+      setLastUpdatedAt(new Date().toISOString());
+      setLoading(false);
     };
 
-    void fetchStats();
-    intervalId = setInterval(() => {
-      void fetchStats();
-    }, PANEL_REFRESH_INTERVAL_MS);
+    const unsubscribeTasks = onSnapshot(
+      query(collection(db, "tasks"), where("surveyorId", "==", user.uid)),
+      (snapshot) => {
+        latestTasks = snapshot.docs.map((docItem) => docItem.data() as Record<string, unknown>);
+        hasTasksSnapshot = true;
+        computeStats();
+      },
+      (error) => {
+        console.error("Error listening pra-existing task stats:", error);
+        setLoading(false);
+      }
+    );
+
+    const unsubscribeSurveys = onSnapshot(
+      query(collection(db, "survey-pra-existing"), where("surveyorUid", "==", user.uid)),
+      (snapshot) => {
+        latestSurveys = snapshot.docs.map((docItem) => docItem.data() as Record<string, unknown>);
+        hasSurveysSnapshot = true;
+        computeStats();
+      },
+      (error) => {
+        console.error("Error listening pra-existing survey stats:", error);
+        setLoading(false);
+      }
+    );
 
     return () => {
-      cancelled = true;
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
+      unsubscribeTasks();
+      unsubscribeSurveys();
     };
   }, [user?.uid]);
-
-  const StatCard = ({
-    icon,
-    label,
-    value,
-    color,
-  }: {
-    icon: string;
-    label: string;
-    value: number;
-    color: keyof typeof cardColorMap;
-  }) => (
-    <div className="flex items-center rounded-xl border border-gray-200 bg-white p-4">
-      <div className={`mr-4 flex h-12 w-12 items-center justify-center rounded-lg ${cardColorMap[color].wrapper}`}>
-        <p className="text-2xl">{icon}</p>
-      </div>
-      <div>
-        <p className="text-sm font-medium text-gray-500">{label}</p>
-        {loading ? <div className="mt-1 h-8 w-8 animate-pulse rounded-md bg-gray-200"></div> : <p className="text-2xl font-bold text-gray-800">{value}</p>}
-      </div>
-    </div>
-  );
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
@@ -190,9 +210,9 @@ function PraExistingPanelContent() {
         <div className="mb-8">
           <h2 className="mb-4 text-xl font-bold text-gray-800">Ringkasan Hari Ini</h2>
           <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            <StatCard icon="SV" label="Survey Hari Ini" value={stats.surveyHariIni} color="blue" />
-            <StatCard icon="OK" label="Tugas Selesai" value={stats.tugasSelesai} color="green" />
-            <StatCard icon="PD" label="Menunggu Validasi" value={stats.menungguValidasi} color="yellow" />
+            <StatCard icon="SV" label="Survey Hari Ini" value={stats.surveyHariIni} color="blue" loading={loading} />
+            <StatCard icon="OK" label="Tugas Selesai" value={stats.tugasSelesai} color="green" loading={loading} />
+            <StatCard icon="PD" label="Menunggu Validasi" value={stats.menungguValidasi} color="yellow" loading={loading} />
           </div>
         </div>
 
