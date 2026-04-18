@@ -156,12 +156,18 @@ function TugasSurveyContent() {
   const handleStartTask = async (task: Task) => {
     try {
       // Update task status to in-progress
-      const taskRef = doc(db, "tasks", task.id);
       const startedAt = new Date().toISOString();
-      await updateDoc(taskRef, {
-        status: "in-progress",
-        startedAt: new Date(),
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "in-progress",
+          startedAt,
+        }),
       });
+      if (!response.ok) {
+        throw new Error("Gagal memulai tugas di Supabase.");
+      }
 
       setTasks((previous) =>
         previous.map((entry) =>

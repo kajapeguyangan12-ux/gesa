@@ -6,6 +6,11 @@ import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 
+function toApiSurveyType(type: string) {
+  if (type === "existing" || type === "propose" || type === "pra-existing") return type;
+  return "existing";
+}
+
 // Dynamic import for Map
 const DynamicDetailMap = dynamic<{
   latitude: number;
@@ -274,30 +279,37 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
           ? normalizedLongitude
           : null;
       
-      await updateDoc(surveyDoc, {
-        ...editFormData,
-        latitude: hasValidBaseCoords ? normalizedLatitude : editFormData.latitude,
-        longitude: hasValidBaseCoords ? normalizedLongitude : editFormData.longitude,
-        adminLatitude: hasValidAdminCoords ? normalizedAdminLatitude : null,
-        adminLongitude: hasValidAdminCoords ? normalizedAdminLongitude : null,
-        finalLatitude:
-          editFormData.type === "pra-existing" && resolvedPraLatitude !== null
-            ? resolvedPraLatitude
-            : editFormData.finalLatitude ?? null,
-        finalLongitude:
-          editFormData.type === "pra-existing" && resolvedPraLongitude !== null
-            ? resolvedPraLongitude
-            : editFormData.finalLongitude ?? null,
-        hasAdminCoordinateOverride:
-          editFormData.type === "pra-existing" &&
-          resolvedPraLatitude !== null &&
-          resolvedPraLongitude !== null &&
-          (Math.abs(resolvedPraLatitude - normalizedLatitude) > 0.0000001 ||
-            Math.abs(resolvedPraLongitude - normalizedLongitude) > 0.0000001),
-        kepemilikanTiang: editFormData.kepemilikanDisplay || editFormData.kepemilikanTiang,
-        editedBy: currentUser?.name || currentUser?.email || 'Admin',
-        updatedAt: new Date()
+      const response = await fetch(`/api/admin/surveys/${toApiSurveyType(editFormData.type)}/${editFormData.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...editFormData,
+          latitude: hasValidBaseCoords ? normalizedLatitude : editFormData.latitude,
+          longitude: hasValidBaseCoords ? normalizedLongitude : editFormData.longitude,
+          adminLatitude: hasValidAdminCoords ? normalizedAdminLatitude : null,
+          adminLongitude: hasValidAdminCoords ? normalizedAdminLongitude : null,
+          finalLatitude:
+            editFormData.type === "pra-existing" && resolvedPraLatitude !== null
+              ? resolvedPraLatitude
+              : editFormData.finalLatitude ?? null,
+          finalLongitude:
+            editFormData.type === "pra-existing" && resolvedPraLongitude !== null
+              ? resolvedPraLongitude
+              : editFormData.finalLongitude ?? null,
+          hasAdminCoordinateOverride:
+            editFormData.type === "pra-existing" &&
+            resolvedPraLatitude !== null &&
+            resolvedPraLongitude !== null &&
+            (Math.abs(resolvedPraLatitude - normalizedLatitude) > 0.0000001 ||
+              Math.abs(resolvedPraLongitude - normalizedLongitude) > 0.0000001),
+          kepemilikanTiang: editFormData.kepemilikanDisplay || editFormData.kepemilikanTiang,
+          editedBy: currentUser?.name || currentUser?.email || 'Admin',
+          updatedAt: new Date().toISOString()
+        }),
       });
+      if (!response.ok) {
+        throw new Error("Gagal memperbarui survey di Supabase.");
+      }
 
       setSurveys((current) =>
         current.map((survey) => (survey.id === editFormData.id ? { ...survey, ...editFormData } : survey))
@@ -338,7 +350,10 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         Number.isFinite(normalizedAdminLatitude) &&
         Number.isFinite(normalizedAdminLongitude);
       
-      await updateDoc(surveyDoc, {
+      const response = await fetch(`/api/admin/surveys/${toApiSurveyType(survey.type)}/${survey.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
         status: "tervalidasi",
         ...(shouldUseAdminCoordinate
           ? {
@@ -350,8 +365,12 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
             }
           : {}),
         validatedBy: currentUser?.name || currentUser?.email || 'Admin',
-        validatedAt: new Date()
+        validatedAt: new Date().toISOString()
+        }),
       });
+      if (!response.ok) {
+        throw new Error("Gagal memvalidasi survey di Supabase.");
+      }
 
       removeSurveyFromList(survey.id);
       
@@ -392,7 +411,10 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
             Number.isFinite(normalizedAdminLatitude) &&
             Number.isFinite(normalizedAdminLongitude);
 
-          await updateDoc(surveyDoc, {
+          const response = await fetch(`/api/admin/surveys/${toApiSurveyType(survey.type)}/${survey.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
             status: "tervalidasi",
             ...(shouldUseAdminCoordinate
               ? {
@@ -404,8 +426,12 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
                 }
               : {}),
             validatedBy: currentUser?.name || currentUser?.email || "Admin",
-            validatedAt: new Date(),
+            validatedAt: new Date().toISOString(),
+            }),
           });
+          if (!response.ok) {
+            throw new Error(`Gagal memvalidasi survey ${survey.id}.`);
+          }
         })
       );
 
@@ -479,12 +505,19 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       const storedUser = localStorage.getItem('gesa_user');
       const currentUser = storedUser ? JSON.parse(storedUser) : null;
       
-      await updateDoc(surveyDoc, {
+      const response = await fetch(`/api/admin/surveys/${toApiSurveyType(survey.type)}/${survey.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
         status: "ditolak",
         rejectedBy: currentUser?.name || currentUser?.email || 'Admin',
-        rejectedAt: new Date(),
+        rejectedAt: new Date().toISOString(),
         rejectionReason: alasan
+        }),
       });
+      if (!response.ok) {
+        throw new Error("Gagal menolak survey di Supabase.");
+      }
 
       removeSurveyFromList(survey.id);
       setShowDetailModal(false);
@@ -509,7 +542,12 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
           : "survey-pra-existing";
       const surveyDoc = doc(db, collectionName, survey.id);
       
-      await deleteDoc(surveyDoc);
+      const response = await fetch(`/api/admin/surveys/${toApiSurveyType(survey.type)}/${survey.id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Gagal menghapus survey di Supabase.");
+      }
       removeSurveyFromList(survey.id);
       
       alert('Survey berhasil dihapus!');

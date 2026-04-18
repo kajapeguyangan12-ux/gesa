@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 
 interface PanelStats {
   totalSurvey: number;
@@ -79,79 +77,76 @@ function PraExistingPanelContent() {
       return;
     }
 
-    let latestTasks: Array<Record<string, unknown>> = [];
-    let latestSurveys: Array<Record<string, unknown>> = [];
-    let hasTasksSnapshot = false;
-    let hasSurveysSnapshot = false;
+    let isCancelled = false;
 
-    const computeStats = () => {
-      if (!hasTasksSnapshot || !hasSurveysSnapshot) {
-        return;
-      }
+    const loadStats = async () => {
+      try {
+        setLoading(true);
 
-      const startOfToday = new Date();
-      startOfToday.setHours(0, 0, 0, 0);
+        const [tasksResponse, surveysResponse] = await Promise.all([
+          fetch(`/api/tasks?surveyorId=${encodeURIComponent(user.uid)}&surveyorEmail=${encodeURIComponent(user.email || "")}`, {
+            cache: "no-store",
+          }),
+          fetch(`/api/pra-existing/submitted-surveys?surveyorUid=${encodeURIComponent(user.uid)}`, {
+            cache: "no-store",
+          }),
+        ]);
 
-      const praExistingTasks = latestTasks.filter((task) => task.type === "pra-existing");
-      const relevantSurveys = latestSurveys.filter((survey) => {
-        const surveyorUid = typeof survey.surveyorUid === "string" ? survey.surveyorUid : "";
-        return surveyorUid === user.uid;
-      });
+        const tasksPayload = await tasksResponse.json().catch(() => ({}));
+        const surveysPayload = await surveysResponse.json().catch(() => ({}));
 
-      const surveyHariIni = relevantSurveys.filter((survey) => {
-        const createdAt = survey.createdAt;
-        if (!createdAt || typeof createdAt !== "object" || !("toDate" in createdAt) || typeof createdAt.toDate !== "function") {
-          return false;
+        if (!tasksResponse.ok) {
+          throw new Error(tasksPayload?.error || "Gagal memuat tugas pra-existing.");
         }
-        return createdAt.toDate() >= startOfToday;
-      }).length;
 
-      const menungguValidasi = relevantSurveys.filter((survey) => survey.status === "menunggu").length;
-      const tugasSelesai = praExistingTasks.filter((task) => task.status === "completed").length;
+        if (!surveysResponse.ok) {
+          throw new Error(surveysPayload?.error || "Gagal memuat survey pra-existing.");
+        }
 
-      setStats({
-        totalSurvey: relevantSurveys.length,
-        surveyHariIni,
-        menungguValidasi,
-        totalTugas: praExistingTasks.length,
-        tugasSelesai,
-      });
-      setDataSource("firestore");
-      setLastUpdatedAt(new Date().toISOString());
-      setLoading(false);
+        const latestTasks = Array.isArray(tasksPayload.tasks) ? tasksPayload.tasks : [];
+        const latestSurveys = Array.isArray(surveysPayload.surveys) ? surveysPayload.surveys : [];
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+
+        const praExistingTasks = latestTasks.filter((task: Record<string, unknown>) => task.type === "pra-existing");
+        const surveyHariIni = latestSurveys.filter((survey: Record<string, unknown>) => {
+          const rawCreatedAt = survey.createdAt;
+          const createdAt = typeof rawCreatedAt === "string" || typeof rawCreatedAt === "number" ? new Date(rawCreatedAt) : null;
+          return createdAt instanceof Date && !Number.isNaN(createdAt.getTime()) && createdAt >= startOfToday;
+        }).length;
+        const menungguValidasi = latestSurveys.filter((survey: Record<string, unknown>) => survey.status === "menunggu").length;
+        const tugasSelesai = praExistingTasks.filter((task: Record<string, unknown>) => task.status === "completed").length;
+
+        if (isCancelled) return;
+
+        setStats({
+          totalSurvey: latestSurveys.length,
+          surveyHariIni,
+          menungguValidasi,
+          totalTugas: praExistingTasks.length,
+          tugasSelesai,
+        });
+        setDataSource("supabase");
+        setLastUpdatedAt(new Date().toISOString());
+      } catch (error) {
+        console.error("Error loading pra-existing panel stats:", error);
+        if (isCancelled) return;
+        setStats(initialStats);
+        setDataSource("firestore");
+        setLastUpdatedAt("");
+      } finally {
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
     };
 
-    const unsubscribeTasks = onSnapshot(
-      query(collection(db, "tasks"), where("surveyorId", "==", user.uid)),
-      (snapshot) => {
-        latestTasks = snapshot.docs.map((docItem) => docItem.data() as Record<string, unknown>);
-        hasTasksSnapshot = true;
-        computeStats();
-      },
-      (error) => {
-        console.error("Error listening pra-existing task stats:", error);
-        setLoading(false);
-      }
-    );
-
-    const unsubscribeSurveys = onSnapshot(
-      query(collection(db, "survey-pra-existing"), where("surveyorUid", "==", user.uid)),
-      (snapshot) => {
-        latestSurveys = snapshot.docs.map((docItem) => docItem.data() as Record<string, unknown>);
-        hasSurveysSnapshot = true;
-        computeStats();
-      },
-      (error) => {
-        console.error("Error listening pra-existing survey stats:", error);
-        setLoading(false);
-      }
-    );
+    void loadStats();
 
     return () => {
-      unsubscribeTasks();
-      unsubscribeSurveys();
+      isCancelled = true;
     };
-  }, [user?.uid]);
+  }, [user?.uid, user?.email]);
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">

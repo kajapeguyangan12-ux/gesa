@@ -1,10 +1,10 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { addDoc, collection, doc, getDoc, onSnapshot, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
@@ -151,6 +151,8 @@ function SurveyPraExistingContent() {
   const [gpsCoords, setGpsCoords] = useState<GPSCoordinates | null>(null);
   const [trackingPath, setTrackingPath] = useState<Array<{ lat: number; lng: number }>>([]);
   const [trackingEnabled, setTrackingEnabled] = useState(false);
+  const [trackingSessionId, setTrackingSessionId] = useState<string | null>(null);
+  const [trackingIntervalId, setTrackingIntervalId] = useState<number | null>(null);
   const [isGPSActive, setIsGPSActive] = useState(false);
   const [activeKabupaten, setActiveKabupaten] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<ActiveTask | null>(null);
@@ -180,6 +182,28 @@ function SurveyPraExistingContent() {
   const activeTaskStatus = activeTask?.status;
   const activeTaskSurveyorId = activeTask?.surveyorId;
   const activeTaskOfflineEnabled = activeTask?.offlineEnabled;
+  const gpsCoordsRef = useRef<GPSCoordinates | null>(null);
+
+  useEffect(() => {
+    gpsCoordsRef.current = gpsCoords;
+  }, [gpsCoords]);
+
+  const fetchActiveTaskFromServer = useCallback(async (taskId: string) => {
+    const response = await fetch(`/api/tasks/${taskId}`, {
+      cache: "no-store",
+    });
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      throw new Error("Gagal memuat tugas aktif dari Supabase.");
+    }
+
+    const payload = (await response.json()) as { task?: ActiveTask };
+    return payload.task || null;
+  }, []);
 
   const refreshPendingSyncCount = useCallback(async () => {
     try {
@@ -225,13 +249,20 @@ function SurveyPraExistingContent() {
       await uploadBytes(fotoRef, photoFile);
       const fotoAktualUrl = await getDownloadURL(fotoRef);
 
-      await addDoc(collection(db, "survey-pra-existing"), {
-        ...payload,
-        fotoAktual: fotoAktualUrl,
-        uploadedFromOffline,
-        offlineCreatedAt: new Date(createdAtLocal).toISOString(),
-        createdAt: serverTimestamp(),
+      const response = await fetch("/api/surveys/pra-existing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          fotoAktual: fotoAktualUrl,
+          uploadedFromOffline,
+          offlineCreatedAt: new Date(createdAtLocal).toISOString(),
+          createdAt: new Date().toISOString(),
+        }),
       });
+      if (!response.ok) {
+        throw new Error("Gagal menyimpan survey pra-existing ke Supabase.");
+      }
     },
     [user]
   );
@@ -396,11 +427,14 @@ function SurveyPraExistingContent() {
       return;
     }
 
-    const taskRef = doc(db, "tasks", activeTask.id);
-    const unsubscribe = onSnapshot(
-      taskRef,
-      (snapshot) => {
-        if (!snapshot.exists()) {
+    let cancelled = false;
+
+    const refreshTask = async () => {
+      try {
+        const taskData = await fetchActiveTaskFromServer(activeTask.id);
+        if (cancelled) return;
+
+        if (!taskData) {
           window.localStorage.removeItem("activeTask");
           setActiveTask(null);
           setCompletedPoints([]);
@@ -410,31 +444,32 @@ function SurveyPraExistingContent() {
           return;
         }
 
-        const taskData = snapshot.data() as ActiveTask;
         setActiveTask((previous) =>
           previous
             ? {
                 ...previous,
-                title: typeof taskData.title === "string" ? taskData.title : previous.title,
-                description: typeof taskData.description === "string" ? taskData.description : previous.description,
-                type: typeof taskData.type === "string" ? taskData.type : previous.type,
-                status: typeof taskData.status === "string" ? taskData.status : previous.status,
-                surveyorId: typeof taskData.surveyorId === "string" ? taskData.surveyorId : previous.surveyorId,
-                kmzFileUrl: typeof taskData.kmzFileUrl === "string" ? taskData.kmzFileUrl : previous.kmzFileUrl,
-                kmzFileUrl2: typeof taskData.kmzFileUrl2 === "string" ? taskData.kmzFileUrl2 : previous.kmzFileUrl2,
-                offlineEnabled:
-                  typeof taskData.offlineEnabled === "boolean" ? taskData.offlineEnabled : previous.offlineEnabled,
+                ...taskData,
               }
-            : previous
+            : taskData
         );
-      },
-      (error) => {
-        console.error("Gagal mendengarkan perubahan tugas aktif:", error);
+        window.localStorage.setItem("activeTask", JSON.stringify(taskData));
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Gagal memuat perubahan tugas aktif:", error);
+        }
       }
-    );
+    };
 
-    return () => unsubscribe();
-  }, [activeTask?.id]);
+    void refreshTask();
+    const intervalId = window.setInterval(() => {
+      void refreshTask();
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [activeTask?.id, fetchActiveTaskFromServer]);
 
   useEffect(() => {
     const validateActiveTask = async () => {
@@ -494,9 +529,9 @@ function SurveyPraExistingContent() {
 
       try {
         setCheckingTaskAccess(true);
-        const taskSnap = await getDoc(doc(db, "tasks", activeTaskId));
+        const taskData = await fetchActiveTaskFromServer(activeTaskId);
 
-        if (!taskSnap.exists()) {
+        if (!taskData) {
           window.localStorage.removeItem("activeTask");
           setActiveTask(null);
           setCompletedPoints([]);
@@ -506,7 +541,6 @@ function SurveyPraExistingContent() {
           return;
         }
 
-        const taskData = taskSnap.data() as ActiveTask;
         const belongsToUser = taskData.surveyorId === user.uid;
         const canEdit = belongsToUser && taskData.type === "pra-existing" && taskData.status === "in-progress";
 
@@ -557,7 +591,7 @@ function SurveyPraExistingContent() {
     };
 
     void validateActiveTask();
-  }, [activeTaskId, activeTaskOfflineEnabled, activeTaskStatus, activeTaskSurveyorId, activeTaskType, isOnline, offlineSettings, user?.uid]);
+  }, [activeTaskId, activeTaskOfflineEnabled, activeTaskStatus, activeTaskSurveyorId, activeTaskType, fetchActiveTaskFromServer, isOnline, offlineSettings, user?.uid]);
 
   useEffect(() => {
     if (!("geolocation" in navigator)) {
@@ -576,22 +610,6 @@ function SurveyPraExistingContent() {
         };
 
         setGpsCoords(nextCoords);
-        if (trackingEnabled) {
-          setTrackingPath((previous) => {
-            const nextPoint = { lat: nextCoords.latitude, lng: nextCoords.longitude };
-            if (previous.length === 0) {
-              return [nextPoint];
-            }
-
-            const lastPoint = previous[previous.length - 1];
-            const moved = getDistanceMeters(lastPoint.lat, lastPoint.lng, nextPoint.lat, nextPoint.lng);
-            if (moved < 5) {
-              return previous;
-            }
-
-            return [...previous, nextPoint];
-          });
-        }
       },
       (error) => {
         console.error("GPS error:", error);
@@ -608,6 +626,154 @@ function SurveyPraExistingContent() {
 
     return () => navigator.geolocation.clearWatch(watchId);
   }, [trackingEnabled]);
+
+  const calculateTrackingDistanceKm = useCallback((path: Array<{ lat: number; lng: number; timestamp?: number }>) => {
+    let totalDistance = 0;
+    for (let i = 1; i < path.length; i += 1) {
+      const prev = path[i - 1];
+      const curr = path[i];
+      totalDistance += getDistanceMeters(prev.lat, prev.lng, curr.lat, curr.lng) / 1000;
+    }
+    return totalDistance;
+  }, []);
+
+  const stopTrackingSession = useCallback(async () => {
+    if (!trackingSessionId) {
+      setTrackingEnabled(false);
+      return;
+    }
+
+    try {
+      if (trackingIntervalId) {
+        window.clearInterval(trackingIntervalId);
+        setTrackingIntervalId(null);
+      }
+
+      const duration =
+        trackingPath.length > 1
+          ? Math.max(0, ((trackingPath[trackingPath.length - 1] as { timestamp?: number }).timestamp || Date.now()) - (((trackingPath[0] as { timestamp?: number }).timestamp) || Date.now())) / 1000
+          : 0;
+
+      const response = await fetch(`/api/tracking-sessions/${trackingSessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endTime: new Date().toISOString(),
+          status: "completed",
+          path: trackingPath.map((point) => ({
+            lat: point.lat,
+            lng: point.lng,
+            timestamp: (point as { timestamp?: number }).timestamp || Date.now(),
+          })),
+          totalDistance: calculateTrackingDistanceKm(trackingPath),
+          pointsCount: trackingPath.length,
+          duration,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Gagal menghentikan tracking pra-existing di Supabase.");
+      }
+    } catch (error) {
+      console.error("Gagal menghentikan tracking pra-existing:", error);
+    } finally {
+      setTrackingSessionId(null);
+      setTrackingEnabled(false);
+    }
+  }, [calculateTrackingDistanceKm, trackingIntervalId, trackingPath, trackingSessionId]);
+
+  const startTrackingSession = useCallback(async () => {
+    if (!user) {
+      alert("User tidak ditemukan. Silakan login ulang.");
+      return;
+    }
+
+    if (!isGPSActive || !gpsCoords) {
+      alert("Aktifkan GPS terlebih dahulu sebelum memulai tracking.");
+      return;
+    }
+
+    try {
+      const initialPoint = {
+        lat: gpsCoords.latitude,
+        lng: gpsCoords.longitude,
+        timestamp: Date.now(),
+        accuracy: gpsCoords.accuracy,
+      };
+
+      const response = await fetch("/api/tracking-sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.uid,
+          userName: user.displayName || user.email || "Unknown",
+          userEmail: user.email || "",
+          startTime: new Date().toISOString(),
+          endTime: null,
+          status: "active",
+          path: [initialPoint],
+          totalDistance: 0,
+          pointsCount: 1,
+          duration: 0,
+          surveyType: "pra-existing",
+          taskId: activeTask?.id || null,
+          taskTitle: activeTask?.title || null,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as { id?: string; error?: string };
+      if (!response.ok || !payload.id) {
+        throw new Error(payload.error || "Gagal memulai tracking pra-existing.");
+      }
+
+      setTrackingSessionId(payload.id);
+      setTrackingPath([initialPoint]);
+      setTrackingEnabled(true);
+
+      const interval = window.setInterval(async () => {
+        const currentCoords = gpsCoordsRef.current;
+        if (!currentCoords) return;
+
+        const newPoint = {
+          lat: currentCoords.latitude,
+          lng: currentCoords.longitude,
+          timestamp: Date.now(),
+          accuracy: currentCoords.accuracy,
+        };
+
+        setTrackingPath((previous) => {
+          const nextPath = [...previous, newPoint];
+          void fetch(`/api/tracking-sessions/${payload.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              path: nextPath,
+              lastUpdate: new Date().toISOString(),
+              pointsCount: nextPath.length,
+              totalDistance: calculateTrackingDistanceKm(nextPath),
+              status: "active",
+            }),
+          }).catch((error) => {
+            console.error("Gagal mengirim tracking point pra-existing:", error);
+          });
+          return nextPath;
+        });
+      }, 15_000);
+
+      setTrackingIntervalId(interval);
+    } catch (error) {
+      console.error("Gagal memulai tracking pra-existing:", error);
+      alert(error instanceof Error ? error.message : "Gagal memulai tracking.");
+    }
+  }, [activeTask?.id, activeTask?.title, calculateTrackingDistanceKm, gpsCoords, isGPSActive, user]);
+
+  useEffect(() => {
+    return () => {
+      if (trackingIntervalId) {
+        window.clearInterval(trackingIntervalId);
+      }
+    };
+  }, [trackingIntervalId]);
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null;
@@ -1158,7 +1324,17 @@ function SurveyPraExistingContent() {
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
                       <div className={`rounded-xl px-3 py-1.5 text-center text-[11px] font-semibold ${isGPSActive ? "bg-emerald-500 text-white" : "bg-amber-100 text-amber-800"}`}>{isGPSActive ? "GPS Aktif" : "GPS Belum Aktif"}</div>
-                      <button type="button" onClick={() => setTrackingEnabled((previous) => !previous)} className={`rounded-xl px-3 py-1.5 text-[11px] font-semibold text-white transition ${trackingEnabled ? "bg-red-500 hover:bg-red-600" : "bg-blue-600 hover:bg-blue-700"}`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (trackingEnabled) {
+                            void stopTrackingSession();
+                            return;
+                          }
+                          void startTrackingSession();
+                        }}
+                        className={`rounded-xl px-3 py-1.5 text-[11px] font-semibold text-white transition ${trackingEnabled ? "bg-red-500 hover:bg-red-600" : "bg-blue-600 hover:bg-blue-700"}`}
+                      >
                         {trackingEnabled ? "Hentikan Tracking" : "Mulai Tracking"}
                       </button>
                     </div>

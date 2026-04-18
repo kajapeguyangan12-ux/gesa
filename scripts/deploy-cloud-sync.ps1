@@ -26,9 +26,9 @@ if ([string]::IsNullOrWhiteSpace($ServiceName)) { $ServiceName = "gesa-supabase-
 if ([string]::IsNullOrWhiteSpace($SchedulerJobName)) { $SchedulerJobName = "gesa-supabase-sync-5m" }
 if ([string]::IsNullOrWhiteSpace($Schedule)) { $Schedule = "*/5 * * * *" }
 if ([string]::IsNullOrWhiteSpace($TimeZone)) { $TimeZone = "Asia/Singapore" }
-if ([string]::IsNullOrWhiteSpace($SyncProfile)) { $SyncProfile = "full" }
+if ([string]::IsNullOrWhiteSpace($SyncProfile)) { $SyncProfile = "backoffice" }
 if ([string]::IsNullOrWhiteSpace($SyncMode)) { $SyncMode = "incremental" }
-if ([string]::IsNullOrWhiteSpace($SyncCollections)) { $SyncCollections = "tasks,reports,survey-existing,survey-apj-propose,survey-pra-existing,user-admin" }
+if ([string]::IsNullOrWhiteSpace($SyncCollections)) { $SyncCollections = "reports,user-admin" }
 if ([string]::IsNullOrWhiteSpace($MigrationBatchSize)) { $MigrationBatchSize = "500" }
 
 function Require-Value([string]$Name, [string]$Value) {

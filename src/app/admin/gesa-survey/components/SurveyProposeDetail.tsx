@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { deleteDoc, doc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/hooks/useAuth";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
@@ -201,7 +199,13 @@ export default function SurveyProposeDetail({ onBack, statusFilter = "diverifika
     if (!confirm("Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.")) return;
     
     try {
-      await deleteDoc(doc(db, "survey-apj-propose", id));
+      const response = await fetch(`/api/admin/surveys/propose/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Gagal menghapus data survey propose.");
+      }
       setSurveys((current) => current.filter((survey) => survey.id !== id));
       setTotalCount((current) => Math.max(0, current - 1));
       alert("Data berhasil dihapus!");

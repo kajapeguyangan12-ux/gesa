@@ -1,19 +1,17 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import {
-  deleteDoc,
-  doc,
-  runTransaction,
-  updateDoc,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { PRA_EXISTING_TABANAN_DATA } from "@/app/survey-pra-existing/location-data";
 import type { TaskNavigationInfo } from "@/utils/taskNavigation";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 import { fetchAdminSurveyRows, type AdminSurveyRow } from "./supabaseSurveyClient";
+
+function toApiSurveyType(type: string) {
+  if (type === "existing" || type === "propose" || type === "pra-existing") return type;
+  return "existing";
+}
 
 // Define props type inline
 interface MapComponentProps {
@@ -673,13 +671,6 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     
     try {
       setIsSaving(true);
-      const collectionName =
-        activeTab === "existing"
-          ? "survey-existing"
-          : activeTab === "propose"
-          ? "survey-apj-propose"
-          : "survey-pra-existing";
-      const surveyDoc = doc(db, collectionName, editFormData.id);
       const normalizedAdminLatitude = Number(editFormData.adminLatitude);
       const normalizedAdminLongitude = Number(editFormData.adminLongitude);
       const hasValidAdminCoords =
@@ -705,28 +696,34 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
       const editedByName = currentUser?.name || currentUser?.email || 'Admin';
       const updatedAtValue = new Date();
       
-      // Update document
-      await updateDoc(surveyDoc, {
-        ...editFormData,
-        ...(editFormData.type === "pra-existing"
-          ? {
-              kabupatenName: normalizedPraExistingKabupatenName,
-              kepemilikanDisplay: normalizedPraExistingOwnership,
-              keteranganTiang: normalizedPraExistingOwnership,
-            }
-          : {}),
-        originalLatitude,
-        originalLongitude,
-        adminLatitude: hasValidAdminCoords ? normalizedAdminLatitude : null,
-        adminLongitude: hasValidAdminCoords ? normalizedAdminLongitude : null,
-        hasAdminCoordinateOverride:
-          editFormData.type === "pra-existing" &&
-          hasValidAdminCoords &&
-          (Math.abs(normalizedAdminLatitude - normalizedOriginalLatitude) > 0.0000001 ||
-            Math.abs(normalizedAdminLongitude - normalizedOriginalLongitude) > 0.0000001),
-        editedBy: editedByName,
-        updatedAt: updatedAtValue
+      const response = await fetch(`/api/admin/surveys/${toApiSurveyType(editFormData.type)}/${editFormData.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...editFormData,
+          ...(editFormData.type === "pra-existing"
+            ? {
+                kabupatenName: normalizedPraExistingKabupatenName,
+                kepemilikanDisplay: normalizedPraExistingOwnership,
+                keteranganTiang: normalizedPraExistingOwnership,
+              }
+            : {}),
+          originalLatitude,
+          originalLongitude,
+          adminLatitude: hasValidAdminCoords ? normalizedAdminLatitude : null,
+          adminLongitude: hasValidAdminCoords ? normalizedAdminLongitude : null,
+          hasAdminCoordinateOverride:
+            editFormData.type === "pra-existing" &&
+            hasValidAdminCoords &&
+            (Math.abs(normalizedAdminLatitude - normalizedOriginalLatitude) > 0.0000001 ||
+              Math.abs(normalizedAdminLongitude - normalizedOriginalLongitude) > 0.0000001),
+          editedBy: editedByName,
+          updatedAt: updatedAtValue.toISOString()
+        }),
       });
+      if (!response.ok) {
+        throw new Error("Gagal memperbarui survey di Supabase.");
+      }
 
       const savedSurvey = {
         ...editFormData,
@@ -756,15 +753,6 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     if (!confirm('Apakah Anda yakin ingin memverifikasi survey ini? Survey akan dipindahkan ke Validasi Data.')) return;
     
     try {
-      const collectionName =
-        survey.type === "existing"
-          ? "survey-existing"
-          : survey.type === "propose"
-          ? "survey-apj-propose"
-          : "survey-pra-existing";
-      const surveyDoc = doc(db, collectionName, survey.id);
-      
-      // Get current user from localStorage
       const storedUser = localStorage.getItem('gesa_user');
       const currentUser = storedUser ? JSON.parse(storedUser) : null;
       const normalizedAdminLatitude = Number(survey.adminLatitude);
@@ -774,18 +762,10 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
         Number.isFinite(normalizedAdminLatitude) &&
         Number.isFinite(normalizedAdminLongitude);
       
-      await runTransaction(db, async (transaction) => {
-        const snapshot = await transaction.get(surveyDoc);
-        if (!snapshot.exists()) {
-          throw new Error("Data survey sudah tidak ditemukan. Kemungkinan sudah diproses admin lain.");
-        }
-
-        const latestStatus = typeof snapshot.data()?.status === "string" ? snapshot.data().status : "";
-        if (latestStatus !== "menunggu") {
-          throw new Error("Data ini sudah diproses admin lain. Silakan refresh daftar verifikasi.");
-        }
-
-        transaction.update(surveyDoc, {
+      const response = await fetch(`/api/admin/surveys/${toApiSurveyType(survey.type)}/${survey.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           status: "diverifikasi",
           ...(shouldUseAdminCoordinate
             ? {
@@ -796,7 +776,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                 finalLatitude: normalizedAdminLatitude,
                 finalLongitude: normalizedAdminLongitude,
                 coordinateSource: "admin",
-                coordinateValidatedAt: new Date(),
+                coordinateValidatedAt: new Date().toISOString(),
               }
             : survey.type === "pra-existing"
               ? {
@@ -806,9 +786,12 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                 }
               : {}),
           verifiedBy: currentUser?.name || currentUser?.email || 'Admin',
-          verifiedAt: new Date()
-        });
+          verifiedAt: new Date().toISOString()
+        }),
       });
+      if (!response.ok) {
+        throw new Error("Gagal memverifikasi survey di Supabase.");
+      }
 
       removeSurveyFromWorkingSet(survey.id);
       setShowDetailModal(false);
@@ -829,16 +812,12 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     try {
       setDeletingSurveyId(survey.id);
       
-      const collectionName =
-        survey.type === "existing"
-          ? "survey-existing"
-          : survey.type === "propose"
-          ? "survey-apj-propose"
-          : "survey-pra-existing";
-      const surveyDoc = doc(db, collectionName, survey.id);
-      
-      // Hard delete - hapus dokumen permanen
-      await deleteDoc(surveyDoc);
+      const response = await fetch(`/api/admin/surveys/${toApiSurveyType(survey.type)}/${survey.id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Gagal menghapus survey di Supabase.");
+      }
 
       removeSurveyFromWorkingSet(survey.id);
       
@@ -856,25 +835,22 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     if (!alasan) return;
     
     try {
-      const collectionName =
-        survey.type === "existing"
-          ? "survey-existing"
-          : survey.type === "propose"
-          ? "survey-apj-propose"
-          : "survey-pra-existing";
-      const surveyDoc = doc(db, collectionName, survey.id);
-      
-      // Get current user from localStorage
       const storedUser = localStorage.getItem('gesa_user');
       const currentUser = storedUser ? JSON.parse(storedUser) : null;
       
-      // Update status to ditolak
-      await updateDoc(surveyDoc, {
-        status: "ditolak",
-        rejectedBy: currentUser?.name || currentUser?.email || 'Admin',
-        rejectedAt: new Date(),
-        rejectionReason: alasan
+      const response = await fetch(`/api/admin/surveys/${toApiSurveyType(survey.type)}/${survey.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "ditolak",
+          rejectedBy: currentUser?.name || currentUser?.email || 'Admin',
+          rejectedAt: new Date().toISOString(),
+          rejectionReason: alasan
+        }),
       });
+      if (!response.ok) {
+        throw new Error("Gagal menolak survey di Supabase.");
+      }
 
       removeSurveyFromWorkingSet(survey.id);
       setShowDetailModal(false);

@@ -1,12 +1,10 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
-import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 
 const RemoteKMZMapPreview = dynamic(() => import("@/components/RemoteKMZMapPreview"), {
   ssr: false,
@@ -38,9 +36,7 @@ interface Task {
   startedAt?: DateValue;
 }
 
-type FirestoreTimestamp = { toDate?: () => Date } | null | undefined;
-
-function toComparableTime(value: DateValue | FirestoreTimestamp) {
+function toComparableTime(value: DateValue) {
   if (!value) return 0;
   if (typeof value === "object" && value !== null && "toDate" in value && typeof value.toDate === "function") {
     const date = value.toDate();
@@ -59,27 +55,6 @@ function toComparableTime(value: DateValue | FirestoreTimestamp) {
   return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 }
 
-function mapFirestoreTask(
-  id: string,
-  data: Record<string, unknown>
-): Task {
-  return {
-    id,
-    title: typeof data.title === "string" ? data.title : "Tanpa Judul",
-    description: typeof data.description === "string" ? data.description : "",
-    surveyorId: typeof data.surveyorId === "string" ? data.surveyorId : "",
-    surveyorName: typeof data.surveyorName === "string" ? data.surveyorName : "",
-    surveyorEmail: typeof data.surveyorEmail === "string" ? data.surveyorEmail : "",
-    status: typeof data.status === "string" ? data.status : "",
-    type: typeof data.type === "string" ? data.type : "",
-    kmzFileUrl: typeof data.kmzFileUrl === "string" ? data.kmzFileUrl : "",
-    kmzFileUrl2: typeof data.kmzFileUrl2 === "string" ? data.kmzFileUrl2 : "",
-    offlineEnabled: typeof data.offlineEnabled === "boolean" ? data.offlineEnabled : false,
-    createdAt: data.createdAt as DateValue,
-    startedAt: data.startedAt as DateValue,
-  };
-}
-
 function TugasSurveyPraExistingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -91,49 +66,58 @@ function TugasSurveyPraExistingContent() {
   const [showModal, setShowModal] = useState(false);
   const [completingTask, setCompletingTask] = useState(false);
 
-  useEffect(() => {
+  const fetchTasks = useCallback(async () => {
     if (!user?.uid) {
       setTasks([]);
       setLoading(false);
       return;
     }
 
-    setLoading(true);
-    const tasksQuery = query(collection(db, "tasks"), where("surveyorId", "==", user.uid));
-    const unsubscribe = onSnapshot(
-      tasksQuery,
-      (snapshot) => {
-        const tasksData = snapshot.docs
-          .map((taskDoc) => mapFirestoreTask(taskDoc.id, taskDoc.data() as Record<string, unknown>))
-          .filter((task) => task.type === "pra-existing")
-          .sort((left, right) => toComparableTime(right.createdAt) - toComparableTime(left.createdAt));
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (user.uid) params.set("surveyorId", user.uid);
+      if (user.email) params.set("surveyorEmail", user.email);
 
-        setTasks(tasksData);
+      const response = await fetch(`/api/tasks?${params.toString()}`, {
+        cache: "no-store",
+      });
 
-        const storedTask = localStorage.getItem("activeTask");
-        if (storedTask) {
-          try {
-            const parsedTask = JSON.parse(storedTask) as { id?: string };
-            const matchedTask = tasksData.find((task) => task.id === parsedTask.id);
-            if (matchedTask && matchedTask.status !== "in-progress") {
-              localStorage.removeItem("activeTask");
-            }
-          } catch (storageError) {
-            console.error("Error validating active task cache:", storageError);
+      if (!response.ok) {
+        throw new Error("Gagal memuat tugas pra-existing dari Supabase.");
+      }
+
+      const payload = (await response.json()) as { tasks?: Task[] };
+      const tasksData = (Array.isArray(payload.tasks) ? payload.tasks : [])
+        .filter((task) => task.type === "pra-existing")
+        .sort((left, right) => toComparableTime(right.createdAt) - toComparableTime(left.createdAt));
+
+      setTasks(tasksData);
+
+      const storedTask = localStorage.getItem("activeTask");
+      if (storedTask) {
+        try {
+          const parsedTask = JSON.parse(storedTask) as { id?: string };
+          const matchedTask = tasksData.find((task) => task.id === parsedTask.id);
+          if (matchedTask && matchedTask.status !== "in-progress") {
             localStorage.removeItem("activeTask");
           }
+        } catch (storageError) {
+          console.error("Error validating active task cache:", storageError);
+          localStorage.removeItem("activeTask");
         }
-
-        setLoading(false);
-      },
-      (error) => {
-        console.error("Error listening pra existing tasks:", error);
-        setLoading(false);
       }
-    );
+    } catch (error) {
+      console.error("Error fetching pra existing tasks:", error);
+      setTasks([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.email, user?.uid]);
 
-    return () => unsubscribe();
-  }, [user?.uid]);
+  useEffect(() => {
+    void fetchTasks();
+  }, [fetchTasks]);
 
   useEffect(() => {
     const targetTaskId = searchParams.get("taskId");
@@ -159,11 +143,18 @@ function TugasSurveyPraExistingContent() {
 
     try {
       setCompletingTask(true);
-      const taskRef = doc(db, "tasks", task.id);
-      await updateDoc(taskRef, {
-        status: "completed",
-        completedAt: new Date(),
+      const completedAt = new Date().toISOString();
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "completed",
+          completedAt,
+        }),
       });
+      if (!response.ok) {
+        throw new Error("Gagal menyelesaikan tugas di Supabase.");
+      }
 
       const storedTask = localStorage.getItem("activeTask");
       if (storedTask) {
@@ -184,6 +175,7 @@ function TugasSurveyPraExistingContent() {
             ? {
                 ...entry,
                 status: "completed",
+                completedAt,
               }
             : entry
         )
@@ -192,6 +184,7 @@ function TugasSurveyPraExistingContent() {
       // Close modal
       setShowModal(false);
       setSelectedTask(null);
+      await fetchTasks();
       
       alert("Tugas berhasil ditandai sebagai selesai!");
     } catch (error) {
@@ -207,12 +200,18 @@ function TugasSurveyPraExistingContent() {
 
     try {
       if (task.status === "pending") {
-        const taskRef = doc(db, "tasks", task.id);
         const startedAt = new Date().toISOString();
-        await updateDoc(taskRef, {
-          status: "in-progress",
-          startedAt: new Date(),
+        const response = await fetch(`/api/tasks/${task.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "in-progress",
+            startedAt,
+          }),
         });
+        if (!response.ok) {
+          throw new Error("Gagal memulai tugas di Supabase.");
+        }
 
         setTasks((previous) =>
           previous.map((entry) =>

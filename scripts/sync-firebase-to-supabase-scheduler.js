@@ -3,7 +3,7 @@
  *
  * Env:
  *   SYNC_INTERVAL_MINUTES=5
- *   SYNC_COLLECTIONS=tasks,reports,survey-existing,survey-apj-propose,survey-pra-existing,user-admin
+ *   SYNC_COLLECTIONS=reports,user-admin
  */
 
 const path = require("path");

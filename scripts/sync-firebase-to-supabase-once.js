@@ -1,8 +1,8 @@
 /*
  * Run all Firebase -> Supabase sync jobs once.
  *
- * Default collections intentionally exclude `tracking-sessions` until its
- * target schema is confirmed stable. You can override via:
+ * Default collections intentionally exclude GESA Survey operational tables
+ * that now write directly to Supabase. You can override via:
  *
  *   SYNC_COLLECTIONS=tasks,reports,survey-existing node scripts/sync-firebase-to-supabase-once.js
  */
@@ -11,24 +11,24 @@ const path = require("path");
 const { spawn } = require("child_process");
 
 const DEFAULT_COLLECTIONS = [
-  "tasks",
   "reports",
-  "survey-existing",
-  "survey-apj-propose",
-  "survey-pra-existing",
   "user-admin",
 ];
 
 const SYNC_PROFILES = {
-  "survey-work": [
+  "survey-work-manual": [
     "tasks",
     "survey-existing",
     "survey-apj-propose",
     "survey-pra-existing",
+    "tracking-sessions",
   ],
   backoffice: [
     "reports",
     "user-admin",
+  ],
+  "tracking-manual": [
+    "tracking-sessions",
   ],
   full: DEFAULT_COLLECTIONS,
 };

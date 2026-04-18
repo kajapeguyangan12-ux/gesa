@@ -343,12 +343,18 @@ function TasksContent() {
 
   const handleStartTask = async (task: Task) => {
     try {
-      const taskRef = doc(db, "tasks", task.id);
       const startedAt = new Date().toISOString();
-      await updateDoc(taskRef, {
-        status: "in-progress",
-        startedAt: new Date(),
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "in-progress",
+          startedAt,
+        }),
       });
+      if (!response.ok) {
+        throw new Error("Gagal memulai tugas di Supabase.");
+      }
 
       setTasks((previous) =>
         previous.map((entry) =>
@@ -390,11 +396,18 @@ function TasksContent() {
     if (!confirmComplete) return;
 
     try {
-      const taskRef = doc(db, "tasks", task.id);
-      await updateDoc(taskRef, {
-        status: "completed",
-        completedAt: new Date(),
+      const completedAt = new Date().toISOString();
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "completed",
+          completedAt,
+        }),
       });
+      if (!response.ok) {
+        throw new Error("Gagal menyelesaikan tugas di Supabase.");
+      }
 
       setTasks((previous) =>
         previous.map((entry) =>
@@ -402,7 +415,7 @@ function TasksContent() {
             ? {
                 ...entry,
                 status: "completed",
-                completedAt: new Date().toISOString(),
+                completedAt,
               }
             : entry
         )

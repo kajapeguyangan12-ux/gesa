@@ -9,6 +9,7 @@ import dynamic from "next/dynamic";
 import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
 import { analyzeTaskNavigation, type LatLngPoint, type ParsedTaskGeometries } from "@/utils/taskNavigation";
 import type { UnifiedSurveyMarker } from "@/components/SurveyTaskUnifiedMap";
+import { fetchAdminSurveyRows, type AdminSurveyRow } from "./supabaseSurveyClient";
 import {
   DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS,
   PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION,
@@ -111,6 +112,7 @@ interface DistribusiTugasProps {
 export default function DistribusiTugas({}: DistribusiTugasProps) {
   const TASKS_CACHE_PREFIX = "distribusi_tugas_tasks";
   const TASK_PROGRESS_CACHE_PREFIX = "distribusi_tugas_progress";
+  const PETUGAS_CACHE_KEY = "distribusi_tugas_petugas_list_firestore_v3";
   const [showTaskDropdown, setShowTaskDropdown] = useState(false);
   const [showProposeModal, setShowProposeModal] = useState(false);
   const [showExistingModal, setShowExistingModal] = useState(false);
@@ -152,6 +154,14 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
   useEffect(() => {
     fetchOfflineSettings();
     fetchTasks();
+
+    const intervalId = window.setInterval(() => {
+      void fetchTasks(true);
+    }, 10_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   // Auto-load KMZ files when detail modal opens
@@ -159,6 +169,12 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
     if (showDetailModal && selectedTaskDetail) {
       loadDetailKmzFiles(selectedTaskDetail);
       void loadTaskProgress(selectedTaskDetail);
+      const intervalId = window.setInterval(() => {
+        void loadTaskProgress(selectedTaskDetail);
+      }, 10_000);
+      return () => {
+        window.clearInterval(intervalId);
+      };
     }
     // Fungsi loader didefinisikan di komponen yang sama dan aman dipicu ulang saat task detail berubah.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -208,25 +224,19 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
         clearCachedData(cacheKey);
       }
 
-      const tasksData = await fetchWithCache<Task[]>(
-        cacheKey,
-        async () => {
-          const tasksRef = collection(db, "tasks");
-          const q = query(tasksRef, orderBy("createdAt", "desc"));
-          const snapshot = await getDocs(q);
-          
-          return snapshot.docs
-            .filter((doc) => {
-              const taskAdminId = doc.data().createdByAdminId;
-              return !taskAdminId || taskAdminId === adminId;
-            })
-            .map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
-            })) as Task[];
-        },
-        5 * 60_000
-      );
+      const params = new URLSearchParams();
+      if (adminId) params.set("adminId", adminId);
+
+      const response = await fetch(`/api/admin/tasks?${params.toString()}`, {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("Gagal memuat tugas admin dari Supabase.");
+      }
+
+      const payload = (await response.json()) as { tasks?: Task[] };
+      const tasksData = Array.isArray(payload.tasks) ? payload.tasks : [];
       
       setTasks(tasksData);
       console.log("Tasks loaded for admin:", tasksData.length);
@@ -240,6 +250,7 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
   // Fetch petugas when modal opens
   useEffect(() => {
     if (showProposeModal || showExistingModal || showProposeExistingModal || showPraExistingModal) {
+      clearCachedData(PETUGAS_CACHE_KEY);
       fetchPetugas();
     }
   }, [showProposeModal, showExistingModal, showProposeExistingModal, showPraExistingModal]);
@@ -271,30 +282,41 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
       setLoadingPetugas(true);
       
       const data = await fetchWithCache<(Petugas & { role: string; uid: string })[]>(
-        "distribusi_tugas_petugas_list",
+        PETUGAS_CACHE_KEY,
         async () => {
+          const allowedRoles = new Set([
+            "petugas-existing",
+            "petugas-apj-propose",
+            "petugas-pra-existing",
+            "petugas-survey-cahaya",
+            "petugas-kontruksi",
+            "petugas-om",
+            "petugas-bmd-gudang",
+          ]);
+
           const usersRef = collection(db, "User-Admin");
           const petsQuery = query(
             usersRef,
-            where("role", "in", [
-              "petugas-existing",
-              "petugas-apj-propose",
-              "petugas-pra-existing",
-              "petugas-survey-cahaya",
-              "petugas-kontruksi",
-              "petugas-om",
-              "petugas-bmd-gudang",
-            ]),
-            limit(200)
+            where("role", "in", Array.from(allowedRoles))
           );
           const snapshot = await getDocs(petsQuery);
-          return snapshot.docs.map((doc) => ({
-            id: doc.id,
-            name: doc.data().name,
-            email: doc.data().email,
-            role: doc.data().role,
-            uid: doc.data().uid || doc.id,
-          })) as (Petugas & { role: string; uid: string })[];
+
+          return snapshot.docs.map((userDoc) => {
+            const user = userDoc.data() as {
+              uid?: string;
+              name?: string;
+              email?: string;
+              role?: string;
+            };
+
+            return {
+              id: userDoc.id,
+              name: user.name || "-",
+              email: user.email || "-",
+              role: typeof user.role === "string" ? user.role.trim() : "",
+              uid: user.uid || userDoc.id,
+            };
+          });
         },
         300_000
       );
@@ -479,68 +501,96 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
       const taskCreatedAtMs = getTaskCreatedAtMs(task.createdAt);
       const configs = getTaskProgressConfigs(task);
       const cacheKey = `${TASK_PROGRESS_CACHE_PREFIX}_${task.id}`;
-      const sections = await fetchWithCache<TaskProgressSection[]>(
-        cacheKey,
-        async () =>
-          Promise.all(
-            configs.map(async (config): Promise<TaskProgressSection> => {
-              const geometries =
-                config.kmzFileUrl
-                  ? await loadParsedTaskGeometries(config.kmzFileUrl).catch(() => null)
-                  : null;
+      clearCachedData(cacheKey);
+      const sections = await Promise.all(
+        configs.map(async (config): Promise<TaskProgressSection> => {
+          const geometries =
+            config.kmzFileUrl
+              ? await loadParsedTaskGeometries(config.kmzFileUrl).catch(() => null)
+              : null;
 
-              const surveyQuery = query(collection(db, config.collectionName), where("surveyorUid", "==", task.surveyorId));
-              const snapshot = await getDocs(surveyQuery);
+          const payload = await fetchAdminSurveyRows({
+            activeKabupaten: null,
+            adminId: null,
+            type: config.kind,
+          });
 
-              let exactMatchCount = 0;
-              let inferredMatchCount = 0;
+          let exactMatchCount = 0;
+          let inferredMatchCount = 0;
 
-              const markers = snapshot.docs
-                .map((surveyDoc) => ({ id: surveyDoc.id, ...surveyDoc.data() }) as SurveyDocData)
-                .filter((survey) => {
-                  if (survey.taskId) {
-                    const isExact = survey.taskId === task.id;
-                    if (isExact) exactMatchCount += 1;
-                    return isExact;
-                  }
+          const markers = payload.rows
+            .filter((survey: AdminSurveyRow) => {
+              const sameSurveyor =
+                survey.surveyorUid === task.surveyorId ||
+                (survey.surveyorEmail && task.surveyorEmail && survey.surveyorEmail === task.surveyorEmail);
 
-                  const latitude = Number(survey.latitude);
-                  const longitude = Number(survey.longitude);
-                  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-                    return false;
-                  }
+              if (!sameSurveyor) {
+                return false;
+              }
 
-                  const surveyCreatedAtMs = getSurveyCreatedAtMs(survey.createdAt, survey.submittedAtLocal);
-                  if (taskCreatedAtMs && surveyCreatedAtMs && surveyCreatedAtMs + 5 * 60 * 1000 < taskCreatedAtMs) {
-                    return false;
-                  }
+              if (survey.taskId) {
+                const isExact = survey.taskId === task.id;
+                if (isExact) exactMatchCount += 1;
+                return isExact;
+              }
 
-                  const matched = isPointMatchedToTaskGeometry({ lat: latitude, lng: longitude }, geometries);
-                  if (matched) inferredMatchCount += 1;
-                  return matched;
-                })
-                .map((survey) => mapSurveyDocToMarker(config.kind, survey))
-                .filter((marker): marker is UnifiedSurveyMarker => marker !== null)
-                .sort((left, right) => {
-                  const leftTime = getSurveyCreatedAtMs(left.createdAt, undefined) ?? 0;
-                  const rightTime = getSurveyCreatedAtMs(right.createdAt, undefined) ?? 0;
-                  return rightTime - leftTime;
-                });
+              const latitude = Number(survey.latitude);
+              const longitude = Number(survey.longitude);
+              if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                return false;
+              }
 
-              return {
-                kind: config.kind,
-                label: config.label,
-                markerLabel: config.markerLabel,
-                markerColor: config.markerColor,
-                kmzFileUrl: config.kmzFileUrl,
-                markers,
-                totalPoints: markers.length,
-                exactMatchCount,
-                inferredMatchCount,
-              };
+              const surveyCreatedAtMs = getSurveyCreatedAtMs(survey.createdAt, typeof survey.submittedAtLocal === "string" ? survey.submittedAtLocal : undefined);
+              if (taskCreatedAtMs && surveyCreatedAtMs && surveyCreatedAtMs + 5 * 60 * 1000 < taskCreatedAtMs) {
+                return false;
+              }
+
+              const matched = isPointMatchedToTaskGeometry({ lat: latitude, lng: longitude }, geometries);
+              if (matched) inferredMatchCount += 1;
+              return matched;
             })
-          ),
-        5 * 60_000
+            .map((survey): SurveyDocData => ({
+              id: survey.id,
+              title: survey.title,
+              status: survey.status,
+              latitude: survey.latitude,
+              longitude: survey.longitude,
+              accuracy: survey.accuracy,
+              lokasiLengkap:
+                [survey.kabupatenName || survey.kabupaten, survey.kecamatan, survey.desa, survey.banjar]
+                  .filter(Boolean)
+                  .join(" - "),
+              namaJalan: survey.namaJalan,
+              desa: survey.desa,
+              banjar: survey.banjar,
+              kabupaten: survey.kabupatenName || survey.kabupaten,
+              surveyorName: survey.surveyorName,
+              surveyorUid: survey.surveyorUid,
+              taskId: survey.taskId,
+              taskTitle: survey.taskTitle,
+              createdAt: survey.createdAt,
+              submittedAtLocal: typeof survey.submittedAtLocal === "string" ? survey.submittedAtLocal : undefined,
+            }))
+            .map((survey) => mapSurveyDocToMarker(config.kind, survey))
+            .filter((marker): marker is UnifiedSurveyMarker => marker !== null)
+            .sort((left, right) => {
+              const leftTime = getSurveyCreatedAtMs(left.createdAt, undefined) ?? 0;
+              const rightTime = getSurveyCreatedAtMs(right.createdAt, undefined) ?? 0;
+              return rightTime - leftTime;
+            });
+
+          return {
+            kind: config.kind,
+            label: config.label,
+            markerLabel: config.markerLabel,
+            markerColor: config.markerColor,
+            kmzFileUrl: config.kmzFileUrl,
+            markers,
+            totalPoints: markers.length,
+            exactMatchCount,
+            inferredMatchCount,
+          };
+        })
       );
 
       setTaskProgressSections(sections);
@@ -643,7 +693,14 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
 
       console.log("Task data to be saved:", taskData);
       
-      await addDoc(collection(db, "tasks"), taskData);
+      const response = await fetch("/api/admin/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(taskData),
+      });
+      if (!response.ok) {
+        throw new Error("Gagal membuat tugas di Supabase.");
+      }
 
       alert("Tugas berhasil dibuat dan dikirim ke surveyor!");
       
@@ -676,7 +733,12 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
     }
 
     try {
-      await deleteDoc(doc(db, "tasks", taskId));
+      const response = await fetch(`/api/admin/tasks/${taskId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Gagal menghapus tugas di Supabase.");
+      }
       clearCachedData(`${TASK_PROGRESS_CACHE_PREFIX}_${taskId}`);
       await fetchTasks(true);
       alert("Tugas berhasil dihapus!");
@@ -692,11 +754,18 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
     }
 
     try {
-      await updateDoc(doc(db, "tasks", task.id), {
+      const response = await fetch(`/api/admin/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
         status: "in-progress",
-        reactivatedAt: new Date(),
+        reactivatedAt: new Date().toISOString(),
         completedAt: null,
+        }),
       });
+      if (!response.ok) {
+        throw new Error("Gagal mengaktifkan kembali tugas di Supabase.");
+      }
 
       await fetchTasks(true);
       setSelectedTaskDetail((previous) => (previous?.id === task.id ? { ...previous, status: "in-progress" } : previous));
@@ -731,10 +800,17 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
   const handleToggleTaskOffline = async (task: Task, nextEnabled: boolean) => {
     try {
       setSavingTaskOfflineId(task.id);
-      await updateDoc(doc(db, "tasks", task.id), {
+      const response = await fetch(`/api/admin/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
         offlineEnabled: nextEnabled,
-        offlineUpdatedAt: new Date(),
+        offlineUpdatedAt: new Date().toISOString(),
+        }),
       });
+      if (!response.ok) {
+        throw new Error("Gagal memperbarui mode offline tugas di Supabase.");
+      }
 
       setTasks((previous) =>
         previous.map((item) => (item.id === task.id ? { ...item, offlineEnabled: nextEnabled } : item))

@@ -247,6 +247,7 @@ export default function TrackingHistory() {
               <option value="all">Semua Tipe</option>
               <option value="existing">Survey Existing</option>
               <option value="apj-propose">APJ Propose</option>
+              <option value="pra-existing">Pra Existing</option>
             </select>
           </div>
         </div>

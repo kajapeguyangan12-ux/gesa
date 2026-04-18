@@ -6,9 +6,8 @@ import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { collection, addDoc, serverTimestamp, updateDoc, doc } from "firebase/firestore";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
-import { db, storage } from "@/lib/firebase";
+import { storage } from "@/lib/firebase";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
@@ -833,12 +832,12 @@ function SurveyExistingContent() {
     }
 
     try {
-      // Create new tracking session in Firebase
+      // Create new tracking session in Supabase
       const trackingData = {
         userId: user.uid,
         userName: user.displayName || user.email,
         userEmail: user.email,
-        startTime: serverTimestamp(),
+        startTime: new Date().toISOString(),
         endTime: null,
         status: "active",
         path: [{
@@ -848,11 +847,25 @@ function SurveyExistingContent() {
           accuracy: gpsCoords.accuracy
         }],
         totalDistance: 0,
+        pointsCount: 1,
+        duration: 0,
         surveyType: "existing"
       };
 
-      const docRef = await addDoc(collection(db, "tracking-sessions"), trackingData);
-      setTrackingSessionId(docRef.id);
+      const createResponse = await fetch("/api/tracking-sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(trackingData),
+      });
+      if (!createResponse.ok) {
+        throw new Error("Gagal membuat tracking session di Supabase.");
+      }
+      const createPayload = (await createResponse.json()) as { id?: string };
+      const sessionId = createPayload.id || "";
+      if (!sessionId) {
+        throw new Error("Tracking session ID tidak tersedia.");
+      }
+      setTrackingSessionId(sessionId);
       setIsTracking(true);
       setTrackingPath([{
         lat: gpsCoords.latitude,
@@ -862,7 +875,7 @@ function SurveyExistingContent() {
 
       // Start interval to record GPS position every 15 seconds
       const interval = setInterval(async () => {
-        if (gpsCoords && docRef.id) {
+        if (gpsCoords && sessionId) {
           const newPoint = {
             lat: gpsCoords.latitude,
             lng: gpsCoords.longitude,
@@ -872,14 +885,20 @@ function SurveyExistingContent() {
 
           setTrackingPath(prev => [...prev, newPoint]);
 
-          // Update Firebase with new point
           try {
-            const trackingRef = doc(db, "tracking-sessions", docRef.id);
-            await updateDoc(trackingRef, {
-              path: [...trackingPath, newPoint],
-              lastUpdate: serverTimestamp()
+            const updateResponse = await fetch(`/api/tracking-sessions/${sessionId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                path: [...trackingPath, newPoint],
+                lastUpdate: new Date().toISOString(),
+                pointsCount: trackingPath.length + 1
+              }),
             });
-            console.log("📍 Tracking point saved");
+            if (!updateResponse.ok) {
+              throw new Error("Gagal memperbarui tracking point di Supabase.");
+            }
+            console.log("Tracking point saved");
           } catch (error) {
             console.error("Error updating tracking:", error);
           }
@@ -914,21 +933,28 @@ function SurveyExistingContent() {
         totalDistance += distance;
       }
 
-      // Update Firebase - mark as completed
-      const trackingRef = doc(db, "tracking-sessions", trackingSessionId);
-      await updateDoc(trackingRef, {
-        endTime: serverTimestamp(),
-        status: "completed",
-        path: trackingPath.map(p => ({
-          lat: p.lat,
-          lng: p.lng,
-          timestamp: p.timestamp
-        })),
-        totalDistance: totalDistance,
-        pointsCount: trackingPath.length,
-        duration: trackingPath.length > 0 ? 
-          (trackingPath[trackingPath.length - 1].timestamp - trackingPath[0].timestamp) / 1000 : 0 // in seconds
+      const duration = trackingPath.length > 0 ? 
+        (trackingPath[trackingPath.length - 1].timestamp - trackingPath[0].timestamp) / 1000 : 0;
+
+      const updateResponse = await fetch(`/api/tracking-sessions/${trackingSessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endTime: new Date().toISOString(),
+          status: "completed",
+          path: trackingPath.map(p => ({
+            lat: p.lat,
+            lng: p.lng,
+            timestamp: p.timestamp
+          })),
+          totalDistance: totalDistance,
+          pointsCount: trackingPath.length,
+          duration
+        }),
       });
+      if (!updateResponse.ok) {
+        throw new Error("Gagal menghentikan tracking di Supabase.");
+      }
 
       setIsTracking(false);
       setTrackingSessionId(null);
@@ -1090,7 +1116,7 @@ function SurveyExistingContent() {
         taskTitle: activeTask?.title || "",
         kmzFileUrl: taskPolygonUrl || "",
         kabupaten,
-        createdAt: serverTimestamp(),
+        createdAt: new Date().toISOString(),
         title: `Survey Existing - ${formData.namaJalan}`,
         
         // Additional fields for compatibility
@@ -1101,7 +1127,17 @@ function SurveyExistingContent() {
         kategori: "Survey Existing",
       };
 
-      await addDoc(collection(db, "survey-existing"), surveyData);
+      const response = await fetch("/api/surveys/existing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...surveyData,
+          createdAt: new Date().toISOString(),
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("Gagal menyimpan survey existing ke Supabase.");
+      }
       setSubmitProgress("Memperbarui peta...");
       setSurveyData((previous) => [
         {
@@ -2899,4 +2935,8 @@ function SurveyExistingPage() {
 }
 
 export default SurveyExistingPage;
+
+
+
+
 

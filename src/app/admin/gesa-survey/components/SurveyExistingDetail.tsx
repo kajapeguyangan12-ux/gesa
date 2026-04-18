@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { deleteDoc, doc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/hooks/useAuth";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
@@ -210,7 +208,13 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
     if (!confirm("Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.")) return;
     
     try {
-      await deleteDoc(doc(db, "survey-existing", id));
+      const response = await fetch(`/api/admin/surveys/existing/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Gagal menghapus data survey existing.");
+      }
       setSurveys((current) => current.filter((survey) => survey.id !== id));
       setTotalItems((current) => Math.max(0, current - 1));
       alert("Data berhasil dihapus!");
