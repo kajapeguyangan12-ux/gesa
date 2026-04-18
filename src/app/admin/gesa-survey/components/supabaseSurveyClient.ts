@@ -136,7 +136,7 @@ export function normalizeAdminSurveyRow(raw: AdminSurveyRow): AdminSurveyRow {
           ? `Survey APJ Propose - ${raw.namaJalan || "Untitled"}`
           : `Survey Pra Existing - ${raw.jenisLampu || "Untitled"}`),
     surveyorName: raw.surveyorName || "Unknown",
-    status: raw.status || "menunggu",
+    status: typeof raw.status === "string" ? raw.status.toLowerCase() : "menunggu",
     latitude: finalLatitude ?? adminLatitude ?? latitude ?? 0,
     longitude: finalLongitude ?? adminLongitude ?? longitude ?? 0,
     originalLatitude: originalLatitude ?? latitude ?? 0,

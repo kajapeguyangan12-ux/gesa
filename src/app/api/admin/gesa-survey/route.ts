@@ -265,16 +265,31 @@ export async function GET(request: NextRequest) {
     );
     const supabase = getSupabaseAdminClient();
 
-    const fetchAllTableRows = async (table: string) => {
+    const applyStatusFilter = <T extends { eq: Function; in: Function }>(query: T, statusFilters: Set<string>) => {
+      if (statusFilters.size === 0) return query;
+      if (statusFilters.size === 1) {
+        const [statusValue] = Array.from(statusFilters);
+        return query.eq("status", statusValue);
+      }
+      return query.in("status", Array.from(statusFilters));
+    };
+
+    const fetchAllTableRows = async (table: string, statusFilters: Set<string>) => {
       const rows: Record<string, unknown>[] = [];
       let offset = 0;
 
       while (true) {
-        const { data, error } = await supabase
+        let query = supabase
           .from(table)
           .select("id, fb_doc_id, task_id, title, status, surveyor_name, surveyor_email, surveyor_uid, kabupaten, created_at, verified_at, updated_at, raw_payload")
-          .order("created_at", { ascending: false })
-          .range(offset, offset + SUPABASE_PAGE_SIZE - 1);
+          .order("created_at", { ascending: false });
+
+        query = applyStatusFilter(query, statusFilters);
+        if (activeKabupaten) {
+          query = query.ilike("kabupaten", `%${activeKabupaten}%`);
+        }
+
+        const { data, error } = await query.range(offset, offset + SUPABASE_PAGE_SIZE - 1);
 
         if (error) throw new Error(error.message);
 
@@ -308,7 +323,7 @@ export async function GET(request: NextRequest) {
     }
 
     const loadTable = async (table: string, type: SurveyType) => {
-      const data = await fetchAllTableRows(table);
+      const data = await fetchAllTableRows(table, statusFilters);
       let mappedRows = data.map((item) => mapSupabaseSurveyRow(type, item));
       mappedRows = mappedRows.filter((row) => matchesKabupaten(row, activeKabupaten));
       if (statusFilters.size > 0) {
