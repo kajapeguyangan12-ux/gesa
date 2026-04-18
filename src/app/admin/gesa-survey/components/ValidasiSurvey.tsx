@@ -266,7 +266,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
       const currentUser = getCurrentUser();
       const payload = await fetchAdminSurveyRows({
         activeKabupaten,
-        adminId: null,
+        adminId: currentUser?.uid || null,
         statuses: ["menunggu"],
       });
 
@@ -307,7 +307,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     const currentUser = getCurrentUser();
     const payload = await fetchAdminSurveyRows({
       activeKabupaten,
-      adminId: null,
+      adminId: currentUser?.uid || null,
       statuses: ["menunggu"],
       type: activeTab,
     });
@@ -338,7 +338,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     const currentUser = getCurrentUser();
     const payload = await fetchAdminSurveyRows({
       activeKabupaten,
-      adminId: null,
+      adminId: currentUser?.uid || null,
       statuses: ["menunggu"],
       type: activeTab,
     });
