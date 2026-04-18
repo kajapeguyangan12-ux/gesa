@@ -16,7 +16,10 @@ export async function POST(
     const surveyType = type as HybridSurveyType;
     const table = resolveSurveyTable(surveyType);
     const payload = (await request.json()) as Record<string, unknown>;
-    const surveyId = createHybridId();
+    const surveyId =
+      typeof payload.clientSubmissionId === "string" && payload.clientSubmissionId.trim()
+        ? payload.clientSubmissionId.trim()
+        : createHybridId();
     const row = buildSurveyInsertRow(surveyType, surveyId, payload);
     const supabase = getSupabaseAdminClient() as any;
     const { error } = await supabase.from(table).upsert(row, { onConflict: "fb_doc_id" });

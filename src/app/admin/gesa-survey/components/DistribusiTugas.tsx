@@ -107,9 +107,10 @@ interface SurveyDocData {
 
 interface DistribusiTugasProps {
   setActiveMenu?: (menu: string) => void;
+  isActive?: boolean;
 }
 
-export default function DistribusiTugas({}: DistribusiTugasProps) {
+export default function DistribusiTugas({ isActive = false }: DistribusiTugasProps) {
   const TASKS_CACHE_PREFIX = "distribusi_tugas_tasks";
   const TASK_PROGRESS_CACHE_PREFIX = "distribusi_tugas_progress";
   const PETUGAS_CACHE_KEY = "distribusi_tugas_petugas_list_firestore_v3";
@@ -152,6 +153,7 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
 
   // Fetch tasks on component mount
   useEffect(() => {
+    if (!isActive) return;
     fetchOfflineSettings();
     fetchTasks();
 
@@ -162,10 +164,11 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [isActive]);
 
   // Auto-load KMZ files when detail modal opens
   useEffect(() => {
+    if (!isActive) return;
     if (showDetailModal && selectedTaskDetail) {
       loadDetailKmzFiles(selectedTaskDetail);
       void loadTaskProgress(selectedTaskDetail);
@@ -178,7 +181,7 @@ export default function DistribusiTugas({}: DistribusiTugasProps) {
     }
     // Fungsi loader didefinisikan di komponen yang sama dan aman dipicu ulang saat task detail berubah.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showDetailModal, selectedTaskDetail]);
+  }, [showDetailModal, selectedTaskDetail, isActive]);
 
   const fetchOfflineSettings = async () => {
     try {

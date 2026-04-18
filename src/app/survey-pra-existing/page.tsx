@@ -1147,6 +1147,7 @@ function SurveyPraExistingContent() {
 
       const kepemilikanDisplay = formData.kepemilikanTiang === "PLN" && formData.tipeTiangPLN ? `PLN - ${formData.tipeTiangPLN}` : formData.kepemilikanTiang;
       const createdAtLocal = Date.now();
+      const clientSubmissionId = `${user.uid}-${activeTask.id}-${createdAtLocal}`;
       const payload = {
         ...formData,
         lokasiLengkap: [selectedKabupatenOption?.name, formData.kecamatan, formData.desa, formData.banjar].filter(Boolean).join(" - "),
@@ -1175,6 +1176,7 @@ function SurveyPraExistingContent() {
         surveyorName: user.displayName || user.email || "Unknown",
         title: `Survey Pra Existing - ${formData.desa} - ${formData.banjar}`,
         submittedAtLocal: new Date(createdAtLocal).toISOString(),
+        clientSubmissionId,
       };
 
       if (!isOfflineAllowed) {

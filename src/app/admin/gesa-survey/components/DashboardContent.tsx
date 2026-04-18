@@ -18,6 +18,7 @@ interface DashboardContentProps {
   setActiveMenu: (menu: string) => void;
   isSuperAdmin: boolean;
   activeKabupaten?: string | null;
+  isActive?: boolean;
 }
 
 type SurveyStatus = "menunggu" | "diverifikasi" | "tervalidasi" | "ditolak";
@@ -513,6 +514,7 @@ export default function DashboardContent({
   setActiveMenu,
   isSuperAdmin,
   activeKabupaten,
+  isActive = false,
 }: DashboardContentProps) {
   const { user } = useAuth();
   const [reportState, setReportState] = useState<DashboardReportState>(initialReportState);
@@ -580,6 +582,7 @@ export default function DashboardContent({
   };
 
   useEffect(() => {
+    if (!isActive) return;
     let cancelled = false;
 
     const hydrateFromSummary = async () => {
@@ -661,10 +664,10 @@ export default function DashboardContent({
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [activeKabupaten, dashboardApiQuery, dashboardBundlePath, isSuperAdmin]);
+  }, [activeKabupaten, dashboardApiQuery, dashboardBundlePath, isSuperAdmin, isActive]);
 
   useEffect(() => {
-    if (!detailVisible) return;
+    if (!isActive || !detailVisible) return;
     let cancelled = false;
 
     const loadReports = async () => {
@@ -826,7 +829,7 @@ export default function DashboardContent({
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [activeKabupaten, dashboardApiQuery, dashboardBundlePath, detailVisible, isSuperAdmin, reportCacheKey, user?.uid]);
+  }, [activeKabupaten, dashboardApiQuery, dashboardBundlePath, detailVisible, isSuperAdmin, reportCacheKey, user?.uid, isActive]);
 
   const waitingReviewCount = useMemo(
     () =>

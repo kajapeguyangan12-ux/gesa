@@ -263,10 +263,9 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     try {
       setStatsLoading(true);
       setFetchError("");
-      const currentUser = getCurrentUser();
       const payload = await fetchAdminSurveyRows({
         activeKabupaten,
-        adminId: currentUser?.uid || null,
+        adminId: null,
         statuses: ["menunggu"],
       });
 
@@ -304,10 +303,9 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   };
 
   const fetchPage = async (page: number, forceRefresh = false) => {
-    const currentUser = getCurrentUser();
     const payload = await fetchAdminSurveyRows({
       activeKabupaten,
-      adminId: currentUser?.uid || null,
+      adminId: null,
       statuses: ["menunggu"],
       type: activeTab,
     });
@@ -335,10 +333,9 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   };
 
   const fetchAllTabData = async (forceRefresh = false) => {
-    const currentUser = getCurrentUser();
     const payload = await fetchAdminSurveyRows({
       activeKabupaten,
-      adminId: currentUser?.uid || null,
+      adminId: null,
       statuses: ["menunggu"],
       type: activeTab,
     });
