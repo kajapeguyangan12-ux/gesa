@@ -158,6 +158,7 @@ interface Survey {
   zona?: string;
   kategori?: string;
   editedBy?: string;
+  updatedAt?: { toDate?: () => Date; seconds?: number } | Date | string | number | null;
 }
 
 const PRA_EXISTING_KEPEMILIKAN_OPTIONS = ["PLN", "Lainnya"];
@@ -194,6 +195,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [dataSource, setDataSource] = useState<string>("Belum ada");
+  const [fetchError, setFetchError] = useState("");
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [selectedTaskNavigationInfo, setSelectedTaskNavigationInfo] = useState<TaskNavigationInfo | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -250,6 +252,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   const fetchStatistics = async (forceRefresh = false) => {
     try {
       setStatsLoading(true);
+      setFetchError("");
       const currentUser = getCurrentUser();
       const payload = await fetchAdminSurveyRows({
         activeKabupaten,
@@ -261,6 +264,10 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
       setStatsLoaded(true);
       setDataSource(payload.source);
       setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
+    } catch (error) {
+      setFetchError(error instanceof Error ? error.message : "Gagal memuat statistik verifikasi.");
+      setDataSource("Belum ada");
+      setLastUpdatedAt(null);
     } finally {
       setStatsLoading(false);
     }
@@ -273,9 +280,13 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
       } else {
         setLoading(true);
       }
+      setFetchError("");
       await fetchPage(page, forceRefresh);
     } catch (error) {
       console.error("Error fetching surveys:", error);
+      setFetchError(error instanceof Error ? error.message : "Gagal memuat data verifikasi.");
+      setDataSource("Belum ada");
+      setLastUpdatedAt(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -691,6 +702,8 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
       // Get current user from localStorage
       const storedUser = localStorage.getItem('gesa_user');
       const currentUser = storedUser ? JSON.parse(storedUser) : null;
+      const editedByName = currentUser?.name || currentUser?.email || 'Admin';
+      const updatedAtValue = new Date();
       
       // Update document
       await updateDoc(surveyDoc, {
@@ -711,15 +724,21 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
           hasValidAdminCoords &&
           (Math.abs(normalizedAdminLatitude - normalizedOriginalLatitude) > 0.0000001 ||
             Math.abs(normalizedAdminLongitude - normalizedOriginalLongitude) > 0.0000001),
-        editedBy: currentUser?.name || currentUser?.email || 'Admin',
-        updatedAt: new Date()
+        editedBy: editedByName,
+        updatedAt: updatedAtValue
       });
 
+      const savedSurvey = {
+        ...editFormData,
+        editedBy: editedByName,
+        updatedAt: updatedAtValue,
+      } satisfies Survey;
+
       setSurveys((current) =>
-        current.map((survey) => (survey.id === editFormData.id ? { ...survey, ...editFormData } : survey))
+        current.map((survey) => (survey.id === editFormData.id ? { ...survey, ...savedSurvey } : survey))
       );
       if (selectedSurvey?.id === editFormData.id) {
-        setSelectedSurvey((current) => (current ? { ...current, ...editFormData } : current));
+        setSelectedSurvey((current) => (current ? { ...current, ...savedSurvey } : current));
       }
       setShowEditModal(false);
       setEditFormData(null);
@@ -868,7 +887,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
     }
   };
 
-  const formatDate = (timestamp: Survey["createdAt"]) => {
+  const formatDate = (timestamp: Survey["createdAt"] | Survey["updatedAt"]) => {
     if (!timestamp) return "N/A";
     try {
       const date =
@@ -947,6 +966,12 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
             <div className="mt-1 text-lg font-bold text-slate-900">{formatPanelUpdatedAt(lastUpdatedAt)}</div>
           </div>
         </div>
+
+        {fetchError && (
+          <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            Gagal memuat data verifikasi: {fetchError}
+          </div>
+        )}
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -1265,7 +1290,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                             </span>
                             {survey.editedBy && (
                               <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">
-                                🖋️ Diedit oleh {survey.editedBy}
+                                Sudah diedit: {survey.editedBy}{survey.updatedAt ? ` • ${formatDate(survey.updatedAt)}` : ""}
                               </span>
                             )}
                           </div>

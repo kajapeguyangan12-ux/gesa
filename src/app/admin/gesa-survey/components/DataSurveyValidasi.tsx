@@ -123,6 +123,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [dataSource, setDataSource] = useState<string>("Belum ada");
+  const [fetchError, setFetchError] = useState("");
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -172,6 +173,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       } else {
         setLoading(true);
       }
+      setFetchError("");
       
       const storedUser = localStorage.getItem('gesa_user');
       const currentAdmin = storedUser ? JSON.parse(storedUser) : null;
@@ -203,6 +205,9 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
     } catch (error) {
       console.error("Error fetching surveys:", error);
+      setFetchError(error instanceof Error ? error.message : "Gagal memuat data validasi.");
+      setDataSource("Belum ada");
+      setLastUpdatedAt(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -800,6 +805,12 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
             <div className="mt-1 text-lg font-bold text-slate-900">{formatPanelUpdatedAt(lastUpdatedAt)}</div>
           </div>
         </div>
+
+        {fetchError && (
+          <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            Gagal memuat data validasi: {fetchError}
+          </div>
+        )}
 
         {/* Filters */}
         <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">

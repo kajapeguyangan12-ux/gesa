@@ -171,7 +171,16 @@ export async function fetchAdminSurveyRows(options: FetchAdminSurveyRowsOptions)
   });
 
   if (!response.ok) {
-    throw new Error("Gagal memuat data survey dari Supabase.");
+    let message = "Gagal memuat data survey dari Supabase.";
+    try {
+      const errorPayload = (await response.json()) as { error?: string };
+      if (typeof errorPayload.error === "string" && errorPayload.error.trim()) {
+        message = errorPayload.error.trim();
+      }
+    } catch {
+      // Keep fallback message when response body is not JSON.
+    }
+    throw new Error(message);
   }
 
   const payload = (await response.json()) as {

@@ -547,6 +547,27 @@ export default function DashboardContent({
     return params.toString();
   }, [activeKabupaten, isSuperAdmin, user?.uid]);
 
+  const persistReportCache = (data: DashboardReportState) => {
+    if (isSuperAdmin || typeof window === "undefined") return;
+
+    try {
+      window.sessionStorage.setItem(
+        reportCacheKey,
+        JSON.stringify({
+          savedAt: Date.now(),
+          data,
+        })
+      );
+    } catch (error) {
+      console.warn("Failed to persist dashboard detail cache:", error);
+      try {
+        window.sessionStorage.removeItem(reportCacheKey);
+      } catch {
+        // Ignore cleanup errors.
+      }
+    }
+  };
+
   const applyDashboardBundle = (bundle: GesaSurveyDashboardBundle | null) => {
     if (!bundle) return false;
 
@@ -642,7 +663,7 @@ export default function DashboardContent({
 
     const loadReports = async () => {
       try {
-        if (typeof window !== "undefined") {
+        if (!isSuperAdmin && typeof window !== "undefined") {
           const cachedRaw = window.sessionStorage.getItem(reportCacheKey);
           if (cachedRaw) {
             try {
@@ -696,34 +717,35 @@ export default function DashboardContent({
               const mappedState = mapBundleToReportState(payload);
               setReportState(mappedState);
               setDetailLoaded(true);
-              if (typeof window !== "undefined") {
-                window.sessionStorage.setItem(
-                  reportCacheKey,
-                  JSON.stringify({
-                    savedAt: Date.now(),
-                    data: mappedState,
-                  })
-                );
-              }
+              persistReportCache(mappedState);
               return;
             }
           }
+
+          if (isSuperAdmin) {
+            let apiError = "Gagal memuat detail dashboard dari Supabase.";
+            try {
+              const payload = (await response.json()) as { error?: string };
+              if (typeof payload.error === "string" && payload.error.trim()) {
+                apiError = payload.error.trim();
+              }
+            } catch {
+              // Keep default message when error payload is not JSON.
+            }
+
+            throw new Error(apiError);
+          }
         } catch (error) {
+          if (isSuperAdmin) {
+            throw error;
+          }
           console.error("Supabase dashboard detail fetch failed, fallback to bundle/firestore:", error);
         }
 
         const bundle = await readJsonBundle<GesaSurveyDashboardBundle>(dashboardBundlePath);
         if (!cancelled && applyDashboardBundle(bundle)) {
           setDetailLoaded(true);
-          if (typeof window !== "undefined") {
-            window.sessionStorage.setItem(
-              reportCacheKey,
-              JSON.stringify({
-                savedAt: Date.now(),
-                data: mapBundleToReportState(bundle as GesaSurveyDashboardBundle),
-              })
-            );
-          }
+          persistReportCache(mapBundleToReportState(bundle as GesaSurveyDashboardBundle));
           return;
         }
 
@@ -792,29 +814,21 @@ export default function DashboardContent({
           praExistingByKecamatan: buildKecamatanSummary(filteredPraExistingRows),
         });
 
-        if (typeof window !== "undefined") {
-          window.sessionStorage.setItem(
-            reportCacheKey,
-            JSON.stringify({
-              savedAt: Date.now(),
-              data: {
-                loading: false,
-                error: "",
-                allRows: filteredRows,
-                allRowsRaw: rawRows,
-                totalUniqueSurveyors: new Set(
-                  filteredRows
-                    .map((row) => row.surveyorName?.trim().toLowerCase())
-                    .filter((value): value is string => Boolean(value))
-                ).size,
-                propose: buildSummary(filteredProposeRows),
-                existing: buildSummary(filteredExistingRows),
-                praExisting: buildSummary(filteredPraExistingRows),
-                praExistingByKecamatan: buildKecamatanSummary(filteredPraExistingRows),
-              },
-            })
-          );
-        }
+        persistReportCache({
+          loading: false,
+          error: "",
+          allRows: filteredRows,
+          allRowsRaw: rawRows,
+          totalUniqueSurveyors: new Set(
+            filteredRows
+              .map((row) => row.surveyorName?.trim().toLowerCase())
+              .filter((value): value is string => Boolean(value))
+          ).size,
+          propose: buildSummary(filteredProposeRows),
+          existing: buildSummary(filteredExistingRows),
+          praExisting: buildSummary(filteredPraExistingRows),
+          praExistingByKecamatan: buildKecamatanSummary(filteredPraExistingRows),
+        });
       } catch (error) {
         if (cancelled) return;
 
@@ -1111,15 +1125,7 @@ export default function DashboardContent({
       await setDoc(doc(db, "dashboard-summaries", dashboardSummaryDocId), summaryPayload, { merge: true });
       await writeJsonBundle(dashboardBundlePath, dashboardBundlePayload);
       clearCachedData(`dashboard_summary_${dashboardSummaryDocId}`);
-      if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(
-          reportCacheKey,
-          JSON.stringify({
-            savedAt: Date.now(),
-            data: mapBundleToReportState(dashboardBundlePayload),
-          })
-        );
-      }
+      persistReportCache(mapBundleToReportState(dashboardBundlePayload));
 
       setBundleSource("storage-bundle");
       setBundleGeneratedAt(dashboardBundlePayload.generatedAt);

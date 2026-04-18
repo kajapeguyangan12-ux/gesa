@@ -45,11 +45,13 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
   const [statsLoading, setStatsLoading] = useState(false);
   const [fullDataLoaded, setFullDataLoaded] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
-  const [dataSource, setDataSource] = useState<string>("supabase");
+  const [dataSource, setDataSource] = useState<string>("Belum ada");
+  const [fetchError, setFetchError] = useState("");
 
   const fetchStatistics = useCallback(async () => {
     try {
       setStatsLoading(true);
+      setFetchError("");
       const params = new URLSearchParams({
         includeDetails: "1",
         status: targetStatus,
@@ -87,6 +89,9 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
       setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
     } catch (error) {
       console.error("Error fetching statistics:", error);
+      setFetchError(error instanceof Error ? error.message : "Gagal memuat data valid.");
+      setDataSource("Belum ada");
+      setLastUpdatedAt(null);
     } finally {
       setStatsLoading(false);
     }
@@ -103,8 +108,9 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
     });
     setSurveys([]);
     setSelectedSurveyor("Semua Petugas");
-    setDataSource("supabase");
+    setDataSource("Belum ada");
     setLastUpdatedAt(null);
+    setFetchError("");
   }, [activeKabupaten, targetStatus]);
 
   const surveyorOptions = useMemo(
@@ -246,6 +252,12 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
           </div>
         </div>
       </div>
+
+      {fetchError && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
+          Gagal memuat data panel: {fetchError}
+        </div>
+      )}
 
       {/* Page Description */}
       <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">

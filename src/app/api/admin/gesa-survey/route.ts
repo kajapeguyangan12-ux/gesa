@@ -125,6 +125,7 @@ function mapSupabaseSurveyRow(type: SurveyType, row: Record<string, unknown>): S
         ? rawPayload.validatedBy
         : "";
   const verifiedAtRaw =
+    row.verified_at ??
     rawPayload.verifiedAt ??
     rawPayload.validatedAt ??
     row.updated_at ??
@@ -267,7 +268,7 @@ export async function GET(request: NextRequest) {
       while (true) {
         const { data, error } = await supabase
           .from(table)
-          .select("id, fb_doc_id, task_id, title, status, surveyor_name, surveyor_email, surveyor_uid, kabupaten, created_at, updated_at, raw_payload")
+          .select("id, fb_doc_id, task_id, title, status, surveyor_name, surveyor_email, surveyor_uid, kabupaten, created_at, verified_at, updated_at, raw_payload")
           .order("created_at", { ascending: false })
           .range(offset, offset + SUPABASE_PAGE_SIZE - 1);
 

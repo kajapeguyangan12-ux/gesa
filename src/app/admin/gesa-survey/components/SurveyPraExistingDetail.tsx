@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import * as XLSX from 'xlsx';
 import { useAuth } from "@/hooks/useAuth";
+import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 import { fetchAdminSurveyRows } from "./supabaseSurveyClient";
 
 const DynamicDetailMap = dynamic(
@@ -88,6 +89,9 @@ export default function SurveyPraExistingDetail({
   const isSuperAdmin = user?.role === "super-admin";
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dataSource, setDataSource] = useState("Belum ada");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [fetchError, setFetchError] = useState("");
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showDetailMap, setShowDetailMap] = useState(false);
@@ -127,6 +131,7 @@ export default function SurveyPraExistingDetail({
   const fetchSurveys = async () => {
     try {
       setLoading(true);
+      setFetchError("");
       const payload = await fetchAdminSurveyRows({
         activeKabupaten,
         adminId: null,
@@ -137,8 +142,13 @@ export default function SurveyPraExistingDetail({
       setSurveys(payload.rows as Survey[]);
       setCurrentPage(1);
       setTotalCount(payload.rows.length);
+      setDataSource(payload.source);
+      setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
     } catch (error) {
       console.error("Error fetching pra existing surveys:", error);
+      setFetchError(error instanceof Error ? error.message : "Gagal memuat data survey.");
+      setDataSource("Belum ada");
+      setLastUpdatedAt(null);
     } finally {
       setLoading(false);
     }
@@ -566,8 +576,14 @@ export default function SurveyPraExistingDetail({
       <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
         <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
           <span className="h-2 w-2 rounded-full bg-emerald-500" />
-          Data daftar memakai Supabase
+          Data daftar memakai {getReadableDataSourceLabel(dataSource)}
         </div>
+        <div className="mb-3 text-xs text-slate-500">Update terakhir: {formatPanelUpdatedAt(lastUpdatedAt)}</div>
+        {fetchError && (
+          <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            Gagal memuat data: {fetchError}
+          </div>
+        )}
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1 relative">
             <svg className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

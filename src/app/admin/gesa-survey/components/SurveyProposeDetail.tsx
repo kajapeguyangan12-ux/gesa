@@ -5,6 +5,7 @@ import { deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/hooks/useAuth";
+import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 import { fetchAdminSurveyRows } from "./supabaseSurveyClient";
 
 // Dynamic import for Map component
@@ -72,6 +73,9 @@ export default function SurveyProposeDetail({ onBack, statusFilter = "diverifika
   const isSuperAdmin = user?.role === "super-admin";
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dataSource, setDataSource] = useState("Belum ada");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [fetchError, setFetchError] = useState("");
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showDetailMap, setShowDetailMap] = useState(false);
@@ -95,9 +99,13 @@ export default function SurveyProposeDetail({ onBack, statusFilter = "diverifika
   const fetchSurveys = async () => {
     try {
       setLoading(true);
+      setFetchError("");
       await fetchPage(1);
     } catch (error) {
       console.error("Error fetching surveys:", error);
+      setFetchError(error instanceof Error ? error.message : "Gagal memuat data survey.");
+      setDataSource("Belum ada");
+      setLastUpdatedAt(null);
     } finally {
       setLoading(false);
     }
@@ -116,8 +124,13 @@ export default function SurveyProposeDetail({ onBack, statusFilter = "diverifika
       setSurveys(payload.rows as Survey[]);
       setCurrentPage(page);
       setTotalCount(payload.rows.length);
+      setDataSource(payload.source);
+      setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
     } catch (error) {
       console.error("Error fetching surveys:", error);
+      setFetchError(error instanceof Error ? error.message : "Gagal memuat data survey.");
+      setDataSource("Belum ada");
+      setLastUpdatedAt(null);
     } finally {
       setLoading(false);
     }
@@ -285,8 +298,14 @@ export default function SurveyProposeDetail({ onBack, statusFilter = "diverifika
       <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
         <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
           <span className="h-2 w-2 rounded-full bg-green-500" />
-          Data daftar memakai Supabase
+          Data daftar memakai {getReadableDataSourceLabel(dataSource)}
         </div>
+        <div className="mb-3 text-xs text-slate-500">Update terakhir: {formatPanelUpdatedAt(lastUpdatedAt)}</div>
+        {fetchError && (
+          <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            Gagal memuat data: {fetchError}
+          </div>
+        )}
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1 relative">
             <svg className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
