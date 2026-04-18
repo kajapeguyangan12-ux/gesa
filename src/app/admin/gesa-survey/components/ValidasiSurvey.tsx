@@ -84,6 +84,8 @@ interface Survey {
   originalLongitude?: number;
   adminLatitude?: number;
   adminLongitude?: number;
+  finalLatitude?: number;
+  finalLongitude?: number;
   hasAdminCoordinateOverride?: boolean;
   
   // Survey Existing fields
@@ -196,6 +198,16 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
   const [fetchError, setFetchError] = useState("");
   const [selectedSurvey, setSelectedSurvey] = useState<Survey | null>(null);
   const [selectedTaskNavigationInfo, setSelectedTaskNavigationInfo] = useState<TaskNavigationInfo | null>(null);
+  const getDisplayLatitude = (survey: Survey): number => {
+    if (typeof survey.finalLatitude === "number" && Number.isFinite(survey.finalLatitude)) return survey.finalLatitude;
+    if (typeof survey.adminLatitude === "number" && Number.isFinite(survey.adminLatitude)) return survey.adminLatitude;
+    return survey.latitude;
+  };
+  const getDisplayLongitude = (survey: Survey): number => {
+    if (typeof survey.finalLongitude === "number" && Number.isFinite(survey.finalLongitude)) return survey.finalLongitude;
+    if (typeof survey.adminLongitude === "number" && Number.isFinite(survey.adminLongitude)) return survey.adminLongitude;
+    return survey.longitude;
+  };
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showDetailMap, setShowDetailMap] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -1291,7 +1303,7 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                           </svg>
-                          <span>{survey.latitude.toFixed(7)}, {survey.longitude.toFixed(7)}</span>
+                          <span>{getDisplayLatitude(survey).toFixed(7)}, {getDisplayLongitude(survey).toFixed(7)}</span>
                         </div>
                       </div>
 
@@ -1470,8 +1482,8 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                   </div>
                 ) : (
                   <DynamicDetailMap 
-                    latitude={selectedSurvey.latitude} 
-                    longitude={selectedSurvey.longitude}
+                    latitude={getDisplayLatitude(selectedSurvey)} 
+                    longitude={getDisplayLongitude(selectedSurvey)}
                     accuracy={selectedSurvey.accuracy || 0}
                     title={selectedSurvey.title}
                     kmzFileUrl={selectedSurvey.type === "pra-existing" ? selectedSurvey.kmzFileUrl : undefined}
@@ -1481,11 +1493,11 @@ export default function ValidasiSurvey({ activeKabupaten }: { activeKabupaten?: 
                 <div className="mt-3 lg:mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 lg:gap-3 text-xs lg:text-sm">
                   <div className="bg-white/70 backdrop-blur px-3 lg:px-4 py-2 lg:py-3 rounded-lg border border-blue-200">
                     <p className="text-gray-600 mb-1">Latitude</p>
-                    <p className="font-mono font-bold text-gray-900">{selectedSurvey.latitude.toFixed(7)}</p>
+                    <p className="font-mono font-bold text-gray-900">{getDisplayLatitude(selectedSurvey).toFixed(7)}</p>
                   </div>
                   <div className="bg-white/70 backdrop-blur px-3 lg:px-4 py-2 lg:py-3 rounded-lg border border-blue-200">
                     <p className="text-gray-600 mb-1">Longitude</p>
-                    <p className="font-mono font-bold text-gray-900">{selectedSurvey.longitude.toFixed(7)}</p>
+                    <p className="font-mono font-bold text-gray-900">{getDisplayLongitude(selectedSurvey).toFixed(7)}</p>
                   </div>
                   {selectedSurvey.type === "pra-existing" && Number.isFinite(selectedSurvey.adminLatitude) && Number.isFinite(selectedSurvey.adminLongitude) && (
                     <div className="bg-emerald-50 px-3 lg:px-4 py-2 lg:py-3 rounded-lg border border-emerald-200 sm:col-span-2">

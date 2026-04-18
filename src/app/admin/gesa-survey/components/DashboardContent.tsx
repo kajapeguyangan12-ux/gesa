@@ -544,6 +544,7 @@ export default function DashboardContent({
   const dashboardApiQuery = useMemo(() => {
     const params = new URLSearchParams();
     if (activeKabupaten) params.set("kabupaten", activeKabupaten);
+    if (!isSuperAdmin && user?.uid) params.set("adminId", user.uid);
     return params.toString();
   }, [activeKabupaten, isSuperAdmin, user?.uid]);
 
@@ -652,8 +653,13 @@ export default function DashboardContent({
 
     void hydrateFromSummary();
 
+    const intervalId = window.setInterval(() => {
+      void hydrateFromSummary();
+    }, 10_000);
+
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
     };
   }, [activeKabupaten, dashboardApiQuery, dashboardBundlePath, isSuperAdmin]);
 
@@ -663,40 +669,6 @@ export default function DashboardContent({
 
     const loadReports = async () => {
       try {
-        if (!isSuperAdmin && typeof window !== "undefined") {
-          const cachedRaw = window.sessionStorage.getItem(reportCacheKey);
-          if (cachedRaw) {
-            try {
-              const cached = JSON.parse(cachedRaw) as {
-                savedAt: number;
-                data: DashboardReportState;
-              };
-
-              const cachedHasData =
-                (cached.data?.allRows?.length || 0) > 0 ||
-                cached.data?.propose?.totalData > 0 ||
-                cached.data?.existing?.totalData > 0 ||
-                cached.data?.praExisting?.totalData > 0;
-
-              if (cachedHasData && Date.now() - cached.savedAt <= DASHBOARD_REPORT_CACHE_TTL_MS) {
-                setReportState({
-                  ...cached.data,
-                  loading: false,
-                  error: "",
-                });
-                setDetailLoaded(true);
-                return;
-              }
-
-              if (!cachedHasData) {
-                window.sessionStorage.removeItem(reportCacheKey);
-              }
-            } catch {
-              window.sessionStorage.removeItem(reportCacheKey);
-            }
-          }
-        }
-
         setReportState((current) => ({
           ...current,
           loading: true,
@@ -844,10 +816,15 @@ export default function DashboardContent({
       }
     };
 
-    loadReports();
+    void loadReports();
+
+    const intervalId = window.setInterval(() => {
+      void loadReports();
+    }, 10_000);
 
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
     };
   }, [activeKabupaten, dashboardApiQuery, dashboardBundlePath, detailVisible, isSuperAdmin, reportCacheKey, user?.uid]);
 
