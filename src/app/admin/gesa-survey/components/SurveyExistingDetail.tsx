@@ -75,6 +75,14 @@ interface SurveyExistingDetailProps {
   activeKabupaten?: string | null;
 }
 
+function resolveStatusFilters(statusFilter?: string) {
+  const normalized = (statusFilter || "").trim().toLowerCase();
+  if (!normalized || normalized === "all" || normalized === "semua" || normalized === "semua status") {
+    return undefined;
+  }
+  return [statusFilter ?? normalized];
+}
+
 export default function SurveyExistingDetail({ onBack, statusFilter = "diverifikasi", activeKabupaten }: SurveyExistingDetailProps) {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "super-admin";
@@ -124,7 +132,7 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
       const payload = await fetchAdminSurveyRows({
         activeKabupaten,
         adminId: null,
-        statuses: [statusFilter],
+        statuses: resolveStatusFilters(statusFilter),
         type: "existing",
       });
 
@@ -231,7 +239,17 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
     const matchesSearch = searchQuery === "" || 
       survey.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (survey.namaJalan && survey.namaJalan.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      survey.surveyorName.toLowerCase().includes(searchQuery.toLowerCase());
+      survey.surveyorName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      searchQuery
+        .split(/[\s,;]+/)
+        .map((term) => normalizeCoordinateText(term.trim()))
+        .filter(Boolean)
+        .every((term) =>
+          [survey.latitude, survey.longitude]
+            .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+            .flatMap((value) => [value.toString(), value.toFixed(7)])
+            .some((value) => normalizeCoordinateText(value).includes(term))
+        );
     
     const matchesZona = filterZona === "all" || survey.zona === filterZona;
     
@@ -244,6 +262,10 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
   const startIndex = filteredSurveys.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
   const endIndex = filteredSurveys.length === 0 ? 0 : Math.min(startIndex + itemsPerPage - 1, effectiveTotalItems);
   const paginatedSurveys = filteredSurveys.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterZona]);
 
   const handlePageChange = (page: number) => {
     if (page < 1 || page > totalPages || page === currentPage) return;

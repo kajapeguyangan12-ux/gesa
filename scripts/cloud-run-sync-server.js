@@ -1,5 +1,11 @@
 const http = require("http");
-const { runSyncOnce, getCollections, getCollectionsFromProfile, getSyncMode } = require("./sync-firebase-to-supabase-once");
+const {
+  runSyncOnce,
+  getCollections,
+  getCollectionsFromProfile,
+  getSyncMode,
+  sanitizeCollections,
+} = require("./sync-firebase-to-supabase-once");
 
 const port = Math.max(1, parseInt(process.env.PORT || "8080", 10));
 const syncToken = process.env.SYNC_ENDPOINT_TOKEN || "";
@@ -55,10 +61,20 @@ const server = http.createServer(async (request, response) => {
   const requestedProfile = requestUrl.searchParams.get("profile");
 
   try {
-    const collections =
+    const requestedCollections =
       explicitCollections
         ? explicitCollections.split(",").map((item) => item.trim()).filter(Boolean)
         : getCollectionsFromProfile(requestedProfile) || getCollections();
+    const collections = sanitizeCollections(requestedCollections);
+
+    if (collections.length === 0) {
+      sendJson(response, 400, {
+        ok: false,
+        error:
+          "No eligible collections to sync. Firebase survey collections are blocked because Supabase is the write source.",
+      });
+      return;
+    }
 
     await runSyncOnce(collections);
     sendJson(response, 200, {

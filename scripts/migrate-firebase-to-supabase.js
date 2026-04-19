@@ -28,6 +28,11 @@ const admin = require("firebase-admin");
 const { createClient } = require("@supabase/supabase-js");
 const SYNC_STATE_FILE = path.resolve(process.cwd(), process.env.SYNC_STATE_FILE || ".sync-state.json");
 const DEFAULT_SYNC_STATE_TABLE = process.env.SUPABASE_SYNC_STATE_TABLE || "sync_state";
+const FIREBASE_SURVEY_COLLECTIONS = new Set([
+  "survey-existing",
+  "survey-apj-propose",
+  "survey-pra-existing",
+]);
 
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
@@ -188,6 +193,13 @@ function normalizeTimestamp(value) {
     return new Date(value.seconds * 1000).toISOString();
   }
   return null;
+}
+
+function normalizeTimestampMs(value) {
+  const normalized = normalizeTimestamp(value);
+  if (!normalized) return null;
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function toBoolean(value, fallback = false) {
@@ -489,6 +501,77 @@ async function readDocumentsIncrementally(db, handler, lowerBoundIso, upperBound
   return Array.from(docMap.values());
 }
 
+async function filterSurveyRowsToProtectSupabaseEdits(supabase, handler, rows) {
+  if (!FIREBASE_SURVEY_COLLECTIONS.has(handler.sourceCollection) || rows.length === 0) {
+    return { rows, skippedRows: [] };
+  }
+
+  const ids = rows
+    .map((row) => (typeof row.fb_doc_id === "string" ? row.fb_doc_id : null))
+    .filter(Boolean);
+
+  if (ids.length === 0) {
+    return { rows, skippedRows: [] };
+  }
+
+  const { data, error } = await supabase
+    .from(handler.targetTable)
+    .select("fb_doc_id, updated_at, raw_payload")
+    .in("fb_doc_id", ids);
+
+  if (error) {
+    throw new Error(`Failed to inspect existing survey rows in ${handler.targetTable}: ${error.message}`);
+  }
+
+  const existingById = new Map(
+    (data || []).map((item) => [
+      item.fb_doc_id,
+      {
+        updatedAtMs: normalizeTimestampMs(item.updated_at),
+        rawPayload: item.raw_payload && typeof item.raw_payload === "object" ? item.raw_payload : {},
+      },
+    ])
+  );
+
+  const filteredRows = [];
+  const skippedRows = [];
+
+  for (const row of rows) {
+    const rowId = typeof row.fb_doc_id === "string" ? row.fb_doc_id : "";
+    const existing = existingById.get(rowId);
+    if (!existing) {
+      filteredRows.push(row);
+      continue;
+    }
+
+    const incomingUpdatedAtMs = normalizeTimestampMs(row.updated_at ?? row.created_at);
+    const existingUpdatedAtMs = existing.updatedAtMs;
+    const existingPayload = existing.rawPayload || {};
+    const hasAdminMutation =
+      typeof existingPayload.editedBy === "string" ||
+      typeof existingPayload.verifiedBy === "string" ||
+      typeof existingPayload.validatedBy === "string" ||
+      typeof existingPayload.rejectedBy === "string";
+
+    const supabaseIsNewer =
+      existingUpdatedAtMs !== null &&
+      incomingUpdatedAtMs !== null &&
+      existingUpdatedAtMs >= incomingUpdatedAtMs;
+
+    if (hasAdminMutation || supabaseIsNewer) {
+      skippedRows.push({
+        id: rowId,
+        reason: hasAdminMutation ? "admin-mutated" : "supabase-newer",
+      });
+      continue;
+    }
+
+    filteredRows.push(row);
+  }
+
+  return { rows: filteredRows, skippedRows };
+}
+
 async function main() {
   loadEnvFile(path.resolve(process.cwd(), ".env.migration.local"));
 
@@ -553,7 +636,16 @@ async function main() {
   }
 
   console.log(`[2/4] Mapping documents for Supabase table: ${handler.targetTable}`);
-  const rows = docs.map(handler.mapDocument);
+  const mappedRows = docs.map(handler.mapDocument);
+  const { rows, skippedRows } = await filterSurveyRowsToProtectSupabaseEdits(supabase, handler, mappedRows);
+
+  if (skippedRows.length > 0) {
+    const adminMutatedCount = skippedRows.filter((item) => item.reason === "admin-mutated").length;
+    const newerCount = skippedRows.filter((item) => item.reason === "supabase-newer").length;
+    console.log(
+      `Protected ${skippedRows.length} survey row(s) from Firebase overwrite (${adminMutatedCount} admin-mutated, ${newerCount} newer-in-supabase).`
+    );
+  }
 
   if (dryRun) {
     console.log(`[DRY RUN] Prepared ${rows.length} rows. Sample row:`);
@@ -586,7 +678,10 @@ async function main() {
       lastRunAt: new Date().toISOString(),
       lastMode: mode,
       status: "ok",
-      message: "",
+      message:
+        skippedRows.length > 0
+          ? `Skipped ${skippedRows.length} survey row(s) to protect newer Supabase/admin changes.`
+          : "",
       totalRows: rows.length,
     };
     await writeSyncState(supabase, syncState, collectionKey);

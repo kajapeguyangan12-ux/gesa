@@ -181,6 +181,7 @@ function buildPraExistingOwnershipDisplay(kepemilikanTiang: string, tipeTiangPLN
 }
 
 const LIVE_REFRESH_INTERVAL_MS = 5000;
+const TAB_DATA_FETCH_LIMIT = 10000;
 
 export default function ValidasiSurvey({
   activeKabupaten,
@@ -333,74 +334,45 @@ export default function ValidasiSurvey({
     }
   };
 
-  const fetchSurveys = async (page = 1, forceRefresh = false) => {
+  const fetchSurveys = async (forceRefresh = false, resetPage = true, backgroundRefresh = false) => {
     try {
       if (forceRefresh) {
         setRefreshing(true);
-      } else {
+      } else if (!backgroundRefresh && surveys.length === 0) {
         setLoading(true);
       }
       setFetchError("");
-      await fetchPage(page, forceRefresh);
+      const payload = await fetchAdminSurveyRows({
+        activeKabupaten,
+        adminId: null,
+        statuses: ["menunggu"],
+        limit: TAB_DATA_FETCH_LIMIT,
+      });
+      setSurveys(payload.rows.map(mapSupabaseSurvey));
+      if (resetPage) {
+        setCurrentPage(1);
+      }
+      setHasNextPage(false);
+      setDataSource(payload.source);
+      setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
     } catch (error) {
       console.error("Error fetching surveys:", error);
       setFetchError(error instanceof Error ? error.message : "Gagal memuat data verifikasi.");
       setDataSource("Belum ada");
       setLastUpdatedAt(null);
     } finally {
-      setLoading(false);
+      if (!backgroundRefresh) {
+        setLoading(false);
+      }
       setRefreshing(false);
     }
-  };
-
-  const fetchPage = async (page: number, forceRefresh = false) => {
-    const offset = Math.max(0, (page - 1) * itemsPerPage);
-    const payload = await fetchAdminSurveyRows({
-      activeKabupaten,
-      adminId: null,
-      statuses: ["menunggu"],
-      type: activeTab,
-      offset,
-      limit: itemsPerPage,
-    });
-    const pageRows = payload.rows.map(mapSupabaseSurvey);
-
-    if (page > 1 && pageRows.length === 0) {
-      setHasNextPage(false);
-      return;
-    }
-
-    setSurveys(pageRows);
-    setCurrentPage(page);
-    setHasNextPage(offset + itemsPerPage < payload.totalRows);
-    setShowAll(false);
-    setDataSource(payload.source);
-    setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
-  };
-
-  const fetchAllTabData = async (forceRefresh = false) => {
-    const payload = await fetchAdminSurveyRows({
-      activeKabupaten,
-      adminId: null,
-      statuses: ["menunggu"],
-      type: activeTab,
-      limit: 10000,
-    });
-
-    setSurveys(payload.rows.map(mapSupabaseSurvey));
-    setShowAll(true);
-    setCurrentPage(1);
-    setHasNextPage(false);
-    setDataSource(payload.source);
-    setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
   };
 
   const clearCurrentTabCaches = () => undefined;
 
   useEffect(() => {
     setCurrentPage(1);
-    setSurveys([]);
-    setHasNextPage(false);
+    setShowAll(false);
     setStatsLoaded(false);
     setStats({
       total: 0,
@@ -408,29 +380,30 @@ export default function ValidasiSurvey({
       propose: 0,
       praExisting: 0,
     });
-  }, [activeTab, activeKabupaten, itemsPerPage, filterSort]);
+  }, [activeKabupaten, itemsPerPage]);
 
   useEffect(() => {
     void Promise.all([fetchStatistics(), fetchSurveys()]);
-  }, [activeTab, activeKabupaten, itemsPerPage, filterSort]);
+  }, [activeKabupaten]);
 
   useEffect(() => {
     if (!isActive) return;
 
     const intervalId = window.setInterval(() => {
       void fetchStatistics();
-      if (showAll) {
-        void fetchAllTabData();
-        return;
-      }
-      void fetchPage(currentPage);
+      void fetchSurveys(false, false, true);
     }, LIVE_REFRESH_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [isActive, showAll, currentPage, activeTab, activeKabupaten, itemsPerPage, filterSort]);
+  }, [isActive, activeKabupaten]);
+
+  const currentTabSurveys = useMemo(
+    () => surveys.filter((survey) => survey.type === activeTab),
+    [surveys, activeTab]
+  );
 
   // Filter and sort surveys
-  const filteredSurveys = surveys.filter(survey => {
+  const filteredSurveys = currentTabSurveys.filter(survey => {
     // Filter by status
     if (filterStatus !== "Semua Status") {
       const statusLower = filterStatus.toLowerCase();
@@ -461,14 +434,25 @@ export default function ValidasiSurvey({
     if (activeTab === "existing" && filterExistingSurveyor !== "Semua Petugas") {
       if (survey.surveyorName !== filterExistingSurveyor) return false;
     }
+
+    if (activeTab === "existing" && filterExistingJudul !== "Semua Judul") {
+      const surveyTitle = survey.title || survey.lokasiJalan || "";
+      if (surveyTitle !== filterExistingJudul) return false;
+    }
+
+    if (activeTab === "propose" && filterProposeSurveyor !== "Semua Petugas") {
+      if (survey.surveyorName !== filterProposeSurveyor) return false;
+    }
+
+    if (activeTab === "propose" && filterProposeJudul !== "Semua Judul") {
+      if ((survey.title || "") !== filterProposeJudul) return false;
+    }
     
     return true;
   }).sort((a, b) => {
-    const dateA = a.createdAt instanceof Date ? a.createdAt : 
-                  (typeof a.createdAt === 'object' && a.createdAt?.toDate) ? a.createdAt.toDate() : new Date(0);
-    const dateB = b.createdAt instanceof Date ? b.createdAt : 
-                  (typeof b.createdAt === 'object' && b.createdAt?.toDate) ? b.createdAt.toDate() : new Date(0);
-    return dateB.getTime() - dateA.getTime();
+    const timestampA = getTimestampValue(a.createdAt);
+    const timestampB = getTimestampValue(b.createdAt);
+    return filterSort === "Terlama" ? timestampA - timestampB : timestampB - timestampA;
   });
 
   const displayedStats = useMemo(() => {
@@ -490,16 +474,13 @@ export default function ValidasiSurvey({
   }, [statsLoaded, stats.existing, stats.praExisting, stats.propose, stats.total]);
 
   // Pagination logic
-  const totalItems =
-    activeTab === "existing"
-      ? displayedStats.existing ?? (hasNextPage ? currentPage * itemsPerPage + 1 : filteredSurveys.length)
-      : activeTab === "propose"
-      ? displayedStats.propose ?? (hasNextPage ? currentPage * itemsPerPage + 1 : filteredSurveys.length)
-      : displayedStats.praExisting ?? (hasNextPage ? currentPage * itemsPerPage + 1 : filteredSurveys.length);
-  const totalPages = showAll ? 1 : Math.max(1, statsLoaded ? Math.ceil(totalItems / itemsPerPage) : currentPage + (hasNextPage ? 1 : 0));
+  const totalItems = filteredSurveys.length;
+  const totalPages = showAll ? 1 : Math.max(1, Math.ceil(totalItems / itemsPerPage));
   const startIndex = filteredSurveys.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
   const endIndex = filteredSurveys.length === 0 ? 0 : Math.min(startIndex + (showAll ? filteredSurveys.length : itemsPerPage) - 1, totalItems);
-  const paginatedSurveys = showAll ? filteredSurveys : filteredSurveys.slice(0, itemsPerPage);
+  const paginatedSurveys = showAll
+    ? filteredSurveys
+    : filteredSurveys.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   // Reset page when filters change
   useEffect(() => {
@@ -509,7 +490,7 @@ export default function ValidasiSurvey({
   // Handle page change
   const handlePageChange = (page: number) => {
     if (page < 1 || page > totalPages || page === currentPage) return;
-    void fetchPage(page);
+    setCurrentPage(page);
   };
 
   // Handle items per page change
@@ -557,7 +538,7 @@ export default function ValidasiSurvey({
 
           <button
             onClick={() => handlePageChange(currentPage + 1)}
-            disabled={currentPage >= totalPages || !hasNextPage}
+            disabled={currentPage >= totalPages}
             className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Next
@@ -569,59 +550,51 @@ export default function ValidasiSurvey({
 
   // Get unique surveyors from pra-existing surveys
   const surveyorOptions = useMemo(() => {
-    const praExistingSurveys = surveys.filter(s => s.type === "pra-existing");
-    const uniqueSurveyors = [...new Set(praExistingSurveys.map(s => s.surveyorName).filter(Boolean))];
+    const uniqueSurveyors = [...new Set(currentTabSurveys.map(s => s.surveyorName).filter(Boolean))];
     return ["Semua Petugas", ...uniqueSurveyors.sort()];
-  }, [surveys]);
+  }, [currentTabSurveys]);
 
   // Get unique kecamatans from pra-existing surveys
   const kecamatanOptions = useMemo(() => {
-    const praExistingSurveys = surveys.filter(s => s.type === "pra-existing");
-    const uniqueKecamatans = [...new Set(praExistingSurveys.map(s => s.kecamatan).filter(Boolean))];
+    const uniqueKecamatans = [...new Set(currentTabSurveys.map(s => s.kecamatan).filter(Boolean))];
     return ["Semua Kecamatan", ...uniqueKecamatans.sort()];
-  }, [surveys]);
+  }, [currentTabSurveys]);
 
   // Get unique desas based on selected kecamatan
   const desaOptions = useMemo(() => {
-    const praExistingSurveys = surveys.filter(s => s.type === "pra-existing");
-    
     if (filterKecamatan === "Semua Kecamatan") {
-      const uniqueDesas = [...new Set(praExistingSurveys.map(s => s.desa).filter(Boolean))];
+      const uniqueDesas = [...new Set(currentTabSurveys.map(s => s.desa).filter(Boolean))];
       return ["Semua Desa", ...uniqueDesas.sort()];
     } else {
-      const filtered = praExistingSurveys.filter(s => s.kecamatan === filterKecamatan);
+      const filtered = currentTabSurveys.filter(s => s.kecamatan === filterKecamatan);
       const uniqueDesas = [...new Set(filtered.map(s => s.desa).filter(Boolean))];
       return ["Semua Desa", ...uniqueDesas.sort()];
     }
-  }, [surveys, filterKecamatan]);
+  }, [currentTabSurveys, filterKecamatan]);
   
   // Get unique surveyors from existing surveys
   const existingSurveyorOptions = useMemo(() => {
-    const existingSurveys = surveys.filter(s => s.type === "existing");
-    const uniqueSurveyors = [...new Set(existingSurveys.map(s => s.surveyorName).filter(Boolean))];
+    const uniqueSurveyors = [...new Set(currentTabSurveys.map(s => s.surveyorName).filter(Boolean))];
     return ["Semua Petugas", ...uniqueSurveyors.sort()];
-  }, [surveys]);
+  }, [currentTabSurveys]);
 
   // Get unique juduls from existing surveys
   const existingJudulOptions = useMemo(() => {
-    const existingSurveys = surveys.filter(s => s.type === "existing");
-    const uniqueJuduls = [...new Set(existingSurveys.map(s => s.title || s.lokasiJalan).filter(Boolean))];
+    const uniqueJuduls = [...new Set(currentTabSurveys.map(s => s.title || s.lokasiJalan).filter(Boolean))];
     return ["Semua Judul", ...uniqueJuduls.sort()];
-  }, [surveys]);
+  }, [currentTabSurveys]);
 
   // Get unique surveyors from propose surveys
   const proposeSurveyorOptions = useMemo(() => {
-    const proposeSurveys = surveys.filter(s => s.type === "propose");
-    const uniqueSurveyors = [...new Set(proposeSurveys.map(s => s.surveyorName).filter(Boolean))];
+    const uniqueSurveyors = [...new Set(currentTabSurveys.map(s => s.surveyorName).filter(Boolean))];
     return ["Semua Petugas", ...uniqueSurveyors.sort()];
-  }, [surveys]);
+  }, [currentTabSurveys]);
 
   // Get unique juduls from propose surveys
   const proposeJudulOptions = useMemo(() => {
-    const proposeSurveys = surveys.filter(s => s.type === "propose");
-    const uniqueJuduls = [...new Set(proposeSurveys.map(s => s.title).filter(Boolean))];
+    const uniqueJuduls = [...new Set(currentTabSurveys.map(s => s.title).filter(Boolean))];
     return ["Semua Judul", ...uniqueJuduls.sort()];
-  }, [surveys]);
+  }, [currentTabSurveys]);
   
   const totalSurveys = displayedStats.total;
   const totalExisting = displayedStats.existing;
@@ -1001,7 +974,7 @@ export default function ValidasiSurvey({
             </button>
             <button
               onClick={() => {
-                void Promise.all([fetchStatistics(true), fetchSurveys(1, true)]);
+                void Promise.all([fetchStatistics(true), fetchSurveys(true, false)]);
               }}
               disabled={loading || refreshing}
               className="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
@@ -1230,8 +1203,10 @@ export default function ValidasiSurvey({
                 value={showAll ? "all" : itemsPerPage}
                 onChange={(e) => {
                   if (e.target.value === "all") {
-                    void fetchAllTabData();
+                    setShowAll(true);
+                    setCurrentPage(1);
                   } else {
+                    setShowAll(false);
                     handleItemsPerPageChange(Number(e.target.value));
                   }
                 }}

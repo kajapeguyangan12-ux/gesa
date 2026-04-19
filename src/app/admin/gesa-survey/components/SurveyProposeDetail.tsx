@@ -66,6 +66,14 @@ interface SurveyProposeDetailProps {
   activeKabupaten?: string | null;
 }
 
+function resolveStatusFilters(statusFilter?: string) {
+  const normalized = (statusFilter || "").trim().toLowerCase();
+  if (!normalized || normalized === "all" || normalized === "semua" || normalized === "semua status") {
+    return undefined;
+  }
+  return [statusFilter ?? normalized];
+}
+
 export default function SurveyProposeDetail({ onBack, statusFilter = "diverifikasi", activeKabupaten }: SurveyProposeDetailProps) {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "super-admin";
@@ -115,7 +123,7 @@ export default function SurveyProposeDetail({ onBack, statusFilter = "diverifika
       const payload = await fetchAdminSurveyRows({
         activeKabupaten,
         adminId: null,
-        statuses: [statusFilter],
+        statuses: resolveStatusFilters(statusFilter),
         type: "propose",
       });
 
@@ -246,6 +254,10 @@ export default function SurveyProposeDetail({ onBack, statusFilter = "diverifika
   const startIndex = filteredSurveys.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
   const endIndex = filteredSurveys.length === 0 ? 0 : Math.min(startIndex + itemsPerPage - 1, totalItems);
   const paginatedSurveys = filteredSurveys.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterZona]);
 
   const handlePageChange = (page: number) => {
     if (page < 1 || page > totalPages || page === currentPage) return;

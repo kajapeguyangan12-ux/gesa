@@ -15,12 +15,15 @@ const DEFAULT_COLLECTIONS = [
   "user-admin",
 ];
 
+const FIREBASE_SURVEY_COLLECTIONS = new Set([
+  "survey-existing",
+  "survey-apj-propose",
+  "survey-pra-existing",
+]);
+
 const SYNC_PROFILES = {
   "survey-work-manual": [
     "tasks",
-    "survey-existing",
-    "survey-apj-propose",
-    "survey-pra-existing",
     "tracking-sessions",
   ],
   backoffice: [
@@ -40,21 +43,48 @@ function getCollectionsFromProfile(profileName) {
 
 function getCollections() {
   const raw = process.env.SYNC_COLLECTIONS?.trim();
-  if (!raw) return DEFAULT_COLLECTIONS;
-  return raw
+  const collections = !raw
+    ? DEFAULT_COLLECTIONS
+    : raw
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+  return sanitizeCollections(collections);
+}
+
+function allowFirebaseSurveySync() {
+  return (process.env.ALLOW_FIREBASE_SURVEY_SYNC || "").trim().toLowerCase() === "true";
+}
+
+function sanitizeCollections(collections) {
+  if (!Array.isArray(collections) || collections.length === 0) {
+    return [];
+  }
+
+  if (allowFirebaseSurveySync()) {
+    return collections;
+  }
+
+  const filtered = collections.filter((name) => !FIREBASE_SURVEY_COLLECTIONS.has(name));
+  const blocked = collections.filter((name) => FIREBASE_SURVEY_COLLECTIONS.has(name));
+  if (blocked.length > 0) {
+    console.warn(
+      `[sync] Skipping Firebase survey collection(s): ${blocked.join(
+        ", "
+      )}. Supabase is the source of truth for admin edits. Set ALLOW_FIREBASE_SURVEY_SYNC=true only for one-off recovery/migration.`
+    );
+  }
+  return filtered;
 }
 
 function resolveCollections(explicitCollections) {
   if (Array.isArray(explicitCollections) && explicitCollections.length > 0) {
-    return explicitCollections;
+    return sanitizeCollections(explicitCollections);
   }
 
   const profileCollections = getCollectionsFromProfile(process.env.SYNC_PROFILE);
   if (profileCollections) {
-    return profileCollections;
+    return sanitizeCollections(profileCollections);
   }
 
   return getCollections();
@@ -117,11 +147,14 @@ async function runSyncOnce(collections = resolveCollections()) {
 
 module.exports = {
   DEFAULT_COLLECTIONS,
+  FIREBASE_SURVEY_COLLECTIONS,
   SYNC_PROFILES,
+  allowFirebaseSurveySync,
   getCollections,
   getCollectionsFromProfile,
   getSyncMode,
   resolveCollections,
+  sanitizeCollections,
   runCollectionSync,
   runSyncOnce,
 };
