@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { PRA_EXISTING_TABANAN_DATA } from "@/app/survey-pra-existing/location-data";
@@ -180,7 +180,7 @@ function buildPraExistingOwnershipDisplay(kepemilikanTiang: string, tipeTiangPLN
   return kepemilikanTiang === "PLN" && tipeTiangPLN ? `PLN - ${tipeTiangPLN}` : kepemilikanTiang;
 }
 
-const LIVE_REFRESH_INTERVAL_MS = 5000;
+const LIVE_REFRESH_INTERVAL_MS = 15000;
 const TAB_DATA_FETCH_LIMIT = 10000;
 
 export default function ValidasiSurvey({
@@ -255,12 +255,33 @@ export default function ValidasiSurvey({
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showAll, setShowAll] = useState(false);
   const [hasNextPage, setHasNextPage] = useState(false);
+  const latestSurveyFingerprintRef = useRef("");
+  const latestSurveyChangeRef = useRef("");
   const getCurrentUser = () => {
     const storedUser = localStorage.getItem("gesa_user");
     return storedUser ? JSON.parse(storedUser) : null;
   };
 
   const mapSupabaseSurvey = (survey: AdminSurveyRow) => survey as Survey;
+  const targetStatuses = useMemo(() => new Set(["menunggu"]), []);
+
+  const mergeSurveyDelta = (current: Survey[], deltaRows: Survey[]) => {
+    const byId = new Map(current.map((survey) => [survey.id, survey]));
+
+    for (const row of deltaRows) {
+      if (targetStatuses.has((row.status || "").toLowerCase())) {
+        byId.set(row.id, row);
+      } else {
+        byId.delete(row.id);
+      }
+    }
+
+    return Array.from(byId.values()).sort((left, right) => {
+      const leftTime = getTimestampValue(left.updatedAt ?? left.createdAt);
+      const rightTime = getTimestampValue(right.updatedAt ?? right.createdAt);
+      return rightTime - leftTime;
+    });
+  };
 
   const matchesExactPraExistingDuplicate = (targetSurvey: Survey, candidate: Survey) => {
     return (
@@ -312,7 +333,9 @@ export default function ValidasiSurvey({
 
   const fetchStatistics = async (forceRefresh = false) => {
     try {
-      setStatsLoading(true);
+      if (forceRefresh) {
+        setStatsLoading(true);
+      }
       setFetchError("");
       const payload = await fetchAdminSurveyRows({
         activeKabupaten,
@@ -324,14 +347,40 @@ export default function ValidasiSurvey({
       setStats(payload.counts);
       setStatsLoaded(true);
       setDataSource(payload.source);
-      setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
+      latestSurveyFingerprintRef.current = buildSurveyFingerprint(payload.counts, payload.lastDataChangeAt);
+      latestSurveyChangeRef.current = payload.lastDataChangeAt || payload.generatedAt || latestSurveyChangeRef.current;
+      setLastUpdatedAt(
+        payload.lastDataChangeAt
+          ? new Date(payload.lastDataChangeAt)
+          : payload.generatedAt
+            ? new Date(payload.generatedAt)
+            : new Date()
+      );
+      return payload;
     } catch (error) {
       setFetchError(error instanceof Error ? error.message : "Gagal memuat statistik verifikasi.");
       setDataSource("Belum ada");
       setLastUpdatedAt(null);
+      return null;
     } finally {
-      setStatsLoading(false);
+      if (forceRefresh) {
+        setStatsLoading(false);
+      }
     }
+  };
+
+  const buildSurveyFingerprint = (
+    counts: { total: number; existing: number; propose: number; praExisting: number },
+    lastDataChangeAt?: string
+  ) => {
+    return [
+      counts.total,
+      counts.existing,
+      counts.propose,
+      counts.praExisting,
+      lastDataChangeAt || "",
+      activeKabupaten || "all",
+    ].join("|");
   };
 
   const fetchSurveys = async (forceRefresh = false, resetPage = true, backgroundRefresh = false) => {
@@ -349,12 +398,20 @@ export default function ValidasiSurvey({
         limit: TAB_DATA_FETCH_LIMIT,
       });
       setSurveys(payload.rows.map(mapSupabaseSurvey));
+      latestSurveyFingerprintRef.current = buildSurveyFingerprint(payload.counts, payload.lastDataChangeAt);
+      latestSurveyChangeRef.current = payload.lastDataChangeAt || payload.generatedAt || latestSurveyChangeRef.current;
       if (resetPage) {
         setCurrentPage(1);
       }
       setHasNextPage(false);
       setDataSource(payload.source);
-      setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
+      setLastUpdatedAt(
+        payload.lastDataChangeAt
+          ? new Date(payload.lastDataChangeAt)
+          : payload.generatedAt
+            ? new Date(payload.generatedAt)
+            : new Date()
+      );
     } catch (error) {
       console.error("Error fetching surveys:", error);
       setFetchError(error instanceof Error ? error.message : "Gagal memuat data verifikasi.");
@@ -368,12 +425,39 @@ export default function ValidasiSurvey({
     }
   };
 
+  const fetchSurveyDelta = async (changedSince: string) => {
+    const payload = await fetchAdminSurveyRows({
+      activeKabupaten,
+      adminId: null,
+      statuses: ["menunggu"],
+      limit: TAB_DATA_FETCH_LIMIT,
+      changedSince,
+    });
+
+    const deltaRows = payload.rows.map(mapSupabaseSurvey);
+    setSurveys((current) => mergeSurveyDelta(current, deltaRows));
+    latestSurveyFingerprintRef.current = buildSurveyFingerprint(payload.counts, payload.lastDataChangeAt);
+    latestSurveyChangeRef.current = payload.lastDataChangeAt || payload.generatedAt || latestSurveyChangeRef.current;
+    setStats(payload.counts);
+    setStatsLoaded(true);
+    setDataSource(payload.source);
+    setLastUpdatedAt(
+      payload.lastDataChangeAt
+        ? new Date(payload.lastDataChangeAt)
+        : payload.generatedAt
+          ? new Date(payload.generatedAt)
+          : new Date()
+    );
+  };
+
   const clearCurrentTabCaches = () => undefined;
 
   useEffect(() => {
     setCurrentPage(1);
     setShowAll(false);
     setStatsLoaded(false);
+    latestSurveyFingerprintRef.current = "";
+    latestSurveyChangeRef.current = "";
     setStats({
       total: 0,
       existing: 0,
@@ -390,8 +474,19 @@ export default function ValidasiSurvey({
     if (!isActive) return;
 
     const intervalId = window.setInterval(() => {
-      void fetchStatistics();
-      void fetchSurveys(false, false, true);
+      void (async () => {
+        const payload = await fetchStatistics(false);
+        if (!payload) return;
+
+        const nextFingerprint = buildSurveyFingerprint(payload.counts, payload.lastDataChangeAt);
+        if (nextFingerprint !== latestSurveyFingerprintRef.current) {
+          if (latestSurveyChangeRef.current) {
+            await fetchSurveyDelta(latestSurveyChangeRef.current);
+          } else {
+            await fetchSurveys(false, false, true);
+          }
+        }
+      })();
     }, LIVE_REFRESH_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);

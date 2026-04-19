@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
+import { fetchAdminSurveyRows, type AdminSurveyRow } from "./supabaseSurveyClient";
 
 function toApiSurveyType(type: string) {
   if (type === "existing" || type === "propose" || type === "pra-existing") return type;
@@ -121,6 +122,7 @@ type TimestampLike =
 
 export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupaten?: string | null }) {
   const FULL_FETCH_LIMIT = 10000;
+  const LIVE_REFRESH_INTERVAL_MS = 15000;
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -152,6 +154,49 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showAll, setShowAll] = useState(false);
+  const latestFingerprintRef = useRef("");
+  const latestDataChangeRef = useRef("");
+  const targetStatuses = useMemo(() => new Set(["diverifikasi"]), []);
+
+  const mapSupabaseSurvey = (survey: AdminSurveyRow) => survey as Survey;
+
+  const getTimestampValue = (timestamp: TimestampLike) => {
+    if (!timestamp) return 0;
+    if (typeof timestamp === "object" && timestamp !== null && "seconds" in timestamp && typeof timestamp.seconds === "number") {
+      return timestamp.seconds;
+    }
+    if (typeof timestamp === "object" && timestamp !== null && "toDate" in timestamp && typeof timestamp.toDate === "function") {
+      return timestamp.toDate().getTime() / 1000;
+    }
+    if (typeof timestamp !== "string" && typeof timestamp !== "number" && !(timestamp instanceof Date)) {
+      return 0;
+    }
+    const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime() / 1000;
+  };
+
+  const buildFingerprint = (
+    counts: { total: number; existing: number; propose: number; praExisting: number },
+    lastDataChangeAt?: string
+  ) => [counts.total, counts.existing, counts.propose, counts.praExisting, lastDataChangeAt || "", activeKabupaten || "all"].join("|");
+
+  const mergeSurveyDelta = (current: Survey[], deltaRows: Survey[]) => {
+    const byId = new Map(current.map((survey) => [survey.id, survey]));
+
+    for (const row of deltaRows) {
+      if (targetStatuses.has((row.status || "").toLowerCase())) {
+        byId.set(row.id, row);
+      } else {
+        byId.delete(row.id);
+      }
+    }
+
+    return Array.from(byId.values()).sort((left, right) => {
+      const leftTime = getTimestampValue(left.validatedAt ?? left.createdAt);
+      const rightTime = getTimestampValue(right.validatedAt ?? right.createdAt);
+      return rightTime - leftTime;
+    });
+  };
 
   useEffect(() => {
     setSelectedSurveyIds([]);
@@ -162,6 +207,8 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     setCurrentPage(1);
     setShowAll(false);
     setDataLoaded(false);
+    latestFingerprintRef.current = "";
+    latestDataChangeRef.current = "";
     setStats({
       total: 0,
       existing: 0,
@@ -183,28 +230,25 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       }
       setFetchError("");
       
-      const params = new URLSearchParams({
-        includeDetails: "1",
-        status: "diverifikasi",
+      const payload = await fetchAdminSurveyRows({
+        activeKabupaten,
+        statuses: ["diverifikasi"],
+        limit: FULL_FETCH_LIMIT,
       });
-      if (activeKabupaten) params.set("kabupaten", activeKabupaten);
-      const response = await fetch(`/api/admin/gesa-survey?${params.toString()}`, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error("Gagal memuat data validasi dari Supabase.");
-      }
-      const payload = await response.json() as { allRows?: Survey[]; source?: string; generatedAt?: string };
-      const allSurveys = Array.isArray(payload.allRows) ? payload.allRows : [];
-      setSurveys(allSurveys.slice(0, FULL_FETCH_LIMIT));
+      const allSurveys = payload.rows.map(mapSupabaseSurvey);
+      setSurveys(allSurveys);
       setDataLoaded(true);
-      
-      setStats({
-        total: allSurveys.length,
-        existing: allSurveys.filter((survey) => survey.type === "existing").length,
-        propose: allSurveys.filter((survey) => survey.type === "propose").length,
-        praExisting: allSurveys.filter((survey) => survey.type === "pra-existing").length,
-      });
+      setStats(payload.counts);
+      latestFingerprintRef.current = buildFingerprint(payload.counts, payload.lastDataChangeAt);
+      latestDataChangeRef.current = payload.lastDataChangeAt || payload.generatedAt || latestDataChangeRef.current;
       setDataSource(payload.source || "supabase");
-      setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
+      setLastUpdatedAt(
+        payload.lastDataChangeAt
+          ? new Date(payload.lastDataChangeAt)
+          : payload.generatedAt
+            ? new Date(payload.generatedAt)
+            : new Date()
+      );
     } catch (error) {
       console.error("Error fetching surveys:", error);
       setFetchError(error instanceof Error ? error.message : "Gagal memuat data validasi.");
@@ -215,6 +259,55 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       setRefreshing(false);
     }
   };
+
+  const fetchSurveyDelta = async (changedSince: string) => {
+    const payload = await fetchAdminSurveyRows({
+      activeKabupaten,
+      statuses: ["diverifikasi"],
+      limit: FULL_FETCH_LIMIT,
+      changedSince,
+    });
+    const deltaRows = payload.rows.map(mapSupabaseSurvey);
+    setSurveys((current) => mergeSurveyDelta(current, deltaRows));
+    setDataLoaded(true);
+    setStats(payload.counts);
+    latestFingerprintRef.current = buildFingerprint(payload.counts, payload.lastDataChangeAt);
+    latestDataChangeRef.current = payload.lastDataChangeAt || payload.generatedAt || latestDataChangeRef.current;
+    setDataSource(payload.source || "supabase");
+    setLastUpdatedAt(
+      payload.lastDataChangeAt
+        ? new Date(payload.lastDataChangeAt)
+        : payload.generatedAt
+          ? new Date(payload.generatedAt)
+          : new Date()
+    );
+  };
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void (async () => {
+        try {
+          const payload = await fetchAdminSurveyRows({
+            activeKabupaten,
+            statuses: ["diverifikasi"],
+            includeDetails: false,
+          });
+          const nextFingerprint = buildFingerprint(payload.counts, payload.lastDataChangeAt);
+          if (nextFingerprint !== latestFingerprintRef.current) {
+            if (latestDataChangeRef.current) {
+              await fetchSurveyDelta(latestDataChangeRef.current);
+            } else {
+              await fetchAllSurveys(true);
+            }
+          }
+        } catch (error) {
+          console.error("Error checking validation delta:", error);
+        }
+      })();
+    }, LIVE_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeKabupaten]);
 
   const removeSurveyFromList = (surveyId: string) => {
     setSurveys((current) => current.filter((survey) => survey.id !== surveyId));

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { collection, doc, getDoc, getDocs, query, setDoc, where, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -32,6 +32,7 @@ interface SurveyReportRow {
   surveyorName?: string;
   verifiedBy?: string;
   verifiedAt?: TimestampLike;
+  updatedAt?: TimestampLike;
   kabupaten?: string;
   kecamatan?: string;
   jumlahLampu?: number;
@@ -526,6 +527,8 @@ export default function DashboardContent({
   const [bundleSource, setBundleSource] = useState<DashboardBundleSource>("firestore");
   const [bundleGeneratedAt, setBundleGeneratedAt] = useState("");
   const [lastUpdatedAt, setLastUpdatedAt] = useState("");
+  const [summaryVersion, setSummaryVersion] = useState(0);
+  const latestSummaryFingerprintRef = useRef("");
   const [startDate, setStartDate] = useState(() => {
     const today = new Date();
     return formatDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -581,11 +584,42 @@ export default function DashboardContent({
     return true;
   };
 
+  const buildSummaryFingerprint = (payload: {
+    generatedAt?: string;
+    lastDataChangeAt?: string;
+    totalUniqueSurveyors?: number;
+    propose?: Partial<ReportSummary>;
+    existing?: Partial<ReportSummary>;
+    praExisting?: Partial<ReportSummary>;
+  }) => {
+    return [
+      payload.lastDataChangeAt || payload.generatedAt || "",
+      payload.totalUniqueSurveyors ?? 0,
+      payload.propose?.totalData ?? 0,
+      payload.propose?.totalMenunggu ?? 0,
+      payload.propose?.totalDiverifikasi ?? 0,
+      payload.propose?.totalTervalidasi ?? 0,
+      payload.propose?.totalDitolak ?? 0,
+      payload.existing?.totalData ?? 0,
+      payload.existing?.totalMenunggu ?? 0,
+      payload.existing?.totalDiverifikasi ?? 0,
+      payload.existing?.totalTervalidasi ?? 0,
+      payload.existing?.totalDitolak ?? 0,
+      payload.praExisting?.totalData ?? 0,
+      payload.praExisting?.totalMenunggu ?? 0,
+      payload.praExisting?.totalDiverifikasi ?? 0,
+      payload.praExisting?.totalTervalidasi ?? 0,
+      payload.praExisting?.totalDitolak ?? 0,
+      activeKabupaten || "all",
+      isSuperAdmin ? "super" : user?.uid || "admin",
+    ].join("|");
+  };
+
   useEffect(() => {
     if (!isActive) return;
     let cancelled = false;
 
-    const hydrateFromSummary = async () => {
+    const hydrateFromSummary = async (background = false) => {
       try {
         try {
           const response = await fetch(`/api/admin/gesa-survey?${dashboardApiQuery}`, {
@@ -594,17 +628,25 @@ export default function DashboardContent({
           if (response.ok) {
             const payload = (await response.json()) as {
               generatedAt?: string;
+              lastDataChangeAt?: string;
               totalUniqueSurveyors?: number;
               propose?: Partial<ReportSummary>;
               existing?: Partial<ReportSummary>;
               praExisting?: Partial<ReportSummary>;
               praExistingByKecamatan?: Array<Partial<KecamatanSummary> & { kecamatan?: string }>;
             };
+            const nextFingerprint = buildSummaryFingerprint(payload);
 
             if (!cancelled) {
+              if (background && nextFingerprint === latestSummaryFingerprintRef.current) {
+                return;
+              }
+
+              const shouldNotifyDetail = background && latestSummaryFingerprintRef.current !== "" && nextFingerprint !== latestSummaryFingerprintRef.current;
+              latestSummaryFingerprintRef.current = nextFingerprint;
               setBundleSource("supabase");
-              setBundleGeneratedAt(payload.generatedAt || "");
-              setLastUpdatedAt(payload.generatedAt || new Date().toISOString());
+              setBundleGeneratedAt("");
+              setLastUpdatedAt(payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString());
               setReportState((current) => ({
                 ...current,
                 totalUniqueSurveyors:
@@ -618,6 +660,9 @@ export default function DashboardContent({
                   ? payload.praExistingByKecamatan.map(normalizeKecamatanSummaryRow)
                   : current.praExistingByKecamatan,
               }));
+              if (shouldNotifyDetail) {
+                setSummaryVersion((current) => current + 1);
+              }
               return;
             }
           }
@@ -657,7 +702,7 @@ export default function DashboardContent({
     void hydrateFromSummary();
 
     const intervalId = window.setInterval(() => {
-      void hydrateFromSummary();
+      void hydrateFromSummary(true);
     }, 10_000);
 
     return () => {
@@ -670,11 +715,11 @@ export default function DashboardContent({
     if (!isActive || !detailVisible) return;
     let cancelled = false;
 
-    const loadReports = async () => {
+    const loadReports = async (background = false) => {
       try {
         setReportState((current) => ({
           ...current,
-          loading: current.allRows.length === 0,
+          loading: background ? current.loading : current.allRows.length === 0,
           error: "",
         }));
 
@@ -684,11 +729,12 @@ export default function DashboardContent({
             { cache: "no-store" }
           );
           if (response.ok) {
-            const payload = (await response.json()) as GesaSurveyDashboardBundle;
+            const payload = (await response.json()) as GesaSurveyDashboardBundle & { lastDataChangeAt?: string };
             if (!cancelled) {
+              latestSummaryFingerprintRef.current = buildSummaryFingerprint(payload);
               setBundleSource("supabase");
-              setBundleGeneratedAt(payload.generatedAt || "");
-              setLastUpdatedAt(payload.generatedAt || new Date().toISOString());
+              setBundleGeneratedAt("");
+              setLastUpdatedAt(payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString());
               const mappedState = mapBundleToReportState(payload);
               setReportState(mappedState);
               setDetailLoaded(true);
@@ -821,15 +867,10 @@ export default function DashboardContent({
 
     void loadReports();
 
-    const intervalId = window.setInterval(() => {
-      void loadReports();
-    }, 10_000);
-
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
     };
-  }, [activeKabupaten, dashboardApiQuery, dashboardBundlePath, detailVisible, isSuperAdmin, reportCacheKey, user?.uid, isActive]);
+  }, [activeKabupaten, dashboardApiQuery, dashboardBundlePath, detailVisible, isSuperAdmin, reportCacheKey, user?.uid, isActive, summaryVersion]);
 
   const waitingReviewCount = useMemo(
     () =>

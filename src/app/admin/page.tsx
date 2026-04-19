@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { collection, query, orderBy, getDocs, limit, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import {
@@ -43,7 +43,14 @@ interface FilterState {
   kabupaten: string;
 }
 
-async function fetchSurveysFromSupabase(limitValue: number): Promise<SurveyData[]> {
+interface SupabaseReportsPayload {
+  reports: SurveyData[];
+  source: string;
+  generatedAt: string;
+  lastDataChangeAt: string;
+}
+
+async function fetchSurveysFromSupabase(limitValue: number): Promise<SupabaseReportsPayload> {
   const response = await fetch(`/api/admin/reports?limit=${limitValue}`, {
     cache: "no-store",
   });
@@ -53,10 +60,18 @@ async function fetchSurveysFromSupabase(limitValue: number): Promise<SurveyData[
   }
 
   const payload = (await response.json()) as {
+    source?: string;
+    generatedAt?: string;
+    lastDataChangeAt?: string;
     reports?: SurveyData[];
   };
 
-  return Array.isArray(payload.reports) ? payload.reports : [];
+  return {
+    reports: Array.isArray(payload.reports) ? payload.reports : [],
+    source: payload.source || "supabase",
+    generatedAt: payload.generatedAt || "",
+    lastDataChangeAt: payload.lastDataChangeAt || "",
+  };
 }
 
 function AdminPanelContent() {
@@ -74,6 +89,7 @@ function AdminPanelContent() {
   const [dataSource, setDataSource] = useState<"supabase" | "storage-bundle" | "firestore">("firestore");
   const [bundleGeneratedAt, setBundleGeneratedAt] = useState<string>("");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string>("");
+  const latestReportsFingerprintRef = useRef("");
   const [filters, setFilters] = useState<FilterState>({
     judulLokasi: "",
     petugas: "",
@@ -311,11 +327,12 @@ function AdminPanelContent() {
   };
 
   const fetchSurveysFromSupabaseSource = async () => {
-    const result = await fetchSurveysFromSupabase(REPORT_FETCH_LIMIT);
+    const payload = await fetchSurveysFromSupabase(REPORT_FETCH_LIMIT);
     setDataSource("supabase");
     setBundleGeneratedAt("");
-    setLastUpdatedAt(new Date().toISOString());
-    return result;
+    setLastUpdatedAt(payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString());
+    latestReportsFingerprintRef.current = [payload.lastDataChangeAt || payload.generatedAt || "", payload.reports.length].join("|");
+    return payload.reports;
   };
 
   const fetchSurveysFromFirestore = async () => {
@@ -367,6 +384,35 @@ function AdminPanelContent() {
       setIsRefreshing(false);
     }
   };
+
+  const checkReportsChange = async () => {
+    try {
+      const payload = await fetchSurveysFromSupabase(1);
+      const nextFingerprint = [payload.lastDataChangeAt || payload.generatedAt || "", payload.reports.length].join("|");
+
+      if (!latestReportsFingerprintRef.current) {
+        latestReportsFingerprintRef.current = nextFingerprint;
+        return;
+      }
+
+      if (nextFingerprint !== latestReportsFingerprintRef.current) {
+        clearCachedData(REPORTS_CACHE_KEY);
+        await fetchSurveys(true);
+      }
+    } catch (error) {
+      console.error("Failed to check admin reports changes:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (!hasLoadedData) return;
+
+    const intervalId = window.setInterval(() => {
+      void checkReportsChange();
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, [hasLoadedData]);
 
   const handleGenerateBundle = async () => {
     if (user?.role !== "super-admin") return;

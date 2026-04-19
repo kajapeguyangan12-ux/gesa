@@ -73,8 +73,17 @@ export async function GET(request: NextRequest) {
       createdAt: row.created_at,
     }));
 
+    const lastDataChangeAt =
+      reports.reduce<string>((latest, report) => {
+        const current = typeof report.createdAt === "string" ? report.createdAt : "";
+        if (!current) return latest;
+        return !latest || new Date(current).getTime() > new Date(latest).getTime() ? current : latest;
+      }, "") || new Date().toISOString();
+
     return NextResponse.json({
       source: "supabase",
+      generatedAt: new Date().toISOString(),
+      lastDataChangeAt,
       reports,
     });
   } catch (error) {

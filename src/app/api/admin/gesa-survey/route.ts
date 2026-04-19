@@ -48,6 +48,21 @@ const emptySummary: ReportSummary = {
 
 const SUPABASE_PAGE_SIZE = 1000;
 
+function toTimestamp(value: unknown) {
+  if (typeof value === "string" || typeof value === "number" || value instanceof Date) {
+    const parsed = new Date(value);
+    const time = parsed.getTime();
+    return Number.isNaN(time) ? 0 : time;
+  }
+
+  if (typeof value === "object" && value && "seconds" in value) {
+    const seconds = Number((value as { seconds?: unknown }).seconds);
+    return Number.isFinite(seconds) ? seconds * 1000 : 0;
+  }
+
+  return 0;
+}
+
 function normalizeLampCount(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -254,6 +269,9 @@ export async function GET(request: NextRequest) {
     const activeKabupaten = request.nextUrl.searchParams.get("kabupaten")?.trim() || null;
     const adminId = request.nextUrl.searchParams.get("adminId")?.trim() || null;
     const requestedType = request.nextUrl.searchParams.get("type")?.trim() || null;
+    const changedSinceRaw = request.nextUrl.searchParams.get("changedSince")?.trim() || "";
+    const changedSince = changedSinceRaw ? new Date(changedSinceRaw) : null;
+    const useDelta = Boolean(changedSince && !Number.isNaN(changedSince.getTime()));
     const offset = Math.max(0, Number.parseInt(request.nextUrl.searchParams.get("offset") || "0", 10) || 0);
     const limitParam = Number.parseInt(request.nextUrl.searchParams.get("limit") || "0", 10) || 0;
     const limit = limitParam > 0 ? limitParam : null;
@@ -284,9 +302,15 @@ export async function GET(request: NextRequest) {
           .select("id, fb_doc_id, task_id, title, status, surveyor_name, surveyor_email, surveyor_uid, kabupaten, created_at, verified_at, updated_at, raw_payload")
           .order("created_at", { ascending: false });
 
-        query = applyStatusFilter(query, statusFilters);
+        if (!useDelta) {
+          query = applyStatusFilter(query, statusFilters);
+        }
         if (activeKabupaten) {
           query = query.ilike("kabupaten", `%${activeKabupaten}%`);
+        }
+        if (useDelta && changedSince) {
+          const changedSinceIso = changedSince.toISOString();
+          query = query.or(`updated_at.gte.${changedSinceIso},created_at.gte.${changedSinceIso}`);
         }
 
         const { data, error } = await query.range(offset, offset + SUPABASE_PAGE_SIZE - 1);
@@ -355,6 +379,16 @@ export async function GET(request: NextRequest) {
       const right = typeof b.createdAt === "string" ? new Date(b.createdAt).getTime() : 0;
       return right - left;
     });
+    const lastDataChangeAt =
+      combinedRows.reduce((latest, row) => {
+        return Math.max(
+          latest,
+          toTimestamp(row.updatedAt),
+          toTimestamp(row.validatedAt),
+          toTimestamp(row.verifiedAt),
+          toTimestamp(row.createdAt)
+        );
+      }, 0) || Date.now();
     const totalRows = combinedRows.length;
     const allRows = includeDetails
       ? (limit ? combinedRows.slice(offset, offset + limit) : combinedRows.slice(offset))
@@ -363,6 +397,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       source: "supabase",
       generatedAt: new Date().toISOString(),
+      lastDataChangeAt: new Date(lastDataChangeAt).toISOString(),
+      isDelta: useDelta,
       totalUniqueSurveyors: new Set(
         [...proposeRows, ...existingRows, ...praExistingRows]
           .map((row) => row.surveyorName?.trim().toLowerCase())

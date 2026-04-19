@@ -100,6 +100,7 @@ interface FetchAdminSurveyRowsOptions {
   includeDetails?: boolean;
   offset?: number;
   limit?: number;
+  changedSince?: string | null;
 }
 
 function normalizeNumber(value: unknown) {
@@ -171,6 +172,7 @@ export async function fetchAdminSurveyRows(options: FetchAdminSurveyRowsOptions)
   if (options.type) params.set("type", options.type);
   if (typeof options.offset === "number" && options.offset >= 0) params.set("offset", String(options.offset));
   if (typeof options.limit === "number" && options.limit > 0) params.set("limit", String(options.limit));
+  if (options.changedSince) params.set("changedSince", options.changedSince);
 
   const response = await fetch(`/api/admin/gesa-survey?${params.toString()}`, {
     cache: "no-store",
@@ -192,6 +194,8 @@ export async function fetchAdminSurveyRows(options: FetchAdminSurveyRowsOptions)
   const payload = (await response.json()) as {
     source?: string;
     generatedAt?: string;
+    lastDataChangeAt?: string;
+    isDelta?: boolean;
     allRows?: AdminSurveyRow[];
     totalRows?: number;
     existing?: { totalData?: number };
@@ -207,6 +211,8 @@ export async function fetchAdminSurveyRows(options: FetchAdminSurveyRowsOptions)
   return {
     source: payload.source || "supabase",
     generatedAt: payload.generatedAt || "",
+    lastDataChangeAt: payload.lastDataChangeAt || "",
+    isDelta: payload.isDelta === true,
     rows,
     totalRows: typeof payload.totalRows === "number" ? payload.totalRows : rows.length,
     counts: {
