@@ -120,8 +120,7 @@ type TimestampLike =
   | undefined;
 
 export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupaten?: string | null }) {
-  const DEFAULT_FETCH_LIMIT = 10;
-  const LOAD_MORE_BATCH = 10;
+  const FULL_FETCH_LIMIT = 10000;
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -152,7 +151,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [loadedLimit, setLoadedLimit] = useState(DEFAULT_FETCH_LIMIT);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     setSelectedSurveyIds([]);
@@ -161,7 +160,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   useEffect(() => {
     setSurveys([]);
     setCurrentPage(1);
-    setLoadedLimit(DEFAULT_FETCH_LIMIT);
+    setShowAll(false);
     setDataLoaded(false);
     setStats({
       total: 0,
@@ -171,7 +170,11 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     });
   }, [activeKabupaten]);
 
-  const fetchAllSurveys = async (requestedLimit: number = loadedLimit, forceRefresh = false) => {
+  useEffect(() => {
+    void fetchAllSurveys();
+  }, [activeKabupaten]);
+
+  const fetchAllSurveys = async (forceRefresh = false) => {
     try {
       if (forceRefresh) {
         setRefreshing(true);
@@ -180,10 +183,6 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       }
       setFetchError("");
       
-      const storedUser = localStorage.getItem('gesa_user');
-      const currentAdmin = storedUser ? JSON.parse(storedUser) : null;
-      const superAdmin = currentAdmin?.role === "super-admin";
-      const normalizedLimit = Math.max(requestedLimit, DEFAULT_FETCH_LIMIT);
       const params = new URLSearchParams({
         includeDetails: "1",
         status: "diverifikasi",
@@ -195,16 +194,14 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       }
       const payload = await response.json() as { allRows?: Survey[]; source?: string; generatedAt?: string };
       const allSurveys = Array.isArray(payload.allRows) ? payload.allRows : [];
-      const limitedSurveys = allSurveys.slice(0, normalizedLimit);
-      setLoadedLimit(normalizedLimit);
-      setSurveys(limitedSurveys);
+      setSurveys(allSurveys.slice(0, FULL_FETCH_LIMIT));
       setDataLoaded(true);
       
       setStats({
-        total: limitedSurveys.length,
-        existing: limitedSurveys.filter((survey) => survey.type === "existing").length,
-        propose: limitedSurveys.filter((survey) => survey.type === "propose").length,
-        praExisting: limitedSurveys.filter((survey) => survey.type === "pra-existing").length,
+        total: allSurveys.length,
+        existing: allSurveys.filter((survey) => survey.type === "existing").length,
+        propose: allSurveys.filter((survey) => survey.type === "propose").length,
+        praExisting: allSurveys.filter((survey) => survey.type === "pra-existing").length,
       });
       setDataSource(payload.source || "supabase");
       setLastUpdatedAt(payload.generatedAt ? new Date(payload.generatedAt) : new Date());
@@ -666,20 +663,10 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
 
   // Pagination logic
   const totalItems = filteredSurveys.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedSurveys = filteredSurveys.slice(startIndex, endIndex);
-
-  // Debug pagination values
-  console.log("=== DATA VERIFIKASI PAGINATION DEBUG ===");
-  console.log("filteredSurveys.length:", filteredSurveys.length);
-  console.log("totalItems:", totalItems);
-  console.log("totalPages:", totalPages);
-  console.log("currentPage:", currentPage);
-  console.log("itemsPerPage:", itemsPerPage);
-  console.log("paginatedSurveys.length:", paginatedSurveys.length);
-  console.log("========================================");
+  const paginatedSurveys = showAll ? filteredSurveys : filteredSurveys.slice(startIndex, endIndex);
 
   // Reset page when filters change
   useEffect(() => {
@@ -695,13 +682,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   const handleItemsPerPageChange = (value: number) => {
     setItemsPerPage(value);
     setCurrentPage(1);
-    if (dataLoaded && surveys.length < value) {
-      void fetchAllSurveys(value);
-    }
-  };
-
-  const handleLoadMore = () => {
-    void fetchAllSurveys(loadedLimit + LOAD_MORE_BATCH);
+    setShowAll(false);
   };
 
   const allFilteredSelected = filteredSurveys.length > 0 && filteredSurveys.every((survey) => selectedSurveyIds.includes(survey.id));
@@ -722,26 +703,31 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
 
   // Pagination controls component
   const PaginationControls = () => {
-    console.log("DataVerifikasi PaginationControls rendering, totalItems:", totalItems);
-    
-    // Always return the controls, even if totalItems is 0
     return (
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-gray-50 border-t">
         <div className="flex items-center gap-4">
           <div className="text-sm text-gray-600">
-            <span>Menampilkan {paginatedSurveys.length} dari {totalItems} data yang sudah dimuat</span>
+            <span>Menampilkan {showAll ? totalItems : paginatedSurveys.length} dari {totalItems} data</span>
           </div>
           
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600">Tampilkan:</label>
             <select
-              value={itemsPerPage}
-              onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+              value={showAll ? "all" : String(itemsPerPage)}
+              onChange={(e) => {
+                if (e.target.value === "all") {
+                  setShowAll(true);
+                  setCurrentPage(1);
+                  return;
+                }
+                handleItemsPerPageChange(Number(e.target.value));
+              }}
               className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value={10}>10</option>
               <option value={25}>25</option>
               <option value={100}>100</option>
+              <option value="all">Semua</option>
             </select>
           </div>
         </div>
@@ -787,7 +773,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
           
           <button
             onClick={() => handlePageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
+            disabled={showAll || currentPage === totalPages}
             className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Next
@@ -811,21 +797,14 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
           </div>
           <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
             <button
-              onClick={() => void fetchAllSurveys(DEFAULT_FETCH_LIMIT)}
+              onClick={() => void fetchAllSurveys()}
               disabled={loading}
               className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold rounded-xl transition-colors"
             >
-              {loading ? "Memuat..." : `Muat ${DEFAULT_FETCH_LIMIT} Data`}
+              {loading ? "Memuat..." : "Muat Semua Data"}
             </button>
             <button
-              onClick={handleLoadMore}
-              disabled={loading || !dataLoaded}
-              className="px-4 py-3 bg-slate-700 hover:bg-slate-800 disabled:bg-slate-400 text-white font-semibold rounded-xl transition-colors"
-            >
-              Muat {LOAD_MORE_BATCH} Lagi
-            </button>
-            <button
-              onClick={() => void fetchAllSurveys(loadedLimit, true)}
+              onClick={() => void fetchAllSurveys(true)}
               disabled={loading || refreshing || !dataLoaded}
               className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-semibold rounded-xl transition-colors"
             >
@@ -930,7 +909,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
               />
             </div>
             <div className="ml-auto text-sm text-gray-600 font-medium">
-              Total: {filteredSurveys.length} dari {surveys.length} survey yang sudah dimuat
+              Total: {filteredSurveys.length} dari {surveys.length} survey
             </div>
           </div>
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
