@@ -58,6 +58,7 @@ export interface DashboardBundleRow {
   verifiedAt?: unknown;
   kabupaten?: string;
   kecamatan?: string;
+  jenisLampu?: string;
   jumlahLampu?: number;
   desa?: string;
   createdAt?: unknown;

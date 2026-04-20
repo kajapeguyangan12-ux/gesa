@@ -180,7 +180,7 @@ function buildPraExistingOwnershipDisplay(kepemilikanTiang: string, tipeTiangPLN
   return kepemilikanTiang === "PLN" && tipeTiangPLN ? `PLN - ${tipeTiangPLN}` : kepemilikanTiang;
 }
 
-const LIVE_REFRESH_INTERVAL_MS = 15000;
+const LIVE_REFRESH_INTERVAL_MS = 30000;
 const TAB_DATA_FETCH_LIMIT = 10000;
 
 export default function ValidasiSurvey({
@@ -342,6 +342,7 @@ export default function ValidasiSurvey({
         adminId: null,
         statuses: ["menunggu"],
         includeDetails: false,
+        compact: true,
       });
 
       setStats(payload.counts);

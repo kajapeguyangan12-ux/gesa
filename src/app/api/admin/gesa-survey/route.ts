@@ -24,6 +24,25 @@ interface SurveyRow {
   [key: string]: unknown;
 }
 
+interface CompactSurveyRow {
+  id?: string | null;
+  fb_doc_id?: string | null;
+  task_id?: string | null;
+  title?: string | null;
+  status?: string | null;
+  surveyor_name?: string | null;
+  surveyor_email?: string | null;
+  surveyor_uid?: string | null;
+  kabupaten?: string | null;
+  created_at?: string | null;
+  verified_at?: string | null;
+  updated_at?: string | null;
+}
+
+interface DashboardDetailSurveyRow extends CompactSurveyRow {
+  raw_payload?: Record<string, unknown> | null;
+}
+
 interface ReportSummary {
   totalData: number;
   totalTitik: number;
@@ -258,6 +277,109 @@ function mapSupabaseSurveyRow(type: SurveyType, row: Record<string, unknown>): S
   };
 }
 
+function mapCompactSupabaseSurveyRow(type: SurveyType, row: CompactSurveyRow): SurveyRow {
+  const normalizedType = type === "apj-propose" ? "propose" : type;
+
+  return {
+    id: String(row.fb_doc_id || row.id || ""),
+    taskId: typeof row.task_id === "string" ? row.task_id : "",
+    status: typeof row.status === "string" ? row.status : "",
+    title: typeof row.title === "string" ? row.title : "",
+    type: normalizedType,
+    surveyorName: typeof row.surveyor_name === "string" ? row.surveyor_name : "",
+    surveyorEmail: typeof row.surveyor_email === "string" ? row.surveyor_email : "",
+    surveyorUid: typeof row.surveyor_uid === "string" ? row.surveyor_uid : "",
+    verifiedAt: typeof row.verified_at === "string" ? row.verified_at : null,
+    validatedAt: null,
+    kabupaten: typeof row.kabupaten === "string" ? row.kabupaten : "",
+    kabupatenName: typeof row.kabupaten === "string" ? row.kabupaten : "",
+    jumlahLampu: 0,
+    createdAt: typeof row.created_at === "string" ? row.created_at : null,
+    updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
+  };
+}
+
+function mapDashboardDetailSurveyRow(type: SurveyType, row: DashboardDetailSurveyRow): SurveyRow {
+  const rawPayload = row.raw_payload || {};
+  const normalizedType = type === "apj-propose" ? "propose" : type;
+  const status =
+    typeof row.status === "string" ? row.status : typeof rawPayload.status === "string" ? rawPayload.status : "";
+  const verifiedBy =
+    typeof rawPayload.verifiedBy === "string"
+      ? rawPayload.verifiedBy
+      : typeof rawPayload.validatedBy === "string"
+        ? rawPayload.validatedBy
+        : "";
+  const verifiedAtRaw =
+    row.verified_at ??
+    rawPayload.verifiedAt ??
+    rawPayload.validatedAt ??
+    row.updated_at ??
+    null;
+  const kabupaten =
+    typeof row.kabupaten === "string"
+      ? row.kabupaten
+      : typeof rawPayload.kabupatenName === "string"
+        ? rawPayload.kabupatenName
+        : typeof rawPayload.kabupaten === "string"
+          ? rawPayload.kabupaten
+          : "";
+
+  return {
+    id: String(row.fb_doc_id || row.id || ""),
+    taskId: typeof row.task_id === "string" ? row.task_id : typeof rawPayload.taskId === "string" ? rawPayload.taskId : "",
+    status,
+    title: typeof row.title === "string" ? row.title : typeof rawPayload.title === "string" ? rawPayload.title : "",
+    type: normalizedType,
+    surveyorName:
+      typeof row.surveyor_name === "string"
+        ? row.surveyor_name
+        : typeof rawPayload.surveyorName === "string"
+          ? rawPayload.surveyorName
+          : "",
+    surveyorEmail:
+      typeof row.surveyor_email === "string"
+        ? row.surveyor_email
+        : typeof rawPayload.surveyorEmail === "string"
+          ? rawPayload.surveyorEmail
+          : "",
+    surveyorUid:
+      typeof row.surveyor_uid === "string"
+        ? row.surveyor_uid
+        : typeof rawPayload.surveyorUid === "string"
+          ? rawPayload.surveyorUid
+          : "",
+    verifiedBy,
+    verifiedAt:
+      typeof verifiedAtRaw === "string"
+        ? verifiedAtRaw
+        : typeof verifiedAtRaw === "object" && verifiedAtRaw && "seconds" in verifiedAtRaw
+          ? new Date(Number((verifiedAtRaw as { seconds: number }).seconds) * 1000).toISOString()
+          : null,
+    validatedAt: null,
+    kabupaten,
+    kabupatenName: kabupaten,
+    kecamatan:
+      typeof rawPayload.kecamatan === "string"
+        ? rawPayload.kecamatan
+        : typeof rawPayload.kecamatanName === "string"
+          ? rawPayload.kecamatanName
+          : "",
+    jenisLampu:
+      typeof rawPayload.jenisLampu === "string"
+        ? rawPayload.jenisLampu
+        : typeof rawPayload.jenis_lampu === "string"
+          ? rawPayload.jenis_lampu
+          : "",
+    jumlahLampu:
+      normalizedType === "pra-existing"
+        ? normalizeLampCount(rawPayload.jumlahLampu)
+        : normalizeLampCount(rawPayload.jumlahLampu ?? rawPayload.dataLampu),
+    desa: typeof rawPayload.desa === "string" ? rawPayload.desa : "",
+    createdAt: typeof row.created_at === "string" ? row.created_at : null,
+  };
+}
+
 function matchesKabupaten(row: SurveyRow, activeKabupaten: string | null) {
   if (!activeKabupaten) return true;
   return normalizeKabupatenLabel(row.kabupaten) === normalizeKabupatenLabel(activeKabupaten);
@@ -266,6 +388,8 @@ function matchesKabupaten(row: SurveyRow, activeKabupaten: string | null) {
 export async function GET(request: NextRequest) {
   try {
     const includeDetails = request.nextUrl.searchParams.get("includeDetails") === "1";
+    const compact = request.nextUrl.searchParams.get("compact") === "1";
+    const dashboardDetail = request.nextUrl.searchParams.get("dashboardDetail") === "1";
     const activeKabupaten = request.nextUrl.searchParams.get("kabupaten")?.trim() || null;
     const adminId = request.nextUrl.searchParams.get("adminId")?.trim() || null;
     const requestedType = request.nextUrl.searchParams.get("type")?.trim() || null;
@@ -292,6 +416,11 @@ export async function GET(request: NextRequest) {
       return query.in("status", Array.from(statusFilters));
     };
 
+    const selectClause =
+      compact && !includeDetails
+        ? "id, fb_doc_id, task_id, title, status, surveyor_name, surveyor_email, surveyor_uid, kabupaten, created_at, verified_at, updated_at"
+        : "id, fb_doc_id, task_id, title, status, surveyor_name, surveyor_email, surveyor_uid, kabupaten, created_at, verified_at, updated_at, raw_payload";
+
     const fetchAllTableRows = async (table: string, statusFilters: Set<string>) => {
       const rows: Record<string, unknown>[] = [];
       let offset = 0;
@@ -299,7 +428,7 @@ export async function GET(request: NextRequest) {
       while (true) {
         let query = supabase
           .from(table)
-          .select("id, fb_doc_id, task_id, title, status, surveyor_name, surveyor_email, surveyor_uid, kabupaten, created_at, verified_at, updated_at, raw_payload")
+          .select(selectClause)
           .order("created_at", { ascending: false });
 
         if (!useDelta) {
@@ -348,7 +477,11 @@ export async function GET(request: NextRequest) {
 
     const loadTable = async (table: string, type: SurveyType) => {
       const data = await fetchAllTableRows(table, statusFilters);
-      let mappedRows = data.map((item) => mapSupabaseSurveyRow(type, item));
+      let mappedRows = compact && !includeDetails
+        ? data.map((item) => mapCompactSupabaseSurveyRow(type, item as CompactSurveyRow))
+        : dashboardDetail && includeDetails
+          ? data.map((item) => mapDashboardDetailSurveyRow(type, item as DashboardDetailSurveyRow))
+          : data.map((item) => mapSupabaseSurveyRow(type, item));
       mappedRows = mappedRows.filter((row) => matchesKabupaten(row, activeKabupaten));
       if (statusFilters.size > 0) {
         mappedRows = mappedRows.filter((row) => statusFilters.has((row.status || "").toLowerCase()));

@@ -122,7 +122,7 @@ type TimestampLike =
 
 export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupaten?: string | null }) {
   const FULL_FETCH_LIMIT = 10000;
-  const LIVE_REFRESH_INTERVAL_MS = 15000;
+  const LIVE_REFRESH_INTERVAL_MS = 30000;
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -291,6 +291,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
             activeKabupaten,
             statuses: ["diverifikasi"],
             includeDetails: false,
+            compact: true,
           });
           const nextFingerprint = buildFingerprint(payload.counts, payload.lastDataChangeAt);
           if (nextFingerprint !== latestFingerprintRef.current) {

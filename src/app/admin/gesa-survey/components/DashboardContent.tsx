@@ -35,6 +35,7 @@ interface SurveyReportRow {
   updatedAt?: TimestampLike;
   kabupaten?: string;
   kecamatan?: string;
+  jenisLampu?: string;
   jumlahLampu?: number;
 }
 
@@ -59,6 +60,13 @@ interface ReportSummary {
 
 interface KecamatanSummary extends ReportSummary {
   kecamatan: string;
+}
+
+interface LampTypeSummaryRow {
+  lampType: string;
+  surveyCount: number;
+  lampCount: number;
+  percentage: number;
 }
 
 interface DashboardReportState {
@@ -97,6 +105,7 @@ const initialReportState: DashboardReportState = {
 };
 const DASHBOARD_REPORT_CACHE_TTL_MS = 5 * 60 * 1000;
 const DASHBOARD_SUMMARY_CACHE_TTL_MS = 10 * 60 * 1000;
+const DASHBOARD_SUMMARY_REFRESH_INTERVAL_MS = 30000;
 
 interface DashboardSummaryDocument {
   totalUniqueSurveyors?: number;
@@ -214,6 +223,49 @@ function mergeSummary(partial?: Partial<ReportSummary>): ReportSummary {
     ...emptySummary,
     ...partial,
   };
+}
+
+function normalizeLampTypeLabel(value: unknown) {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (!normalized) return "";
+  const lower = normalized.toLowerCase();
+
+  if (lower.includes("mercury")) return "Mercury";
+  if (lower.includes("led")) return "LED";
+  if (lower.includes("son") || lower.includes("sodium") || lower.includes("hps")) return "SON-T / Sodium";
+  if (lower === "tl" || lower.includes("fluorescent")) return "TL / Fluorescent";
+  if (lower.includes("cfl") || lower === "pl" || lower.includes("compact fluorescent")) return "CFL / PL";
+  if (lower.includes("halogen")) return "Halogen";
+
+  return normalized
+    .split(" ")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function buildLampTypeSummary(rows: SurveyReportRow[]): LampTypeSummaryRow[] {
+  const grouped = new Map<string, { surveyCount: number; lampCount: number }>();
+
+  for (const row of rows) {
+    const lampType = normalizeLampTypeLabel(row.jenisLampu);
+    if (!lampType) continue;
+    const current = grouped.get(lampType) || { surveyCount: 0, lampCount: 0 };
+    current.surveyCount += 1;
+    current.lampCount += row.jumlahLampu ?? 0;
+    grouped.set(lampType, current);
+  }
+
+  const totalLampCount = Array.from(grouped.values()).reduce((sum, item) => sum + item.lampCount, 0);
+
+  return Array.from(grouped.entries())
+    .map(([lampType, item]) => ({
+      lampType,
+      surveyCount: item.surveyCount,
+      lampCount: item.lampCount,
+      percentage: totalLampCount > 0 ? (item.lampCount / totalLampCount) * 100 : 0,
+    }))
+    .sort((left, right) => right.lampCount - left.lampCount || right.surveyCount - left.surveyCount || left.lampType.localeCompare(right.lampType));
 }
 
 function normalizeKecamatanSummaryRow(
@@ -552,6 +604,11 @@ export default function DashboardContent({
     if (!isSuperAdmin && user?.uid) params.set("adminId", user.uid);
     return params.toString();
   }, [activeKabupaten, isSuperAdmin, user?.uid]);
+  const dashboardSummaryApiQuery = useMemo(() => {
+    const params = new URLSearchParams(dashboardApiQuery);
+    params.set("compact", "1");
+    return params.toString();
+  }, [dashboardApiQuery]);
 
   const persistReportCache = (data: DashboardReportState) => {
     if (isSuperAdmin || typeof window === "undefined") return;
@@ -622,7 +679,7 @@ export default function DashboardContent({
     const hydrateFromSummary = async (background = false) => {
       try {
         try {
-          const response = await fetch(`/api/admin/gesa-survey?${dashboardApiQuery}`, {
+          const response = await fetch(`/api/admin/gesa-survey?${dashboardSummaryApiQuery}`, {
             cache: "no-store",
           });
           if (response.ok) {
@@ -703,13 +760,13 @@ export default function DashboardContent({
 
     const intervalId = window.setInterval(() => {
       void hydrateFromSummary(true);
-    }, 10_000);
+    }, DASHBOARD_SUMMARY_REFRESH_INTERVAL_MS);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [activeKabupaten, dashboardApiQuery, dashboardBundlePath, isSuperAdmin, isActive]);
+  }, [activeKabupaten, dashboardBundlePath, dashboardSummaryApiQuery, isSuperAdmin, isActive]);
 
   useEffect(() => {
     if (!isActive || !detailVisible) return;
@@ -725,7 +782,7 @@ export default function DashboardContent({
 
         try {
           const response = await fetch(
-            `/api/admin/gesa-survey?${dashboardApiQuery}${dashboardApiQuery ? "&" : ""}includeDetails=1`,
+            `/api/admin/gesa-survey?${dashboardApiQuery}${dashboardApiQuery ? "&" : ""}includeDetails=1&dashboardDetail=1`,
             { cache: "no-store" }
           );
           if (response.ok) {
@@ -908,6 +965,21 @@ export default function DashboardContent({
         }
       ),
     [reportState.praExistingByKecamatan]
+  );
+  const lampTypeSummaryRows = useMemo(
+    () => buildLampTypeSummary(reportState.allRowsRaw.filter((row) => row.type === "pra-existing")),
+    [reportState.allRowsRaw]
+  );
+  const lampTypeGrandTotal = useMemo(
+    () =>
+      lampTypeSummaryRows.reduce(
+        (accumulator, row) => ({
+          surveyCount: accumulator.surveyCount + row.surveyCount,
+          lampCount: accumulator.lampCount + row.lampCount,
+        }),
+        { surveyCount: 0, lampCount: 0 }
+      ),
+    [lampTypeSummaryRows]
   );
   const activeSourceLabel =
     bundleSource === "supabase" ? "Supabase" : bundleSource === "storage-bundle" ? "Bundle Storage" : "Firestore";
@@ -1454,122 +1526,196 @@ export default function DashboardContent({
                   Gagal memuat detail laporan: {reportState.error}
                 </div>
               ) : (
-                <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-                  <div className="flex flex-col gap-4 border-b border-gray-200 px-6 py-5 xl:flex-row xl:items-end xl:justify-between">
-                    <div>
-                      <h4 className="text-xl font-bold text-gray-900">Rekap Admin Verifikasi</h4>
-                      <p className="mt-1 text-sm text-gray-500">
-                        Ringkasan admin yang melakukan verifikasi berdasarkan rentang tanggal yang dipilih, lengkap dengan jumlah titik dan waktu verifikasi.
-                        Sumber aktif: {bundleSource === "supabase" ? "Supabase" : bundleSource === "storage-bundle" ? "Bundle Storage" : "Firestore"}.
-                      </p>
+                <>
+                  <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+                    <div className="flex flex-col gap-4 border-b border-gray-200 px-6 py-5 xl:flex-row xl:items-end xl:justify-between">
+                      <div>
+                        <h4 className="text-xl font-bold text-gray-900">Analisa Jenis Lampu Pra Existing</h4>
+                        <p className="mt-1 text-sm text-gray-500">
+                          Rekap komposisi jenis lampu yang terdata pada patch `pra-existing`, termasuk total titik dan total lampu per jenis.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Jenis Terdata</p>
+                          <p className="mt-2 text-2xl font-bold text-gray-900">{lampTypeSummaryRows.length}</p>
+                        </div>
+                        <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Total Titik</p>
+                          <p className="mt-2 text-2xl font-bold text-gray-900">{lampTypeGrandTotal.surveyCount}</p>
+                        </div>
+                        <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Total Lampu</p>
+                          <p className="mt-2 text-2xl font-bold text-gray-900">{lampTypeGrandTotal.lampCount}</p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                      <label className="text-sm font-medium text-gray-700">
-                        Dari tanggal
-                        <input
-                          type="date"
-                          value={startDate}
-                          onChange={(event) => setStartDate(event.target.value)}
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-100"
-                        />
-                      </label>
-                      <label className="text-sm font-medium text-gray-700">
-                        Sampai tanggal
-                        <input
-                          type="date"
-                          value={endDate}
-                          onChange={(event) => setEndDate(event.target.value)}
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-100"
-                        />
-                      </label>
-                      <button
-                        onClick={handleExportVerifierExcel}
-                        disabled={!verifierDetailRows.length}
-                        className="rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
-                      >
-                        Export Excel
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 border-b border-gray-100 px-6 py-5 md:grid-cols-3">
-                    <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Admin Terdata</p>
-                      <p className="mt-2 text-2xl font-bold text-gray-900">{verifierSummaryRows.length}</p>
-                    </div>
-                    <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Total Titik Diverifikasi</p>
-                      <p className="mt-2 text-2xl font-bold text-gray-900">{verifierGrandTotal.totalTitik}</p>
-                    </div>
-                    <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Verifikasi Terakhir</p>
-                      <p className="mt-2 text-base font-bold text-gray-900">{formatDateTime(verifierGrandTotal.lastVerifiedAt)}</p>
-                    </div>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="min-w-[1180px] w-full">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          {[
-                            "Nama Admin",
-                            "Total Verifikasi",
-                            "Jumlah Titik",
-                            "Jumlah Lampu",
-                            "Existing",
-                            "APJ Propose",
-                            "Pra Existing",
-                            "Verifikasi Pertama",
-                            "Verifikasi Terakhir",
-                          ].map((header) => (
-                            <th
-                              key={header}
-                              className="px-6 py-4 text-left text-xs font-bold uppercase tracking-[0.18em] text-gray-500"
-                            >
-                              {header}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {verifierSummaryRows.length ? (
-                          verifierSummaryRows.map((row) => (
-                            <tr key={row.verifierName} className="transition-colors hover:bg-green-50/40">
-                              <td className="px-6 py-4 font-semibold text-gray-900">{row.verifierName}</td>
-                              <td className="px-6 py-4 text-sm font-semibold text-gray-900">{row.totalData}</td>
-                              <td className="px-6 py-4 text-sm text-gray-700">{row.totalTitik}</td>
-                              <td className="px-6 py-4 text-sm text-gray-700">{row.totalLampu}</td>
-                              <td className="px-6 py-4 text-sm text-blue-700">{row.existingCount}</td>
-                              <td className="px-6 py-4 text-sm text-emerald-700">{row.proposeCount}</td>
-                              <td className="px-6 py-4 text-sm text-amber-700">{row.praExistingCount}</td>
-                              <td className="px-6 py-4 text-sm text-gray-700">{formatDateTime(row.firstVerifiedAt)}</td>
-                              <td className="px-6 py-4 text-sm text-gray-700">{formatDateTime(row.lastVerifiedAt)}</td>
-                            </tr>
-                          ))
-                        ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[820px] w-full">
+                        <thead className="bg-gray-50">
                           <tr>
-                            <td colSpan={9} className="px-6 py-8 text-center text-sm text-gray-500">
-                              Belum ada data verifikasi pada rentang tanggal ini.
-                            </td>
+                            {[
+                              "Jenis Lampu",
+                              "Jumlah Titik",
+                              "Jumlah Lampu",
+                              "Persentase Lampu",
+                            ].map((header) => (
+                              <th
+                                key={header}
+                                className="px-6 py-4 text-left text-xs font-bold uppercase tracking-[0.18em] text-gray-500"
+                              >
+                                {header}
+                              </th>
+                            ))}
                           </tr>
-                        )}
-                        {verifierSummaryRows.length > 0 && (
-                          <tr className="bg-slate-900 text-white">
-                            <td className="px-6 py-4 font-bold uppercase tracking-[0.12em]">{verifierGrandTotal.verifierName}</td>
-                            <td className="px-6 py-4 text-sm font-bold">{verifierGrandTotal.totalData}</td>
-                            <td className="px-6 py-4 text-sm font-bold">{verifierGrandTotal.totalTitik}</td>
-                            <td className="px-6 py-4 text-sm font-bold">{verifierGrandTotal.totalLampu}</td>
-                            <td className="px-6 py-4 text-sm font-bold text-blue-200">{verifierGrandTotal.existingCount}</td>
-                            <td className="px-6 py-4 text-sm font-bold text-emerald-200">{verifierGrandTotal.proposeCount}</td>
-                            <td className="px-6 py-4 text-sm font-bold text-amber-200">{verifierGrandTotal.praExistingCount}</td>
-                            <td className="px-6 py-4 text-sm font-bold">{formatDateTime(verifierGrandTotal.firstVerifiedAt)}</td>
-                            <td className="px-6 py-4 text-sm font-bold">{formatDateTime(verifierGrandTotal.lastVerifiedAt)}</td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {lampTypeSummaryRows.length ? (
+                            lampTypeSummaryRows.map((row) => (
+                              <tr key={row.lampType} className="transition-colors hover:bg-violet-50/40">
+                                <td className="px-6 py-4 font-semibold text-gray-900">{row.lampType}</td>
+                                <td className="px-6 py-4 text-sm font-semibold text-gray-900">{row.surveyCount}</td>
+                                <td className="px-6 py-4 text-sm text-gray-700">{row.lampCount}</td>
+                                <td className="px-6 py-4 text-sm text-violet-700">{row.percentage.toFixed(1)}%</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={4} className="px-6 py-8 text-center text-sm text-gray-500">
+                                Jenis lampu belum terdeteksi pada data detail yang dimuat.
+                              </td>
+                            </tr>
+                          )}
+                          {lampTypeSummaryRows.length > 0 && (
+                            <tr className="bg-slate-900 text-white">
+                              <td className="px-6 py-4 font-bold uppercase tracking-[0.12em]">Total Semua Jenis</td>
+                              <td className="px-6 py-4 text-sm font-bold">{lampTypeGrandTotal.surveyCount}</td>
+                              <td className="px-6 py-4 text-sm font-bold">{lampTypeGrandTotal.lampCount}</td>
+                              <td className="px-6 py-4 text-sm font-bold">100%</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
+
+                  <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+                    <div className="flex flex-col gap-4 border-b border-gray-200 px-6 py-5 xl:flex-row xl:items-end xl:justify-between">
+                      <div>
+                        <h4 className="text-xl font-bold text-gray-900">Rekap Admin Verifikasi</h4>
+                        <p className="mt-1 text-sm text-gray-500">
+                          Ringkasan admin yang melakukan verifikasi berdasarkan rentang tanggal yang dipilih, lengkap dengan jumlah titik dan waktu verifikasi.
+                          Sumber aktif: {bundleSource === "supabase" ? "Supabase" : bundleSource === "storage-bundle" ? "Bundle Storage" : "Firestore"}.
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                        <label className="text-sm font-medium text-gray-700">
+                          Dari tanggal
+                          <input
+                            type="date"
+                            value={startDate}
+                            onChange={(event) => setStartDate(event.target.value)}
+                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-100"
+                          />
+                        </label>
+                        <label className="text-sm font-medium text-gray-700">
+                          Sampai tanggal
+                          <input
+                            type="date"
+                            value={endDate}
+                            onChange={(event) => setEndDate(event.target.value)}
+                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-100"
+                          />
+                        </label>
+                        <button
+                          onClick={handleExportVerifierExcel}
+                          disabled={!verifierDetailRows.length}
+                          className="rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                        >
+                          Export Excel
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 border-b border-gray-100 px-6 py-5 md:grid-cols-3">
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Admin Terdata</p>
+                        <p className="mt-2 text-2xl font-bold text-gray-900">{verifierSummaryRows.length}</p>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Total Titik Diverifikasi</p>
+                        <p className="mt-2 text-2xl font-bold text-gray-900">{verifierGrandTotal.totalTitik}</p>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Verifikasi Terakhir</p>
+                        <p className="mt-2 text-base font-bold text-gray-900">{formatDateTime(verifierGrandTotal.lastVerifiedAt)}</p>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[1180px] w-full">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            {[
+                              "Nama Admin",
+                              "Total Verifikasi",
+                              "Jumlah Titik",
+                              "Jumlah Lampu",
+                              "Existing",
+                              "APJ Propose",
+                              "Pra Existing",
+                              "Verifikasi Pertama",
+                              "Verifikasi Terakhir",
+                            ].map((header) => (
+                              <th
+                                key={header}
+                                className="px-6 py-4 text-left text-xs font-bold uppercase tracking-[0.18em] text-gray-500"
+                              >
+                                {header}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {verifierSummaryRows.length ? (
+                            verifierSummaryRows.map((row) => (
+                              <tr key={row.verifierName} className="transition-colors hover:bg-green-50/40">
+                                <td className="px-6 py-4 font-semibold text-gray-900">{row.verifierName}</td>
+                                <td className="px-6 py-4 text-sm font-semibold text-gray-900">{row.totalData}</td>
+                                <td className="px-6 py-4 text-sm text-gray-700">{row.totalTitik}</td>
+                                <td className="px-6 py-4 text-sm text-gray-700">{row.totalLampu}</td>
+                                <td className="px-6 py-4 text-sm text-blue-700">{row.existingCount}</td>
+                                <td className="px-6 py-4 text-sm text-emerald-700">{row.proposeCount}</td>
+                                <td className="px-6 py-4 text-sm text-amber-700">{row.praExistingCount}</td>
+                                <td className="px-6 py-4 text-sm text-gray-700">{formatDateTime(row.firstVerifiedAt)}</td>
+                                <td className="px-6 py-4 text-sm text-gray-700">{formatDateTime(row.lastVerifiedAt)}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={9} className="px-6 py-8 text-center text-sm text-gray-500">
+                                Belum ada data verifikasi pada rentang tanggal ini.
+                              </td>
+                            </tr>
+                          )}
+                          {verifierSummaryRows.length > 0 && (
+                            <tr className="bg-slate-900 text-white">
+                              <td className="px-6 py-4 font-bold uppercase tracking-[0.12em]">{verifierGrandTotal.verifierName}</td>
+                              <td className="px-6 py-4 text-sm font-bold">{verifierGrandTotal.totalData}</td>
+                              <td className="px-6 py-4 text-sm font-bold">{verifierGrandTotal.totalTitik}</td>
+                              <td className="px-6 py-4 text-sm font-bold">{verifierGrandTotal.totalLampu}</td>
+                              <td className="px-6 py-4 text-sm font-bold text-blue-200">{verifierGrandTotal.existingCount}</td>
+                              <td className="px-6 py-4 text-sm font-bold text-emerald-200">{verifierGrandTotal.proposeCount}</td>
+                              <td className="px-6 py-4 text-sm font-bold text-amber-200">{verifierGrandTotal.praExistingCount}</td>
+                              <td className="px-6 py-4 text-sm font-bold">{formatDateTime(verifierGrandTotal.firstVerifiedAt)}</td>
+                              <td className="px-6 py-4 text-sm font-bold">{formatDateTime(verifierGrandTotal.lastVerifiedAt)}</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
               )}
 
               <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
