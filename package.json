@@ -21,6 +21,8 @@
     "migrate:supabase:user-admin:dry-run": "node scripts/migrate-firebase-to-supabase.js user-admin --dry-run",
     "migrate:supabase:tracking-sessions": "node scripts/migrate-firebase-to-supabase.js tracking-sessions",
     "migrate:supabase:tracking-sessions:dry-run": "node scripts/migrate-firebase-to-supabase.js tracking-sessions --dry-run",
+    "migrate:supabase:auth-users": "node scripts/migrate-user-admin-to-supabase-auth.js",
+    "migrate:supabase:auth-users:dry-run": "node scripts/migrate-user-admin-to-supabase-auth.js --dry-run",
     "sync:supabase:once": "node scripts/sync-firebase-to-supabase-once.js",
     "sync:supabase:once:survey-work": "set SYNC_PROFILE=survey-work&& node scripts/sync-firebase-to-supabase-once.js",
     "sync:supabase:once:backoffice": "set SYNC_PROFILE=backoffice&& node scripts/sync-firebase-to-supabase-once.js",

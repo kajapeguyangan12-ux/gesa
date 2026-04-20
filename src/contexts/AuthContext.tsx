@@ -2,14 +2,24 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import { collection, getDocs, limit, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { getSupabaseBrowserClient } from "@/lib/supabaseBrowser";
 
 interface User {
   email: string;
   username: string;
   displayName: string;
-  role: "admin" | "super-admin" | "petugas-existing" | "petugas-apj-propose" | "petugas-pra-existing" | "petugas-survey-cahaya" | "petugas-kontruksi" | "petugas-om" | "petugas-bmd-gudang";
+  role:
+    | "admin"
+    | "super-admin"
+    | "petugas-existing"
+    | "petugas-apj-propose"
+    | "petugas-pra-existing"
+    | "petugas-survey-cahaya"
+    | "petugas-kontruksi"
+    | "petugas-om"
+    | "petugas-bmd-gudang";
   uid: string;
   name: string;
   phoneNumber?: string;
@@ -41,20 +51,157 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const authProvider = (process.env.NEXT_PUBLIC_AUTH_PROVIDER || "supabase").trim().toLowerCase();
+  const useLegacyAuth = authProvider === "legacy";
 
-  // Check localStorage on mount
-  useEffect(() => {
-    const storedUser = localStorage.getItem("gesa_user");
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (error) {
-        console.error("Error parsing stored user:", error);
-        localStorage.removeItem("gesa_user");
-      }
+  const persistUser = (nextUser: User | null) => {
+    if (nextUser) {
+      localStorage.setItem("gesa_user", JSON.stringify(nextUser));
+    } else {
+      localStorage.removeItem("gesa_user");
     }
-    setLoading(false);
-  }, []);
+    setUser(nextUser);
+  };
+
+  const fetchSupabaseProfile = async (params: { uid?: string; email?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params.uid) queryParams.set("uid", params.uid);
+    if (params.email) queryParams.set("email", params.email);
+
+    const response = await fetch(`/api/auth/profile?${queryParams.toString()}`, {
+      cache: "no-store",
+    });
+    const payload = (await response.json()) as {
+      error?: string;
+      user?: {
+        email?: string;
+        username?: string;
+        name?: string;
+        role?: User["role"];
+        uid?: string;
+        phoneNumber?: string;
+      };
+    };
+
+    if (!response.ok || !payload.user) {
+      throw new Error(payload.error || "Profil user tidak ditemukan.");
+    }
+
+    const profile = payload.user;
+    return {
+      email: profile.email || "",
+      username: profile.username || "",
+      displayName: profile.name || profile.username || profile.email || "",
+      name: profile.name || profile.username || profile.email || "",
+      role: (profile.role || "petugas-existing") as User["role"],
+      uid: profile.uid || "",
+      phoneNumber: profile.phoneNumber || "",
+    } satisfies User;
+  };
+
+  const restoreLegacyUser = () => {
+    const storedUser = localStorage.getItem("gesa_user");
+    if (!storedUser) return null;
+
+    try {
+      return JSON.parse(storedUser) as User;
+    } catch (error) {
+      console.error("Error parsing stored user:", error);
+      localStorage.removeItem("gesa_user");
+      return null;
+    }
+  };
+
+  const legacySignIn = async (identifier: string, password: string) => {
+    const usersRef = collection(db, "User-Admin");
+    let authQuery = query(usersRef, where("email", "==", identifier), limit(1));
+    let querySnapshot = await getDocs(authQuery);
+
+    if (querySnapshot.empty) {
+      authQuery = query(usersRef, where("username", "==", identifier), limit(1));
+      querySnapshot = await getDocs(authQuery);
+    }
+
+    if (querySnapshot.empty) {
+      throw new Error("Username atau email tidak ditemukan");
+    }
+
+    const userDoc = querySnapshot.docs[0];
+    const userData = userDoc.data();
+
+    if (userData.password !== password) {
+      throw new Error("Password salah");
+    }
+
+    const authenticatedUser: User = {
+      email: userData.email,
+      username: userData.username,
+      displayName: userData.name,
+      name: userData.name,
+      role: userData.role,
+      uid: userData.uid || userDoc.id,
+      phoneNumber: userData.phoneNumber || userData.phone || userData.noTelp || userData.no_telp || "",
+    };
+
+    persistUser(authenticatedUser);
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const restoreAuthState = async () => {
+      try {
+        if (useLegacyAuth) {
+          const legacyUser = restoreLegacyUser();
+          if (isMounted) {
+            setUser(legacyUser);
+          }
+          return;
+        }
+
+        const supabase = getSupabaseBrowserClient();
+        if (!supabase) {
+          throw new Error(
+            "Supabase auth client belum aktif. Isi NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_ANON_KEY."
+          );
+        }
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session?.user && isMounted) {
+          const nextUser = await fetchSupabaseProfile({
+            uid: session.user.id,
+            email: session.user.email,
+          });
+          if (isMounted) {
+            persistUser(nextUser);
+          }
+          return;
+        }
+
+        if (isMounted) {
+          persistUser(null);
+        }
+      } catch (error) {
+        console.error("Error restoring auth state:", error);
+        if (isMounted) {
+          persistUser(null);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void restoreAuthState();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [useLegacyAuth]);
 
   const signIn = async (identifier: string, password: string) => {
     try {
@@ -62,64 +209,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error("Username/Email dan password harus diisi");
       }
 
-      // Query Firestore untuk mencari user berdasarkan email atau username
-      const usersRef = collection(db, "User-Admin");
-      
-      // Coba cari berdasarkan email dulu
-      let q = query(usersRef, where("email", "==", identifier.toLowerCase()), limit(1));
-      let querySnapshot = await getDocs(q);
-      
-      // Jika tidak ketemu, coba cari berdasarkan username
-      if (querySnapshot.empty) {
-        q = query(usersRef, where("username", "==", identifier.toLowerCase()), limit(1));
-        querySnapshot = await getDocs(q);
+      const normalizedIdentifier = identifier.trim().toLowerCase();
+      if (useLegacyAuth) {
+        await legacySignIn(normalizedIdentifier, password);
+        return;
       }
 
-      if (querySnapshot.empty) {
-        throw new Error("Username atau email tidak ditemukan");
+      const supabase = getSupabaseBrowserClient();
+      if (!supabase) {
+        throw new Error(
+          "Supabase auth client belum aktif. Isi NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_ANON_KEY."
+        );
       }
 
-      // Ambil data user pertama yang ditemukan
-      const userDoc = querySnapshot.docs[0];
-      const userData = userDoc.data();
+      let email = normalizedIdentifier;
+      if (!normalizedIdentifier.includes("@")) {
+        const resolveResponse = await fetch(
+          `/api/auth/resolve-identifier?identifier=${encodeURIComponent(normalizedIdentifier)}`,
+          { cache: "no-store" }
+        );
+        const resolvePayload = (await resolveResponse.json()) as {
+          email?: string;
+          error?: string;
+        };
 
-      // Validasi password (dalam production, gunakan hash!)
-      if (userData.password !== password) {
-        throw new Error("Password salah");
+        if (!resolveResponse.ok || !resolvePayload.email) {
+          throw new Error(resolvePayload.error || "Username atau email tidak ditemukan");
+        }
+
+        email = resolvePayload.email;
       }
 
-      console.log("=== LOGIN SUCCESS ===");
-      console.log("User data from Firestore:", userData);
-      console.log("Document ID:", userDoc.id);
-      console.log("UID field in doc:", userData.uid);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      // Buat object user - prioritas gunakan uid dari field dokumen
-      const authenticatedUser: User = {
-        email: userData.email,
-        username: userData.username,
-        displayName: userData.name,
-        name: userData.name,
-        role: userData.role,
-        uid: userData.uid || userDoc.id, // Gunakan field uid jika ada, fallback ke document ID
-        phoneNumber: userData.phoneNumber || userData.phone || userData.noTelp || userData.no_telp || "",
-      };
+      if (error) {
+        throw new Error(error.message || "Login Supabase gagal.");
+      }
 
-      console.log("Authenticated user object:", authenticatedUser);
-
-      // Save to localStorage
-      localStorage.setItem("gesa_user", JSON.stringify(authenticatedUser));
-      setUser(authenticatedUser);
-      
-    } catch (error: any) {
+      const authenticatedUser = await fetchSupabaseProfile({
+        uid: data.user?.id,
+        email: data.user?.email || email,
+      });
+      persistUser(authenticatedUser);
+    } catch (error: unknown) {
       console.error("Login error:", error);
-      throw new Error(error.message || "Login gagal. Silakan coba lagi.");
+      throw new Error(error instanceof Error ? error.message : "Login gagal. Silakan coba lagi.");
     }
   };
 
   const signOut = async () => {
     try {
-      localStorage.removeItem("gesa_user");
-      setUser(null);
+      if (!useLegacyAuth) {
+        const supabase = getSupabaseBrowserClient();
+        if (supabase) {
+          const { error } = await supabase.auth.signOut();
+          if (error) {
+            console.error("Supabase logout error:", error);
+          }
+        }
+      } else {
+        localStorage.removeItem("gesa_user");
+      }
+
+      persistUser(null);
       router.push("/");
     } catch (error) {
       console.error("Logout error:", error);

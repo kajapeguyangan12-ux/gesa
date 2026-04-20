@@ -47,6 +47,8 @@ export default function TrackingHistory() {
   const [trackingSessions, setTrackingSessions] = useState<TrackingSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [dataSource, setDataSource] = useState<string>("Belum ada");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [selectedSession, setSelectedSession] = useState<TrackingSession | null>(null);
@@ -138,6 +140,109 @@ export default function TrackingHistory() {
     }
   };
 
+  const removeSessionFromState = (sessionId: string) => {
+    setTrackingSessions((current) => current.filter((session) => session.id !== sessionId));
+    setSelectedSession((current) => (current?.id === sessionId ? null : current));
+  };
+
+  const handleDeleteSession = async (session: TrackingSession) => {
+    const label = session.userName || session.userEmail || session.id;
+    const confirmed = window.confirm(
+      `Hapus tracking session "${label}"? Riwayat path GPS session ini akan ikut terhapus.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingSessionId(session.id);
+      const response = await fetch(`/api/tracking-sessions/${session.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        let message = "Gagal menghapus tracking session.";
+        try {
+          const payload = (await response.json()) as { error?: string };
+          if (typeof payload.error === "string" && payload.error.trim()) {
+            message = payload.error.trim();
+          }
+        } catch {
+          // Keep fallback message.
+        }
+        throw new Error(message);
+      }
+
+      clearCachedData(TRACKING_SESSIONS_CACHE_KEY);
+      removeSessionFromState(session.id);
+    } catch (error) {
+      console.error("Failed to delete tracking session:", error);
+      alert(error instanceof Error ? error.message : "Gagal menghapus tracking session.");
+    } finally {
+      setDeletingSessionId(null);
+    }
+  };
+
+  const handleDeleteAllSessions = async () => {
+    if (filteredSessions.length === 0) return;
+
+    const scopeLabel =
+      filterStatus === "all" && filterUser === "all" && filterType === "all"
+        ? "SEMUA tracking session"
+        : `${filteredSessions.length} tracking session sesuai filter aktif`;
+
+    const confirmed = window.confirm(
+      `Hapus ${scopeLabel}? Tindakan ini akan menghapus data tracking di Supabase dan tidak bisa dibatalkan.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setBulkDeleting(true);
+      const response = await fetch("/api/admin/tracking-sessions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: filterStatus,
+          userEmail: filterUser,
+          surveyType: filterType,
+        }),
+      });
+
+      if (!response.ok) {
+        let message = "Gagal menghapus tracking sessions.";
+        try {
+          const payload = (await response.json()) as { error?: string };
+          if (typeof payload.error === "string" && payload.error.trim()) {
+            message = payload.error.trim();
+          }
+        } catch {
+          // Keep fallback message.
+        }
+        throw new Error(message);
+      }
+
+      clearCachedData(TRACKING_SESSIONS_CACHE_KEY);
+      setTrackingSessions((current) =>
+        current.filter((session) => {
+          if (filterStatus !== "all" && session.status !== filterStatus) return true;
+          if (filterUser !== "all" && session.userEmail !== filterUser) return true;
+          if (filterType !== "all" && session.surveyType !== filterType) return true;
+          return false;
+        })
+      );
+      setSelectedSession((current) => {
+        if (!current) return null;
+        if (filterStatus !== "all" && current.status !== filterStatus) return current;
+        if (filterUser !== "all" && current.userEmail !== filterUser) return current;
+        if (filterType !== "all" && current.surveyType !== filterType) return current;
+        return null;
+      });
+    } catch (error) {
+      console.error("Failed to delete tracking sessions:", error);
+      alert(error instanceof Error ? error.message : "Gagal menghapus tracking sessions.");
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const filteredSessions = trackingSessions.filter(session => {
     if (filterStatus !== "all" && session.status !== filterStatus) return false;
     if (filterUser !== "all" && session.userEmail !== filterUser) return false;
@@ -163,8 +268,18 @@ export default function TrackingHistory() {
             <p className="text-purple-100 text-sm mt-1">Monitoring perjalanan surveyor real-time</p>
           </div>
           <button
+            onClick={() => void handleDeleteAllSessions()}
+            disabled={loading || refreshing || bulkDeleting || filteredSessions.length === 0}
+            className="mr-2 px-4 py-2 bg-red-500/80 hover:bg-red-500 text-white backdrop-blur rounded-xl transition-all flex items-center gap-2 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+            </svg>
+            {bulkDeleting ? "Menghapus..." : "Hapus Semua"}
+          </button>
+          <button
             onClick={() => void loadTrackingSessions(true)}
-            disabled={loading || refreshing}
+            disabled={loading || refreshing || bulkDeleting}
             className="px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur rounded-xl transition-all flex items-center gap-2 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -261,6 +376,13 @@ export default function TrackingHistory() {
               <h3 className="text-lg font-bold text-gray-900">🗺️ Detail Tracking</h3>
               <p className="text-sm text-gray-600">{selectedSession.userName} • {formatDate(selectedSession.startTime)}</p>
             </div>
+            <button
+              onClick={() => void handleDeleteSession(selectedSession)}
+              disabled={deletingSessionId === selectedSession.id}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {deletingSessionId === selectedSession.id ? "Menghapus..." : "Hapus Session"}
+            </button>
             <button
               onClick={() => setSelectedSession(null)}
               className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl transition-all"
@@ -375,6 +497,22 @@ export default function TrackingHistory() {
                     <p className="text-xs text-gray-500">Titik GPS</p>
                     <p className="text-sm font-semibold text-gray-800">{session.pointsCount || session.path?.length || 0}</p>
                   </div>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleDeleteSession(session);
+                    }}
+                    disabled={deletingSessionId === session.id}
+                    className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition-all hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+                    </svg>
+                    {deletingSessionId === session.id ? "Menghapus..." : "Hapus"}
+                  </button>
                 </div>
               </div>
             ))}

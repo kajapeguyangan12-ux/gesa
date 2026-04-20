@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
 
 interface TrackingSessionRow {
@@ -50,6 +50,47 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Gagal memuat tracking sessions dari Supabase." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const payload = (await request.json().catch(() => ({}))) as {
+      status?: string;
+      userEmail?: string;
+      surveyType?: string;
+    };
+
+    const status = typeof payload.status === "string" ? payload.status.trim() : "";
+    const userEmail = typeof payload.userEmail === "string" ? payload.userEmail.trim() : "";
+    const surveyType = typeof payload.surveyType === "string" ? payload.surveyType.trim() : "";
+
+    const supabase = getSupabaseAdminClient() as any;
+    let query = supabase.from("tracking_sessions").delete();
+
+    if (status && status !== "all") {
+      query = query.eq("status", status);
+    }
+    if (userEmail && userEmail !== "all") {
+      query = query.eq("user_email", userEmail);
+    }
+    if (surveyType && surveyType !== "all") {
+      query = query.eq("survey_type", surveyType);
+    }
+
+    if ((!status || status === "all") && (!userEmail || userEmail === "all") && (!surveyType || surveyType === "all")) {
+      query = query.not("fb_doc_id", "is", null);
+    }
+
+    const { error } = await query;
+    if (error) throw new Error(error.message);
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Gagal menghapus tracking sessions dari Supabase." },
       { status: 500 }
     );
   }

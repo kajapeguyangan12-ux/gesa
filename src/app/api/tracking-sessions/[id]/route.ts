@@ -37,3 +37,22 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await context.params;
+    const supabase = getSupabaseAdminClient();
+    const { error } = await supabase.from("tracking_sessions").delete().eq("fb_doc_id", id);
+    if (error) throw new Error(error.message);
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Gagal menghapus tracking session di Supabase." },
+      { status: 500 }
+    );
+  }
+}

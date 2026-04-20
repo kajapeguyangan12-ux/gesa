@@ -5,9 +5,7 @@ import { useRouter } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
 import { addDoc, collection, getDocs, orderBy, query, serverTimestamp, where, deleteDoc, doc } from "firebase/firestore";
-import { createUserWithEmailAndPassword } from "firebase/auth";
 import { db } from "@/lib/firebase";
-import { auth } from "@/lib/firebase";
 import * as XLSX from "xlsx";
 import MapsKontruksiValid from "./components/MapsKontruksiValid";
 
@@ -351,27 +349,28 @@ export default function AdminKontruksiPage() {
     if (!userForm.name || !userForm.username || !userForm.email || !userForm.password) return;
     try {
       setAddingUser(true);
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        userForm.email,
-        userForm.password
-      );
-      await addDoc(collection(db, "User-Admin"), {
-        uid: userCredential.user.uid,
-        name: userForm.name,
-        username: userForm.username,
-        email: userForm.email,
-        password: userForm.password,
-        role: "petugas-kontruksi",
-        createdAt: serverTimestamp(),
+      const response = await fetch("/api/admin/user-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: userForm.name,
+          username: userForm.username,
+          email: userForm.email,
+          password: userForm.password,
+          role: "petugas-kontruksi",
+        }),
       });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Terjadi kesalahan");
+      }
       alert("Petugas kontruksi berhasil ditambahkan.");
       setShowAddKontruksiUser(false);
       setUserForm({ name: "", username: "", email: "", password: "" });
       await loadKontruksiUsers();
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Failed to add kontruksi user:", e);
-      alert(`Gagal menambahkan petugas: ${e?.message || "Terjadi kesalahan"}`);
+      alert(`Gagal menambahkan petugas: ${e instanceof Error ? e.message : "Terjadi kesalahan"}`);
     } finally {
       setAddingUser(false);
     }

@@ -4,21 +4,19 @@ import { useState, useEffect, memo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { collection, getDocs, query, orderBy, limit, addDoc, serverTimestamp, doc, deleteDoc, startAfter, Timestamp } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, limit, startAfter, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
 
 interface User {
   id: string;
   name: string;
   username: string;
   email: string;
-  password?: string;
   role: string;
   department?: string;
   createdAt: any;
+  uid?: string;
 }
 
 interface UsersPagePayload {
@@ -119,7 +117,6 @@ function UserAdminContent() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     username: "",
@@ -283,23 +280,22 @@ function UserAdminContent() {
     setSubmitting(true);
 
     try {
-      // Create user in Firebase Authentication
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        formData.email,
-        formData.password
-      );
-
-      // Add user data to Firestore
-      await addDoc(collection(db, "User-Admin"), {
-        uid: userCredential.user.uid,
-        name: formData.name,
-        username: formData.username,
-        email: formData.email,
-        password: formData.password,
-        role: formData.role,
-        createdAt: serverTimestamp(),
+      const response = await fetch("/api/admin/user-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formData.name,
+          username: formData.username,
+          email: formData.email,
+          password: formData.password,
+          role: formData.role,
+        }),
       });
+
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Gagal menambahkan user.");
+      }
 
       alert("User berhasil ditambahkan!");
       setShowAddUserModal(false);
@@ -321,7 +317,6 @@ function UserAdminContent() {
 
   const handleViewDetail = (user: User) => {
     setSelectedUser(user);
-    setShowPassword(false);
     setShowDetailModal(true);
   };
 
@@ -335,7 +330,13 @@ function UserAdminContent() {
 
     setDeleting(true);
     try {
-      await deleteDoc(doc(db, "User-Admin", selectedUser.id));
+      const response = await fetch(`/api/admin/user-admin/${encodeURIComponent(selectedUser.id)}`, {
+        method: "DELETE",
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Gagal menghapus user.");
+      }
       alert("User berhasil dihapus!");
       setShowDeleteModal(false);
       setSelectedUser(null);
@@ -873,43 +874,6 @@ function UserAdminContent() {
                     </div>
                   </div>
                 </div>
-
-                {/* Password */}
-                {selectedUser.password && (
-                  <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border-2 border-gray-200">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Password</p>
-                        <div className="flex items-center gap-2">
-                          <p className="text-lg font-bold text-gray-900 font-mono">
-                            {showPassword ? selectedUser.password : '••••••••••'}
-                          </p>
-                          <button
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="p-1.5 hover:bg-gray-200 rounded-lg transition-all"
-                            title={showPassword ? "Sembunyikan Password" : "Tampilkan Password"}
-                          >
-                            {showPassword ? (
-                              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                              </svg>
-                            ) : (
-                              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {/* Role */}
                 <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border-2 border-gray-200">
