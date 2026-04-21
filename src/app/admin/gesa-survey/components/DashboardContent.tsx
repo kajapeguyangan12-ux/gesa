@@ -53,6 +53,8 @@ interface ReportSummary {
 
 interface KecamatanSummary extends ReportSummary {
   kecamatan: string;
+  lampTypeBreakdownText: string;
+  lampTypeCounts?: Record<string, number>;
 }
 
 interface LampTypeSummaryRow {
@@ -214,10 +216,21 @@ function buildKecamatanSummary(rows: SurveyReportRow[]) {
   });
 
   return Array.from(grouped.entries())
-    .map(([kecamatan, items]) => ({
-      kecamatan,
-      ...buildSummary(items),
-    }))
+    .map(([kecamatan, items]) => {
+      const lampTypeSummary = buildLampTypeSummary(items);
+      const lampTypeCounts = lampTypeSummary.reduce<Record<string, number>>((accumulator, item) => {
+        accumulator[item.lampType] = item.lampCount;
+        return accumulator;
+      }, {});
+      return {
+        kecamatan,
+        lampTypeBreakdownText: lampTypeSummary.length
+          ? lampTypeSummary.map((item) => `${item.lampType}: ${item.lampCount}`).join(" | ")
+          : "-",
+        lampTypeCounts,
+        ...buildSummary(items),
+      };
+    })
     .sort((a, b) => b.totalData - a.totalData || a.kecamatan.localeCompare(b.kecamatan));
 }
 
@@ -236,6 +249,7 @@ function normalizeLampTypeLabel(value: unknown) {
 
   if (lower.includes("mercury")) return "Mercury";
   if (lower.includes("led")) return "LED";
+  if (lower === "kap" || lower.includes("kap ")) return "KAP";
   if (lower.includes("son") || lower.includes("sodium") || lower.includes("hps")) return "SON-T / Sodium";
   if (lower === "tl" || lower.includes("fluorescent")) return "TL / Fluorescent";
   if (lower.includes("cfl") || lower === "pl" || lower.includes("compact fluorescent")) return "CFL / PL";
@@ -276,6 +290,19 @@ function normalizeKecamatanSummaryRow(
 ): KecamatanSummary {
   return {
     kecamatan: row.kecamatan?.trim() || "Tanpa Kecamatan",
+    lampTypeBreakdownText:
+      typeof row.lampTypeBreakdownText === "string" && row.lampTypeBreakdownText.trim()
+        ? row.lampTypeBreakdownText
+        : "-",
+    lampTypeCounts:
+      row.lampTypeCounts && typeof row.lampTypeCounts === "object"
+        ? Object.entries(row.lampTypeCounts).reduce<Record<string, number>>((accumulator, [key, value]) => {
+            if (typeof value === "number" && Number.isFinite(value)) {
+              accumulator[key] = value;
+            }
+            return accumulator;
+          }, {})
+        : {},
     ...mergeSummary(row),
   };
 }
@@ -348,34 +375,52 @@ async function fetchTaskExportRecords() {
   return await fetchWithCache<TaskExportRecord[]>(
     "dashboard_task_export_records_v1",
     async () => {
-      try {
-        const response = await fetch("/api/admin/tasks-export", { cache: "no-store" });
-        if (response.ok) {
-          const payload = (await response.json()) as { tasks?: TaskExportRecord[] };
-          if (Array.isArray(payload.tasks)) return payload.tasks;
+      const response = await fetch("/api/admin/tasks-export", { cache: "no-store" });
+      if (!response.ok) {
+        let message = "Gagal memuat data tugas dari Supabase.";
+        try {
+          const payload = (await response.json()) as { error?: string };
+          if (typeof payload.error === "string" && payload.error.trim()) {
+            message = payload.error.trim();
+          }
+        } catch {
+          // Keep fallback message when response body is not JSON.
         }
-      } catch (error) {
-        console.error("Supabase task export fetch failed, fallback to Firestore:", error);
+        throw new Error(message);
       }
 
-      const tasksRef = collection(db, "tasks");
-      const snapshot = await getDocs(query(tasksRef, orderBy("createdAt", "desc")));
-
-      return snapshot.docs.map((item) => {
-        const data = item.data();
-        return {
-          id: item.id,
-          title: typeof data.title === "string" ? data.title : "Tanpa Judul",
-          status: typeof data.status === "string" ? data.status : "-",
-          type: typeof data.type === "string" ? data.type : "-",
-          surveyorName: typeof data.surveyorName === "string" ? data.surveyorName : "-",
-          createdByAdminName: typeof data.createdByAdminName === "string" ? data.createdByAdminName : "Admin",
-          createdByAdminEmail: typeof data.createdByAdminEmail === "string" ? data.createdByAdminEmail : "-",
-          createdAt: data.createdAt,
-        } satisfies TaskExportRecord;
-      });
+      const payload = (await response.json()) as { tasks?: TaskExportRecord[] };
+      if (Array.isArray(payload.tasks)) return payload.tasks;
+      return [];
     },
     5 * 60 * 1000
+  );
+}
+
+async function fetchAllowedTaskIdsForAdmin(adminId: string) {
+  const params = new URLSearchParams({ adminId });
+  const response = await fetch(`/api/admin/tasks?${params.toString()}`, {
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    let message = "Gagal memuat daftar tugas admin dari Supabase.";
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (typeof payload.error === "string" && payload.error.trim()) {
+        message = payload.error.trim();
+      }
+    } catch {
+      // Keep fallback message when response body is not JSON.
+    }
+    throw new Error(message);
+  }
+
+  const payload = (await response.json()) as { tasks?: Array<{ id?: string | null }> };
+  return new Set(
+    (Array.isArray(payload.tasks) ? payload.tasks : [])
+      .map((task) => (typeof task.id === "string" ? task.id.trim() : ""))
+      .filter(Boolean)
   );
 }
 
@@ -583,6 +628,9 @@ export default function DashboardContent({
   const [lastUpdatedAt, setLastUpdatedAt] = useState("");
   const [summaryVersion, setSummaryVersion] = useState(0);
   const [adminVerificationRows, setAdminVerificationRows] = useState<SurveyReportRow[]>([]);
+  const [showLampAnalysis, setShowLampAnalysis] = useState(true);
+  const [showVerificationReport, setShowVerificationReport] = useState(true);
+  const [showKecamatanReport, setShowKecamatanReport] = useState(true);
   const latestSummaryFingerprintRef = useRef("");
   const [startDate, setStartDate] = useState(() => {
     const today = new Date();
@@ -834,18 +882,7 @@ export default function DashboardContent({
             return;
           }
 
-          const taskSnapshot = await getDocs(
-            query(collection(db, "tasks"), where("createdByAdminId", "==", user.uid))
-          );
-
-          allowedTaskIds = new Set(
-            taskSnapshot.docs
-              .map((item) => {
-                const data = item.data();
-                return typeof data?.id === "string" ? data.id : item.id;
-              })
-              .filter(Boolean)
-          );
+          allowedTaskIds = await fetchAllowedTaskIdsForAdmin(user.uid);
         }
 
         const [proposeRows, existingRows, praExistingRows] = await Promise.all([
@@ -939,12 +976,25 @@ export default function DashboardContent({
       reportState.praExisting.totalData,
     [reportState.existing.totalData, reportState.praExisting.totalData, reportState.propose.totalData]
   );
+  const praExistingRowsForKecamatan = useMemo(
+    () => reportState.allRowsRaw.filter((row) => row.type === "pra-existing"),
+    [reportState.allRowsRaw]
+  );
+  const praExistingByKecamatanRows = useMemo(
+    () =>
+      praExistingRowsForKecamatan.length
+        ? buildKecamatanSummary(praExistingRowsForKecamatan)
+        : reportState.praExistingByKecamatan,
+    [praExistingRowsForKecamatan, reportState.praExistingByKecamatan]
+  );
 
   const praExistingGrandTotal = useMemo(
     () =>
-      reportState.praExistingByKecamatan.reduce<KecamatanSummary>(
+      praExistingByKecamatanRows.reduce<KecamatanSummary>(
         (accumulator, row) => ({
           kecamatan: "Total Semua Kecamatan",
+          lampTypeBreakdownText: "-",
+          lampTypeCounts: accumulator.lampTypeCounts || {},
           totalData: accumulator.totalData + row.totalData,
           totalTitik: accumulator.totalTitik + row.totalTitik,
           totalLampu: accumulator.totalLampu + row.totalLampu,
@@ -956,14 +1006,16 @@ export default function DashboardContent({
         }),
         {
           kecamatan: "Total Semua Kecamatan",
+          lampTypeBreakdownText: "-",
+          lampTypeCounts: {},
           ...emptySummary,
         }
       ),
-    [reportState.praExistingByKecamatan]
+    [praExistingByKecamatanRows]
   );
   const lampTypeSummaryRows = useMemo(
-    () => buildLampTypeSummary(reportState.allRowsRaw.filter((row) => row.type === "pra-existing")),
-    [reportState.allRowsRaw]
+    () => buildLampTypeSummary(praExistingRowsForKecamatan),
+    [praExistingRowsForKecamatan]
   );
   const lampTypeGrandTotal = useMemo(
     () =>
@@ -974,6 +1026,10 @@ export default function DashboardContent({
         }),
         { surveyCount: 0, lampCount: 0 }
       ),
+    [lampTypeSummaryRows]
+  );
+  const praExistingLampTypeColumns = useMemo(
+    () => lampTypeSummaryRows.map((row) => row.lampType),
     [lampTypeSummaryRows]
   );
   const activeSourceLabel = bundleSource === "supabase" ? "Supabase" : "Firestore";
@@ -1557,7 +1613,43 @@ export default function DashboardContent({
                 </div>
               ) : (
                 <>
-                  {isSuperAdmin ? (
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <h4 className="text-lg font-bold text-gray-900">Kontrol Tampilan Laporan</h4>
+                        <p className="mt-1 text-sm text-gray-500">
+                          Pilih blok laporan yang ingin ditampilkan agar dashboard detail lebih ringkas.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {isSuperAdmin ? (
+                          <button
+                            type="button"
+                            onClick={() => setShowLampAnalysis((current) => !current)}
+                            className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all ${showLampAnalysis ? "bg-violet-600 text-white hover:bg-violet-700" : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
+                          >
+                            {showLampAnalysis ? "Sembunyikan Analisa Lampu" : "Tampilkan Analisa Lampu"}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => setShowVerificationReport((current) => !current)}
+                          className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all ${showVerificationReport ? "bg-blue-600 text-white hover:bg-blue-700" : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
+                        >
+                          {showVerificationReport ? "Sembunyikan Rekap Verifikasi" : "Tampilkan Rekap Verifikasi"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowKecamatanReport((current) => !current)}
+                          className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all ${showKecamatanReport ? "bg-amber-500 text-white hover:bg-amber-600" : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
+                        >
+                          {showKecamatanReport ? "Sembunyikan Laporan Kecamatan" : "Tampilkan Laporan Kecamatan"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {isSuperAdmin && showLampAnalysis ? (
                     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
                       <div className="flex flex-col gap-4 border-b border-gray-200 px-6 py-5 xl:flex-row xl:items-end xl:justify-between">
                         <div>
@@ -1631,6 +1723,7 @@ export default function DashboardContent({
                     </div>
                   ) : null}
 
+                  {showVerificationReport ? (
                   <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
                     <div className="flex flex-col gap-4 border-b border-gray-200 px-6 py-5 xl:flex-row xl:items-end xl:justify-between">
                       <div>
@@ -1837,9 +1930,11 @@ export default function DashboardContent({
                       </>
                     )}
                   </div>
+                  ) : null}
                 </>
               )}
 
+              {showKecamatanReport ? (
               <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
                 <div className="flex flex-col gap-2 border-b border-gray-200 px-6 py-5 lg:flex-row lg:items-end lg:justify-between">
                   <div>
@@ -1851,12 +1946,12 @@ export default function DashboardContent({
                     </p>
                   </div>
                   <div className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                    {reportState.praExistingByKecamatan.length} kecamatan terdeteksi
+                    {praExistingByKecamatanRows.length} kecamatan terdeteksi
                   </div>
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="min-w-[1180px] w-full">
+                  <table className="min-w-[1460px] w-full">
                     <thead className="bg-gray-50">
                       <tr>
                         {[
@@ -1868,6 +1963,7 @@ export default function DashboardContent({
                           "Ditolak",
                           "Jumlah Titik",
                           "Jumlah Lampu",
+                          ...praExistingLampTypeColumns,
                           "Jumlah Petugas",
                         ].map((header) => (
                           <th
@@ -1880,7 +1976,7 @@ export default function DashboardContent({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {reportState.praExistingByKecamatan.map((row) => (
+                      {praExistingByKecamatanRows.map((row) => (
                         <tr key={row.kecamatan} className="hover:bg-amber-50/40 transition-colors">
                           <td className="px-6 py-4 font-semibold text-gray-900">{row.kecamatan}</td>
                           <td className="px-6 py-4 text-sm font-semibold text-gray-900">{row.totalData}</td>
@@ -1890,6 +1986,11 @@ export default function DashboardContent({
                           <td className="px-6 py-4 text-sm text-rose-700">{row.totalDitolak}</td>
                           <td className="px-6 py-4 text-sm text-gray-700">{row.totalTitik}</td>
                           <td className="px-6 py-4 text-sm text-gray-700">{row.totalLampu}</td>
+                          {praExistingLampTypeColumns.map((lampType) => (
+                            <td key={`${row.kecamatan}_${lampType}`} className="px-6 py-4 text-sm text-gray-700">
+                              {row.lampTypeCounts?.[lampType] ?? 0}
+                            </td>
+                          ))}
                           <td className="px-6 py-4 text-sm text-gray-700">{row.totalSurveyor}</td>
                         </tr>
                       ))}
@@ -1902,12 +2003,21 @@ export default function DashboardContent({
                         <td className="px-6 py-4 text-sm font-bold text-rose-200">{praExistingGrandTotal.totalDitolak}</td>
                         <td className="px-6 py-4 text-sm font-bold">{praExistingGrandTotal.totalTitik}</td>
                         <td className="px-6 py-4 text-sm font-bold">{praExistingGrandTotal.totalLampu}</td>
+                        {praExistingLampTypeColumns.map((lampType) => {
+                          const lampTypeRow = lampTypeSummaryRows.find((row) => row.lampType === lampType);
+                          return (
+                            <td key={`total_${lampType}`} className="px-6 py-4 text-sm font-bold">
+                              {lampTypeRow?.lampCount ?? 0}
+                            </td>
+                          );
+                        })}
                         <td className="px-6 py-4 text-sm font-bold">{praExistingGrandTotal.totalSurveyor}</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
+              ) : null}
             </>
           )}
         </section>
