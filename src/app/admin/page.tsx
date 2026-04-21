@@ -3,14 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { collection, query, orderBy, getDocs, limit, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import {
-  ADMIN_BUNDLE_VERSION,
-  type AdminReportsBundle,
-  type AdminReportsBundleItem,
-  getAdminReportsBundlePath,
-  readJsonBundle,
-  writeJsonBundle,
-} from "@/utils/adminBundles";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
@@ -84,10 +76,8 @@ function AdminPanelContent() {
   const [filteredSurveys, setFilteredSurveys] = useState<SurveyData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isGeneratingBundle, setIsGeneratingBundle] = useState(false);
   const [hasLoadedData, setHasLoadedData] = useState(false);
-  const [dataSource, setDataSource] = useState<"supabase" | "storage-bundle" | "firestore">("firestore");
-  const [bundleGeneratedAt, setBundleGeneratedAt] = useState<string>("");
+  const [dataSource, setDataSource] = useState<"supabase" | "firestore">("firestore");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string>("");
   const latestReportsFingerprintRef = useRef("");
   const [filters, setFilters] = useState<FilterState>({
@@ -306,30 +296,9 @@ function AdminPanelContent() {
     };
   };
 
-  const applyBundleResult = (bundle: AdminReportsBundle | null) => {
-    if (!bundle) return null;
-
-    const normalized = (bundle.reports || [])
-      .slice(0, REPORT_FETCH_LIMIT)
-      .map((item: AdminReportsBundleItem) => ({
-        ...item,
-        dateDisplay: item.dateDisplay || "",
-        timeDisplay: item.timeDisplay || "",
-      }));
-
-    setDataSource("storage-bundle");
-    setBundleGeneratedAt(bundle.generatedAt || "");
-    return normalized;
-  };
-
-  const readReportsFromStorageBundle = async () => {
-    return await readJsonBundle<AdminReportsBundle>(getAdminReportsBundlePath());
-  };
-
   const fetchSurveysFromSupabaseSource = async () => {
     const payload = await fetchSurveysFromSupabase(REPORT_FETCH_LIMIT);
     setDataSource("supabase");
-    setBundleGeneratedAt("");
     setLastUpdatedAt(payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString());
     latestReportsFingerprintRef.current = [payload.lastDataChangeAt || payload.generatedAt || "", payload.reports.length].join("|");
     return payload.reports;
@@ -344,7 +313,6 @@ function AdminPanelContent() {
       result.push(mapReportToSurvey(item.id, item.data()));
     });
     setDataSource("firestore");
-    setBundleGeneratedAt("");
     setLastUpdatedAt(new Date().toISOString());
     return result;
   };
@@ -364,11 +332,9 @@ function AdminPanelContent() {
             const supabaseReports = await fetchSurveysFromSupabaseSource();
             if (supabaseReports.length > 0) return supabaseReports;
           } catch (error) {
-            console.error("Supabase reports fetch failed, fallback to bundle/firestore:", error);
+            console.error("Supabase reports fetch failed, fallback to Firestore:", error);
           }
 
-          const bundleResult = applyBundleResult(await readReportsFromStorageBundle());
-          if (bundleResult) return bundleResult;
           return await fetchSurveysFromFirestore();
         },
         REPORTS_CACHE_TTL_MS
@@ -413,36 +379,6 @@ function AdminPanelContent() {
 
     return () => window.clearInterval(intervalId);
   }, [hasLoadedData]);
-
-  const handleGenerateBundle = async () => {
-    if (user?.role !== "super-admin") return;
-
-    try {
-      setIsGeneratingBundle(true);
-      const surveysRef = collection(db, FIREBASE_COLLECTIONS.SURVEYS);
-      const q = query(surveysRef, orderBy("createdAt", "desc"));
-      const querySnapshot = await getDocs(q);
-      const reports = querySnapshot.docs.map((item) => mapReportToSurvey(item.id, item.data()));
-
-      const payload: AdminReportsBundle = {
-        version: ADMIN_BUNDLE_VERSION,
-        generatedAt: new Date().toISOString(),
-        generatedBy: user?.email || user?.displayName || "super-admin",
-        source: "storage-bundle",
-        reports,
-      };
-
-      await writeJsonBundle(getAdminReportsBundlePath(), payload);
-      clearCachedData(REPORTS_CACHE_KEY);
-      await fetchSurveys(true);
-      alert("Bundle admin berhasil dibuat di Firebase Storage.");
-    } catch (error) {
-      console.error("Failed to generate admin reports bundle:", error);
-      alert("Gagal membuat bundle admin.");
-    } finally {
-      setIsGeneratingBundle(false);
-    }
-  };
 
   const applyFilters = () => {
     let filtered = [...surveys];
@@ -516,9 +452,8 @@ function AdminPanelContent() {
 
   // Get user display name or email
   const displayName = user?.displayName || user?.email?.split('@')[0] || 'Admin';
-  const activeSourceLabel =
-    dataSource === "supabase" ? "Supabase" : dataSource === "storage-bundle" ? "Bundle Storage" : "Firestore langsung";
-  const activeTimestamp = bundleGeneratedAt || lastUpdatedAt;
+  const activeSourceLabel = dataSource === "supabase" ? "Supabase" : "Firestore langsung";
+  const activeTimestamp = lastUpdatedAt;
 
   const handleDeleteReport = async (reportId: string, title: string) => {
     const ok = window.confirm(`Hapus laporan "${title}"? Tindakan ini tidak bisa dibatalkan.`);
@@ -596,23 +531,9 @@ function AdminPanelContent() {
             <div className="text-sm text-blue-900">
               <span className="font-semibold">Sumber aktif: Supabase.</span>{" "}
               Daftar laporan ditampilkan dari Supabase.
-              {bundleGeneratedAt
-                ? ` Bundle terakhir dibuat ${new Date(bundleGeneratedAt).toLocaleString("id-ID")}.`
-                : " Data aktif sedang dibaca dari Supabase."}
+              {" "}Jika query utama gagal atau kosong, sistem fallback ke Firestore.
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {user?.role === "super-admin" ? (
-                <button
-                  onClick={() => void handleGenerateBundle()}
-                  disabled={isGeneratingBundle}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-xl transition-all font-semibold"
-                >
-                  <svg className={`w-4 h-4 ${isGeneratingBundle ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999A5.002 5.002 0 006 9H5a2 2 0 000 4h1m7-3v6m0 0l-3-3m3 3l3-3" />
-                  </svg>
-                  {isGeneratingBundle ? "Membuat Bundle..." : "Generate Bundle"}
-                </button>
-              ) : null}
               <button
                 onClick={() => void handleRefreshData()}
                 disabled={isRefreshing || !hasLoadedData}
@@ -638,7 +559,7 @@ function AdminPanelContent() {
             </div>
           </div>
           <div className="mb-4 text-xs font-medium text-gray-500">
-            Sumber aktif: {dataSource === "supabase" ? "Supabase" : dataSource === "storage-bundle" ? "Bundle Storage" : "Firestore langsung"}
+            Sumber aktif: {dataSource === "supabase" ? "Supabase" : "Firestore langsung"}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">{/* Judul / Lokasi */}
             <div>

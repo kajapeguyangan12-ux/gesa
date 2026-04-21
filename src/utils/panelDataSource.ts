@@ -4,8 +4,6 @@ export function getReadableDataSourceLabel(source?: string | null) {
       return "Supabase";
     case "firestore":
       return "Firestore";
-    case "storage-bundle":
-      return "Bundle Storage";
     default:
       return source || "Belum ada";
   }

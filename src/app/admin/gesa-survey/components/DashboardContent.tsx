@@ -4,13 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { collection, doc, getDoc, getDocs, query, setDoc, where, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import {
-  ADMIN_BUNDLE_VERSION,
-  getGesaSurveyDashboardBundlePath,
-  readJsonBundle,
-  type GesaSurveyDashboardBundle,
-  writeJsonBundle,
-} from "@/utils/adminBundles";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -115,7 +108,17 @@ interface DashboardSummaryDocument {
   praExistingByKecamatan?: Array<Partial<KecamatanSummary> & { kecamatan?: string }>;
 }
 
-type DashboardBundleSource = "supabase" | "storage-bundle" | "firestore";
+interface GesaSurveyDashboardBundle {
+  generatedAt?: string;
+  totalUniqueSurveyors?: number;
+  propose?: Partial<ReportSummary>;
+  existing?: Partial<ReportSummary>;
+  praExisting?: Partial<ReportSummary>;
+  praExistingByKecamatan?: Array<Partial<KecamatanSummary> & { kecamatan?: string }>;
+  allRows?: SurveyReportRow[];
+}
+
+type DashboardBundleSource = "supabase" | "firestore";
 
 interface TaskExportRecord {
   id: string;
@@ -577,7 +580,6 @@ export default function DashboardContent({
   const [summaryRefreshing, setSummaryRefreshing] = useState(false);
   const [taskExporting, setTaskExporting] = useState(false);
   const [bundleSource, setBundleSource] = useState<DashboardBundleSource>("firestore");
-  const [bundleGeneratedAt, setBundleGeneratedAt] = useState("");
   const [lastUpdatedAt, setLastUpdatedAt] = useState("");
   const [summaryVersion, setSummaryVersion] = useState(0);
   const latestSummaryFingerprintRef = useRef("");
@@ -592,10 +594,6 @@ export default function DashboardContent({
   );
   const dashboardSummaryDocId = useMemo(
     () => `gesa-survey_${activeKabupaten || "all"}_super`,
-    [activeKabupaten]
-  );
-  const dashboardBundlePath = useMemo(
-    () => getGesaSurveyDashboardBundlePath(activeKabupaten),
     [activeKabupaten]
   );
   const dashboardApiQuery = useMemo(() => {
@@ -629,16 +627,6 @@ export default function DashboardContent({
         // Ignore cleanup errors.
       }
     }
-  };
-
-  const applyDashboardBundle = (bundle: GesaSurveyDashboardBundle | null) => {
-    if (!bundle) return false;
-
-    setBundleSource("storage-bundle");
-    setBundleGeneratedAt(bundle.generatedAt || "");
-    setLastUpdatedAt(bundle.generatedAt || new Date().toISOString());
-    setReportState(mapBundleToReportState(bundle));
-    return true;
   };
 
   const buildSummaryFingerprint = (payload: {
@@ -702,7 +690,6 @@ export default function DashboardContent({
               const shouldNotifyDetail = background && latestSummaryFingerprintRef.current !== "" && nextFingerprint !== latestSummaryFingerprintRef.current;
               latestSummaryFingerprintRef.current = nextFingerprint;
               setBundleSource("supabase");
-              setBundleGeneratedAt("");
               setLastUpdatedAt(payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString());
               setReportState((current) => ({
                 ...current,
@@ -724,19 +711,13 @@ export default function DashboardContent({
             }
           }
         } catch (error) {
-          console.error("Supabase dashboard summary fetch failed, fallback to bundle/firestore:", error);
-        }
-
-        const bundle = await readJsonBundle<GesaSurveyDashboardBundle>(dashboardBundlePath);
-        if (!cancelled && applyDashboardBundle(bundle)) {
-          return;
+          console.error("Supabase dashboard summary fetch failed, fallback to Firestore:", error);
         }
 
         const summary = await fetchDashboardSummary(activeKabupaten);
         if (!summary || cancelled) return;
 
         setBundleSource("firestore");
-        setBundleGeneratedAt("");
         setLastUpdatedAt(new Date().toISOString());
         setReportState((current) => ({
           ...current,
@@ -766,7 +747,7 @@ export default function DashboardContent({
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [activeKabupaten, dashboardBundlePath, dashboardSummaryApiQuery, isSuperAdmin, isActive]);
+  }, [activeKabupaten, dashboardSummaryApiQuery, isSuperAdmin, isActive]);
 
   useEffect(() => {
     if (!isActive || !detailVisible) return;
@@ -790,7 +771,6 @@ export default function DashboardContent({
             if (!cancelled) {
               latestSummaryFingerprintRef.current = buildSummaryFingerprint(payload);
               setBundleSource("supabase");
-              setBundleGeneratedAt("");
               setLastUpdatedAt(payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString());
               const mappedState = mapBundleToReportState(payload);
               setReportState(mappedState);
@@ -817,18 +797,10 @@ export default function DashboardContent({
           if (isSuperAdmin) {
             throw error;
           }
-          console.error("Supabase dashboard detail fetch failed, fallback to bundle/firestore:", error);
-        }
-
-        const bundle = await readJsonBundle<GesaSurveyDashboardBundle>(dashboardBundlePath);
-        if (!cancelled && applyDashboardBundle(bundle)) {
-          setDetailLoaded(true);
-          persistReportCache(mapBundleToReportState(bundle as GesaSurveyDashboardBundle));
-          return;
+          console.error("Supabase dashboard detail fetch failed, fallback to Firestore:", error);
         }
 
         setBundleSource("firestore");
-        setBundleGeneratedAt("");
         setLastUpdatedAt(new Date().toISOString());
 
         let allowedTaskIds: Set<string> | null = null;
@@ -927,7 +899,7 @@ export default function DashboardContent({
     return () => {
       cancelled = true;
     };
-  }, [activeKabupaten, dashboardApiQuery, dashboardBundlePath, detailVisible, isSuperAdmin, reportCacheKey, user?.uid, isActive, summaryVersion]);
+  }, [activeKabupaten, dashboardApiQuery, detailVisible, isSuperAdmin, reportCacheKey, user?.uid, isActive, summaryVersion]);
 
   const waitingReviewCount = useMemo(
     () =>
@@ -981,9 +953,8 @@ export default function DashboardContent({
       ),
     [lampTypeSummaryRows]
   );
-  const activeSourceLabel =
-    bundleSource === "supabase" ? "Supabase" : bundleSource === "storage-bundle" ? "Bundle Storage" : "Firestore";
-  const activeTimestamp = bundleGeneratedAt || lastUpdatedAt;
+  const activeSourceLabel = bundleSource === "supabase" ? "Supabase" : "Firestore";
+  const activeTimestamp = lastUpdatedAt;
 
   const normalizedDateRange = useMemo(() => {
     const start = startDate ? new Date(`${startDate}T00:00:00`) : null;
@@ -1201,34 +1172,29 @@ export default function DashboardContent({
         praExistingByKecamatan: buildKecamatanSummary(praExistingRows),
       };
 
-      const dashboardBundlePayload: GesaSurveyDashboardBundle = {
-        version: ADMIN_BUNDLE_VERSION,
-        generatedAt: new Date().toISOString(),
-        generatedBy: user?.email || user?.displayName || "super-admin",
-        source: "storage-bundle",
-        kabupatenScope: activeKabupaten || "all",
+      await setDoc(doc(db, "dashboard-summaries", dashboardSummaryDocId), summaryPayload, { merge: true });
+      clearCachedData(`dashboard_summary_${dashboardSummaryDocId}`);
+      const mappedState: DashboardReportState = {
+        loading: false,
+        error: "",
+        allRows,
+        allRowsRaw: allRows,
         totalUniqueSurveyors: summaryPayload.totalUniqueSurveyors || 0,
         propose: mergeSummary(summaryPayload.propose),
         existing: mergeSummary(summaryPayload.existing),
         praExisting: mergeSummary(summaryPayload.praExisting),
         praExistingByKecamatan: (summaryPayload.praExistingByKecamatan || []).map(normalizeKecamatanSummaryRow),
-        allRows,
       };
+      persistReportCache(mappedState);
 
-      await setDoc(doc(db, "dashboard-summaries", dashboardSummaryDocId), summaryPayload, { merge: true });
-      await writeJsonBundle(dashboardBundlePath, dashboardBundlePayload);
-      clearCachedData(`dashboard_summary_${dashboardSummaryDocId}`);
-      persistReportCache(mapBundleToReportState(dashboardBundlePayload));
+      setBundleSource("firestore");
+      setLastUpdatedAt(new Date().toISOString());
+      setReportState(mappedState);
 
-      setBundleSource("storage-bundle");
-      setBundleGeneratedAt(dashboardBundlePayload.generatedAt);
-      setLastUpdatedAt(dashboardBundlePayload.generatedAt);
-      setReportState(mapBundleToReportState(dashboardBundlePayload));
-
-      alert("Bundle dashboard berhasil diperbarui di Storage.");
+      alert("Summary dashboard berhasil diperbarui dari Firestore.");
     } catch (error) {
       console.error("Failed to refresh dashboard summary:", error);
-      alert("Gagal memperbarui bundle dashboard.");
+      alert("Gagal memperbarui summary dashboard.");
     } finally {
       setSummaryRefreshing(false);
     }
@@ -1412,7 +1378,7 @@ export default function DashboardContent({
                       disabled={summaryRefreshing}
                       className="rounded-xl border border-white/20 bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-300/60"
                     >
-                      {summaryRefreshing ? "Membuat Bundle..." : "Refresh Bundle"}
+                      {summaryRefreshing ? "Refresh Summary..." : "Refresh Summary"}
                     </button>
                   )}
                   {isSuperAdmin && (
@@ -1460,10 +1426,7 @@ export default function DashboardContent({
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   Ringkasan dashboard sedang disembunyikan. Klik `Muat Laporan` untuk menampilkan summary hemat read.
-                  Sistem sekarang memprioritaskan bundle JSON di Storage, lalu fallback ke Firestore bila bundle belum ada.
-                  {bundleGeneratedAt
-                    ? ` Bundle terakhir dibuat ${new Date(bundleGeneratedAt).toLocaleString("id-ID")}.`
-                    : " Bundle dashboard belum tersedia untuk scope kabupaten ini."}
+                  Sistem sekarang memprioritaskan Supabase, lalu fallback ke Firestore bila diperlukan.
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div className="rounded-xl bg-slate-50 px-4 py-3">
@@ -1511,7 +1474,7 @@ export default function DashboardContent({
               {!detailVisible ? (
                 <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-8 text-sm text-gray-600 shadow-sm">
                   Summary ringan sudah tampil.
-                  Sumber aktif: <span className="font-semibold">{bundleSource === "supabase" ? "Supabase" : bundleSource === "storage-bundle" ? "Bundle Storage" : "Firestore"}</span>.
+                  Sumber aktif: <span className="font-semibold">{bundleSource === "supabase" ? "Supabase" : "Firestore"}</span>.
                   Klik `Muat Detail` untuk membuka tabel verifikasi dan rincian dashboard.
                 </div>
               ) : reportState.loading ? (
@@ -1605,7 +1568,7 @@ export default function DashboardContent({
                         <h4 className="text-xl font-bold text-gray-900">Rekap Admin Verifikasi</h4>
                         <p className="mt-1 text-sm text-gray-500">
                           Ringkasan admin yang melakukan verifikasi berdasarkan rentang tanggal yang dipilih, lengkap dengan jumlah titik dan waktu verifikasi.
-                          Sumber aktif: {bundleSource === "supabase" ? "Supabase" : bundleSource === "storage-bundle" ? "Bundle Storage" : "Firestore"}.
+                          Sumber aktif: {bundleSource === "supabase" ? "Supabase" : "Firestore"}.
                         </p>
                       </div>
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
