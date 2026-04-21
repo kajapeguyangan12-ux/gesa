@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { collection, doc, getDoc, getDocs, query, setDoc, where, orderBy } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -171,15 +169,6 @@ function formatDateInputValue(value: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function normalizeLampCount(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
-}
-
 function buildSummary(rows: SurveyReportRow[]): ReportSummary {
   const surveyors = new Set<string>();
 
@@ -323,51 +312,31 @@ function mapBundleToReportState(bundle: GesaSurveyDashboardBundle): DashboardRep
   };
 }
 
-async function fetchDashboardSummary(activeKabupaten?: string | null) {
-  const summaryDocId = `gesa-survey_${activeKabupaten || "all"}_super`;
+async function fetchDashboardSummary(summaryApiQuery: string) {
   return await fetchWithCache<DashboardSummaryDocument | null>(
-    `dashboard_summary_${summaryDocId}`,
+    `dashboard_summary_supabase_${summaryApiQuery || "all"}`,
     async () => {
-      const snapshot = await getDoc(doc(db, "dashboard-summaries", summaryDocId));
-      return snapshot.exists() ? (snapshot.data() as DashboardSummaryDocument) : null;
+      const response = await fetch(`/api/admin/gesa-survey?${summaryApiQuery}`, {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        let message = "Gagal memuat summary dashboard dari Supabase.";
+        try {
+          const payload = (await response.json()) as { error?: string };
+          if (typeof payload.error === "string" && payload.error.trim()) {
+            message = payload.error.trim();
+          }
+        } catch {
+          // Keep fallback message when response body is not JSON.
+        }
+        throw new Error(message);
+      }
+
+      const payload = (await response.json()) as DashboardSummaryDocument | null;
+      return payload;
     },
     DASHBOARD_SUMMARY_CACHE_TTL_MS
-  );
-}
-
-async function fetchCollectionRows(collectionName: string, activeKabupaten?: string | null) {
-  return await fetchWithCache<SurveyReportRow[]>(
-    `dashboard_rows_${collectionName}_${activeKabupaten || "all"}`,
-    async () => {
-      const surveysRef = collection(db, collectionName);
-      const snapshot = activeKabupaten
-        ? await getDocs(query(surveysRef, where("kabupaten", "==", activeKabupaten), orderBy("createdAt", "desc")))
-        : await getDocs(query(surveysRef, orderBy("createdAt", "desc")));
-
-      return snapshot.docs.map((item) => {
-        const data = item.data();
-        return {
-          id: item.id,
-          taskId: typeof data.taskId === "string" ? data.taskId : "",
-          status: typeof data.status === "string" ? data.status : "",
-          title: typeof data.title === "string" ? data.title : "",
-          type: collectionName.replace("survey-", ""),
-          surveyorName: typeof data.surveyorName === "string" ? data.surveyorName : "",
-          verifiedBy:
-            typeof data.verifiedBy === "string"
-              ? data.verifiedBy
-              : "",
-          verifiedAt: data.verifiedAt,
-          kabupaten: typeof data.kabupaten === "string" ? data.kabupaten : "",
-          kecamatan: typeof data.kecamatan === "string" ? data.kecamatan : "",
-          jumlahLampu: normalizeLampCount(data.jumlahLampu),
-          desa: typeof data.desa === "string" ? data.desa : "",
-          createdAt: data.createdAt,
-          category: collectionName,
-        };
-      });
-    },
-    120_000
   );
 }
 
@@ -394,33 +363,6 @@ async function fetchTaskExportRecords() {
       return [];
     },
     5 * 60 * 1000
-  );
-}
-
-async function fetchAllowedTaskIdsForAdmin(adminId: string) {
-  const params = new URLSearchParams({ adminId });
-  const response = await fetch(`/api/admin/tasks?${params.toString()}`, {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    let message = "Gagal memuat daftar tugas admin dari Supabase.";
-    try {
-      const payload = (await response.json()) as { error?: string };
-      if (typeof payload.error === "string" && payload.error.trim()) {
-        message = payload.error.trim();
-      }
-    } catch {
-      // Keep fallback message when response body is not JSON.
-    }
-    throw new Error(message);
-  }
-
-  const payload = (await response.json()) as { tasks?: Array<{ id?: string | null }> };
-  return new Set(
-    (Array.isArray(payload.tasks) ? payload.tasks : [])
-      .map((task) => (typeof task.id === "string" ? task.id.trim() : ""))
-      .filter(Boolean)
   );
 }
 
@@ -641,10 +583,6 @@ export default function DashboardContent({
     () => `dashboard_reports_${isSuperAdmin ? "super" : user?.uid || "guest"}_${activeKabupaten || "all"}`,
     [activeKabupaten, isSuperAdmin, user?.uid]
   );
-  const dashboardSummaryDocId = useMemo(
-    () => `gesa-survey_${activeKabupaten || "all"}_super`,
-    [activeKabupaten]
-  );
   const dashboardApiQuery = useMemo(() => {
     const params = new URLSearchParams();
     if (activeKabupaten) params.set("kabupaten", activeKabupaten);
@@ -768,13 +706,13 @@ export default function DashboardContent({
             }
           }
         } catch (error) {
-          console.error("Supabase dashboard summary fetch failed, fallback to Firestore:", error);
+          console.error("Supabase dashboard summary fetch failed:", error);
         }
 
-        const summary = await fetchDashboardSummary(activeKabupaten);
+        const summary = await fetchDashboardSummary(dashboardSummaryApiQuery);
         if (!summary || cancelled) return;
 
-        setBundleSource("firestore");
+        setBundleSource("supabase");
         setLastUpdatedAt(new Date().toISOString());
         setReportState((current) => ({
           ...current,
@@ -818,126 +756,44 @@ export default function DashboardContent({
           error: "",
         }));
 
-        try {
-          const detailUrl = `/api/admin/gesa-survey?${dashboardApiQuery}${dashboardApiQuery ? "&" : ""}includeDetails=1&dashboardDetail=1`;
-          const verifierUrl = `/api/admin/gesa-survey?${dashboardVerifierApiQuery}`;
-          const [detailResponse, verifierResponse] = await Promise.all([
-            fetch(detailUrl, { cache: "no-store" }),
-            !isSuperAdmin ? fetch(verifierUrl, { cache: "no-store" }) : Promise.resolve(null),
-          ]);
-
-          if (detailResponse.ok) {
-            const payload = (await detailResponse.json()) as GesaSurveyDashboardBundle & { lastDataChangeAt?: string };
-            if (!cancelled) {
-              latestSummaryFingerprintRef.current = buildSummaryFingerprint(payload);
-              setBundleSource("supabase");
-              setLastUpdatedAt(payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString());
-              const mappedState = mapBundleToReportState(payload);
-              setReportState(mappedState);
-
-              if (!isSuperAdmin && verifierResponse?.ok) {
-                const verifierPayload = (await verifierResponse.json()) as GesaSurveyDashboardBundle;
-                setAdminVerificationRows(Array.isArray(verifierPayload.allRows) ? verifierPayload.allRows as SurveyReportRow[] : []);
-              } else if (isSuperAdmin) {
-                setAdminVerificationRows([]);
-              }
-
-              setDetailLoaded(true);
-              persistReportCache(mappedState);
-              return;
-            }
-          }
-
-          if (isSuperAdmin) {
-            let apiError = "Gagal memuat detail dashboard dari Supabase.";
-            try {
-              const payload = (await detailResponse.json()) as { error?: string };
-              if (typeof payload.error === "string" && payload.error.trim()) {
-                apiError = payload.error.trim();
-              }
-            } catch {
-              // Keep default message when error payload is not JSON.
-            }
-
-            throw new Error(apiError);
-          }
-        } catch (error) {
-          if (isSuperAdmin) {
-            throw error;
-          }
-          console.error("Supabase dashboard detail fetch failed, fallback to Firestore:", error);
-        }
-
-        setBundleSource("firestore");
-        setLastUpdatedAt(new Date().toISOString());
-
-        let allowedTaskIds: Set<string> | null = null;
-
-        if (!isSuperAdmin) {
-          if (!user?.uid) {
-            setReportState({
-              ...initialReportState,
-              loading: false,
-            });
-            return;
-          }
-
-          allowedTaskIds = await fetchAllowedTaskIdsForAdmin(user.uid);
-        }
-
-        const [proposeRows, existingRows, praExistingRows] = await Promise.all([
-          fetchCollectionRows("survey-apj-propose", activeKabupaten),
-          fetchCollectionRows("survey-existing", activeKabupaten),
-          fetchCollectionRows("survey-pra-existing", activeKabupaten),
+        const detailUrl = `/api/admin/gesa-survey?${dashboardApiQuery}${dashboardApiQuery ? "&" : ""}includeDetails=1&dashboardDetail=1`;
+        const verifierUrl = `/api/admin/gesa-survey?${dashboardVerifierApiQuery}`;
+        const [detailResponse, verifierResponse] = await Promise.all([
+          fetch(detailUrl, { cache: "no-store" }),
+          !isSuperAdmin ? fetch(verifierUrl, { cache: "no-store" }) : Promise.resolve(null),
         ]);
 
+        if (!detailResponse.ok) {
+          let apiError = "Gagal memuat detail dashboard dari Supabase.";
+          try {
+            const payload = (await detailResponse.json()) as { error?: string };
+            if (typeof payload.error === "string" && payload.error.trim()) {
+              apiError = payload.error.trim();
+            }
+          } catch {
+            // Keep default message when error payload is not JSON.
+          }
+          throw new Error(apiError);
+        }
+
+        const payload = (await detailResponse.json()) as GesaSurveyDashboardBundle & { lastDataChangeAt?: string };
         if (cancelled) return;
 
-        const filterByAdminTask = (rows: SurveyReportRow[]) => {
-          if (!allowedTaskIds) return rows;
-          return rows.filter((row) => row.taskId && allowedTaskIds?.has(row.taskId));
-        };
+        latestSummaryFingerprintRef.current = buildSummaryFingerprint(payload);
+        setBundleSource("supabase");
+        setLastUpdatedAt(payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString());
+        const mappedState = mapBundleToReportState(payload);
+        setReportState(mappedState);
 
-        const filteredProposeRows = filterByAdminTask(proposeRows);
-        const filteredExistingRows = filterByAdminTask(existingRows);
-        const filteredPraExistingRows = filterByAdminTask(praExistingRows);
+        if (!isSuperAdmin && verifierResponse?.ok) {
+          const verifierPayload = (await verifierResponse.json()) as GesaSurveyDashboardBundle;
+          setAdminVerificationRows(Array.isArray(verifierPayload.allRows) ? verifierPayload.allRows as SurveyReportRow[] : []);
+        } else if (isSuperAdmin) {
+          setAdminVerificationRows([]);
+        }
 
-        const rawRows = [...proposeRows, ...existingRows, ...praExistingRows];
-        const filteredRows = [...filteredProposeRows, ...filteredExistingRows, ...filteredPraExistingRows];
-        const verifierRows = rawRows.filter((row) => row.status?.toLowerCase() === "diverifikasi");
-
-        setReportState({
-          loading: false,
-          error: "",
-          allRows: filteredRows,
-          allRowsRaw: rawRows,
-          totalUniqueSurveyors: new Set(
-            filteredRows
-              .map((row) => row.surveyorName?.trim().toLowerCase())
-              .filter((value): value is string => Boolean(value))
-          ).size,
-          propose: buildSummary(filteredProposeRows),
-          existing: buildSummary(filteredExistingRows),
-          praExisting: buildSummary(filteredPraExistingRows),
-          praExistingByKecamatan: buildKecamatanSummary(filteredPraExistingRows),
-        });
-        setAdminVerificationRows(isSuperAdmin ? [] : verifierRows);
-
-        persistReportCache({
-          loading: false,
-          error: "",
-          allRows: filteredRows,
-          allRowsRaw: rawRows,
-          totalUniqueSurveyors: new Set(
-            filteredRows
-              .map((row) => row.surveyorName?.trim().toLowerCase())
-              .filter((value): value is string => Boolean(value))
-          ).size,
-          propose: buildSummary(filteredProposeRows),
-          existing: buildSummary(filteredExistingRows),
-          praExisting: buildSummary(filteredPraExistingRows),
-          praExistingByKecamatan: buildKecamatanSummary(filteredPraExistingRows),
-        });
+        setDetailLoaded(true);
+        persistReportCache(mappedState);
       } catch (error) {
         if (cancelled) return;
 
@@ -1268,52 +1124,30 @@ export default function DashboardContent({
     try {
       setSummaryRefreshing(true);
 
-      const [proposeRows, existingRows, praExistingRows] = await Promise.all([
-        fetchCollectionRows("survey-apj-propose", activeKabupaten),
-        fetchCollectionRows("survey-existing", activeKabupaten),
-        fetchCollectionRows("survey-pra-existing", activeKabupaten),
-      ]);
+      clearCachedData(`dashboard_summary_supabase_${dashboardSummaryApiQuery || "all"}`);
+      const summaryPayload = await fetchDashboardSummary(dashboardSummaryApiQuery);
+      if (!summaryPayload) {
+        throw new Error("Summary dashboard dari Supabase tidak tersedia.");
+      }
 
-      const allRows = [...proposeRows, ...existingRows, ...praExistingRows];
-      const summaryPayload: DashboardSummaryDocument & {
-        kabupatenScope: string;
-        updatedAt: Date;
-        updatedBy: string;
-      } = {
-        kabupatenScope: activeKabupaten || "all",
-        updatedAt: new Date(),
-        updatedBy: user?.email || user?.displayName || "super-admin",
-        totalUniqueSurveyors: new Set(
-          allRows
-            .map((row) => row.surveyorName?.trim().toLowerCase())
-            .filter((value): value is string => Boolean(value))
-        ).size,
-        propose: buildSummary(proposeRows),
-        existing: buildSummary(existingRows),
-        praExisting: buildSummary(praExistingRows),
-        praExistingByKecamatan: buildKecamatanSummary(praExistingRows),
-      };
-
-      await setDoc(doc(db, "dashboard-summaries", dashboardSummaryDocId), summaryPayload, { merge: true });
-      clearCachedData(`dashboard_summary_${dashboardSummaryDocId}`);
-      const mappedState: DashboardReportState = {
-        loading: false,
-        error: "",
-        allRows,
-        allRowsRaw: allRows,
-        totalUniqueSurveyors: summaryPayload.totalUniqueSurveyors || 0,
+      latestSummaryFingerprintRef.current = buildSummaryFingerprint(summaryPayload);
+      setBundleSource("supabase");
+      setLastUpdatedAt(new Date().toISOString());
+      setReportState((current) => ({
+        ...current,
+        totalUniqueSurveyors:
+          typeof summaryPayload.totalUniqueSurveyors === "number"
+            ? summaryPayload.totalUniqueSurveyors
+            : current.totalUniqueSurveyors,
         propose: mergeSummary(summaryPayload.propose),
         existing: mergeSummary(summaryPayload.existing),
         praExisting: mergeSummary(summaryPayload.praExisting),
-        praExistingByKecamatan: (summaryPayload.praExistingByKecamatan || []).map(normalizeKecamatanSummaryRow),
-      };
-      persistReportCache(mappedState);
+        praExistingByKecamatan: Array.isArray(summaryPayload.praExistingByKecamatan)
+          ? summaryPayload.praExistingByKecamatan.map(normalizeKecamatanSummaryRow)
+          : current.praExistingByKecamatan,
+      }));
 
-      setBundleSource("firestore");
-      setLastUpdatedAt(new Date().toISOString());
-      setReportState(mappedState);
-
-      alert("Summary dashboard berhasil diperbarui dari Firestore.");
+      alert("Summary dashboard berhasil diperbarui dari Supabase.");
     } catch (error) {
       console.error("Failed to refresh dashboard summary:", error);
       alert("Gagal memperbarui summary dashboard.");
