@@ -582,6 +582,7 @@ export default function DashboardContent({
   const [bundleSource, setBundleSource] = useState<DashboardBundleSource>("firestore");
   const [lastUpdatedAt, setLastUpdatedAt] = useState("");
   const [summaryVersion, setSummaryVersion] = useState(0);
+  const [adminVerificationRows, setAdminVerificationRows] = useState<SurveyReportRow[]>([]);
   const latestSummaryFingerprintRef = useRef("");
   const [startDate, setStartDate] = useState(() => {
     const today = new Date();
@@ -607,6 +608,14 @@ export default function DashboardContent({
     params.set("compact", "1");
     return params.toString();
   }, [dashboardApiQuery]);
+  const dashboardVerifierApiQuery = useMemo(() => {
+    const params = new URLSearchParams();
+    if (activeKabupaten) params.set("kabupaten", activeKabupaten);
+    params.set("status", "diverifikasi");
+    params.set("includeDetails", "1");
+    params.set("dashboardDetail", "1");
+    return params.toString();
+  }, [activeKabupaten]);
 
   const persistReportCache = (data: DashboardReportState) => {
     if (isSuperAdmin || typeof window === "undefined") return;
@@ -762,18 +771,29 @@ export default function DashboardContent({
         }));
 
         try {
-          const response = await fetch(
-            `/api/admin/gesa-survey?${dashboardApiQuery}${dashboardApiQuery ? "&" : ""}includeDetails=1&dashboardDetail=1`,
-            { cache: "no-store" }
-          );
-          if (response.ok) {
-            const payload = (await response.json()) as GesaSurveyDashboardBundle & { lastDataChangeAt?: string };
+          const detailUrl = `/api/admin/gesa-survey?${dashboardApiQuery}${dashboardApiQuery ? "&" : ""}includeDetails=1&dashboardDetail=1`;
+          const verifierUrl = `/api/admin/gesa-survey?${dashboardVerifierApiQuery}`;
+          const [detailResponse, verifierResponse] = await Promise.all([
+            fetch(detailUrl, { cache: "no-store" }),
+            !isSuperAdmin ? fetch(verifierUrl, { cache: "no-store" }) : Promise.resolve(null),
+          ]);
+
+          if (detailResponse.ok) {
+            const payload = (await detailResponse.json()) as GesaSurveyDashboardBundle & { lastDataChangeAt?: string };
             if (!cancelled) {
               latestSummaryFingerprintRef.current = buildSummaryFingerprint(payload);
               setBundleSource("supabase");
               setLastUpdatedAt(payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString());
               const mappedState = mapBundleToReportState(payload);
               setReportState(mappedState);
+
+              if (!isSuperAdmin && verifierResponse?.ok) {
+                const verifierPayload = (await verifierResponse.json()) as GesaSurveyDashboardBundle;
+                setAdminVerificationRows(Array.isArray(verifierPayload.allRows) ? verifierPayload.allRows as SurveyReportRow[] : []);
+              } else if (isSuperAdmin) {
+                setAdminVerificationRows([]);
+              }
+
               setDetailLoaded(true);
               persistReportCache(mappedState);
               return;
@@ -783,7 +803,7 @@ export default function DashboardContent({
           if (isSuperAdmin) {
             let apiError = "Gagal memuat detail dashboard dari Supabase.";
             try {
-              const payload = (await response.json()) as { error?: string };
+              const payload = (await detailResponse.json()) as { error?: string };
               if (typeof payload.error === "string" && payload.error.trim()) {
                 apiError = payload.error.trim();
               }
@@ -847,6 +867,7 @@ export default function DashboardContent({
 
         const rawRows = [...proposeRows, ...existingRows, ...praExistingRows];
         const filteredRows = [...filteredProposeRows, ...filteredExistingRows, ...filteredPraExistingRows];
+        const verifierRows = rawRows.filter((row) => row.status?.toLowerCase() === "diverifikasi");
 
         setReportState({
           loading: false,
@@ -863,6 +884,7 @@ export default function DashboardContent({
           praExisting: buildSummary(filteredPraExistingRows),
           praExistingByKecamatan: buildKecamatanSummary(filteredPraExistingRows),
         });
+        setAdminVerificationRows(isSuperAdmin ? [] : verifierRows);
 
         persistReportCache({
           loading: false,
@@ -882,6 +904,7 @@ export default function DashboardContent({
       } catch (error) {
         if (cancelled) return;
 
+        setAdminVerificationRows([]);
         setReportState({
           ...initialReportState,
           loading: false,
@@ -899,7 +922,7 @@ export default function DashboardContent({
     return () => {
       cancelled = true;
     };
-  }, [activeKabupaten, dashboardApiQuery, detailVisible, isSuperAdmin, reportCacheKey, user?.uid, isActive, summaryVersion]);
+  }, [activeKabupaten, dashboardApiQuery, dashboardVerifierApiQuery, detailVisible, isSuperAdmin, reportCacheKey, user?.uid, isActive, summaryVersion]);
 
   const waitingReviewCount = useMemo(
     () =>
@@ -994,15 +1017,22 @@ export default function DashboardContent({
   const adminOwnVerifiedRows = useMemo(() => {
     if (isSuperAdmin || !adminIdentityKeys.length) return [];
 
-    const rawRows = reportState.allRowsRaw ?? [];
+    const rawRows = adminVerificationRows ?? [];
     return rawRows
       .filter((row) => row.status?.toLowerCase() === "diverifikasi")
       .filter((row) => {
         const verifiedBy = row.verifiedBy?.trim().toLowerCase();
         return Boolean(verifiedBy && adminIdentityKeys.includes(verifiedBy));
       })
+      .filter((row) => {
+        const verifiedDate = resolveTimestamp(row.verifiedAt);
+        if (!verifiedDate) return false;
+        if (normalizedDateRange.start && verifiedDate < normalizedDateRange.start) return false;
+        if (normalizedDateRange.end && verifiedDate > normalizedDateRange.end) return false;
+        return true;
+      })
       .sort((a, b) => (resolveTimestamp(b.verifiedAt)?.getTime() || 0) - (resolveTimestamp(a.verifiedAt)?.getTime() || 0));
-  }, [adminIdentityKeys, isSuperAdmin, reportState.allRowsRaw]);
+  }, [adminIdentityKeys, adminVerificationRows, isSuperAdmin, normalizedDateRange.end, normalizedDateRange.start]);
 
   const adminDailyVerificationRows = useMemo(
     () => buildDailyVerificationSummary(adminOwnVerifiedRows),
