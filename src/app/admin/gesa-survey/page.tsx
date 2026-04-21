@@ -227,7 +227,11 @@ function GesaSurveyContent() {
           )}
           {visitedMenus.includes("distribusi-tugas") && (
             <section className={activeMenu === "distribusi-tugas" ? "block" : "hidden"} aria-hidden={activeMenu !== "distribusi-tugas"}>
-              <DistribusiTugas setActiveMenu={setActiveMenu} isActive={activeMenu === "distribusi-tugas"} />
+              <DistribusiTugas
+                setActiveMenu={setActiveMenu}
+                isSuperAdmin={isSuperAdmin}
+                isActive={activeMenu === "distribusi-tugas"}
+              />
             </section>
           )}
           {visitedMenus.includes("validasi-survey") && (

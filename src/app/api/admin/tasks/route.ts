@@ -18,6 +18,12 @@ interface TaskRow {
   raw_payload?: Record<string, unknown> | null;
 }
 
+type TaskInsertRow = ReturnType<typeof buildTaskInsertRow>;
+
+interface TaskUpsertResult {
+  error: { message: string } | null;
+}
+
 function mapTaskRow(row: TaskRow) {
   return {
     id: row.fb_doc_id || "",
@@ -48,15 +54,31 @@ function mapTaskRow(row: TaskRow) {
 export async function GET(request: NextRequest) {
   try {
     const adminId = request.nextUrl.searchParams.get("adminId")?.trim();
-    const supabase = getSupabaseAdminClient() as any;
+    const search = request.nextUrl.searchParams.get("q")?.trim();
+    const includeAll = request.nextUrl.searchParams.get("includeAll") === "true";
+    const supabase = getSupabaseAdminClient();
     let query = supabase
       .from("tasks")
       .select("fb_doc_id, title, description, surveyor_id, surveyor_name, surveyor_email, status, type, kmz_file_url, kmz_file_url_2, offline_enabled, created_at, raw_payload")
       .order("created_at", { ascending: false })
-      .limit(200);
+      .limit(includeAll ? 500 : 200);
 
-    if (adminId) {
+    if (adminId && !includeAll) {
       query = query.eq("created_by_admin_id", adminId);
+    }
+
+    if (search) {
+      const escaped = search.replace(/[%_]/g, "");
+      query = query.or(
+        [
+          `title.ilike.%${escaped}%`,
+          `description.ilike.%${escaped}%`,
+          `surveyor_name.ilike.%${escaped}%`,
+          `surveyor_email.ilike.%${escaped}%`,
+          `type.ilike.%${escaped}%`,
+          `status.ilike.%${escaped}%`,
+        ].join(",")
+      );
     }
 
     const { data, error } = await query;
@@ -64,6 +86,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       source: "supabase",
+      scope: includeAll ? "all" : adminId ? "admin" : "default",
       tasks: ((data || []) as TaskRow[]).map(mapTaskRow),
     });
   } catch (error) {
@@ -79,8 +102,11 @@ export async function POST(request: NextRequest) {
     const payload = (await request.json()) as Record<string, unknown>;
     const taskId = createHybridId();
     const row = buildTaskInsertRow(taskId, payload);
-    const supabase = getSupabaseAdminClient() as any;
-    const { error } = await supabase.from("tasks").upsert(row, { onConflict: "fb_doc_id" });
+    const supabase = getSupabaseAdminClient();
+    const taskTable = supabase.from("tasks") as unknown as {
+      upsert: (values: TaskInsertRow, options?: { onConflict?: string }) => Promise<TaskUpsertResult>;
+    };
+    const { error } = await taskTable.upsert(row, { onConflict: "fb_doc_id" });
     if (error) throw new Error(error.message);
 
     return NextResponse.json({ ok: true, id: taskId });

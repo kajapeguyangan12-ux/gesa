@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { collection, getDoc, getDocs, addDoc, serverTimestamp, query, orderBy, limit, deleteDoc, doc, setDoc, updateDoc, where } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
@@ -107,10 +107,11 @@ interface SurveyDocData {
 
 interface DistribusiTugasProps {
   setActiveMenu?: (menu: string) => void;
+  isSuperAdmin?: boolean;
   isActive?: boolean;
 }
 
-export default function DistribusiTugas({ isActive = false }: DistribusiTugasProps) {
+export default function DistribusiTugas({ isSuperAdmin = false, isActive = false }: DistribusiTugasProps) {
   const TASKS_CACHE_PREFIX = "distribusi_tugas_tasks";
   const TASK_PROGRESS_CACHE_PREFIX = "distribusi_tugas_progress";
   const PETUGAS_CACHE_KEY = "distribusi_tugas_petugas_list_firestore_v3";
@@ -139,7 +140,9 @@ export default function DistribusiTugas({ isActive = false }: DistribusiTugasPro
   const [savingOfflineSettings, setSavingOfflineSettings] = useState(false);
   const [savingTaskOfflineId, setSavingTaskOfflineId] = useState<string | null>(null);
   const [selectedTaskFilter, setSelectedTaskFilter] = useState<"all" | "pending" | "in-progress" | "completed">("all");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [activeSearchQuery, setActiveSearchQuery] = useState("");
+  const [hasRequestedTaskLoad, setHasRequestedTaskLoad] = useState(false);
   
   // Detail modal states
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -155,8 +158,15 @@ export default function DistribusiTugas({ isActive = false }: DistribusiTugasPro
   useEffect(() => {
     if (!isActive) return;
     fetchOfflineSettings();
+    if (isSuperAdmin && !hasRequestedTaskLoad) {
+      setTasks([]);
+      setLoadingTasks(false);
+      return;
+    }
     void fetchTasks();
-  }, [isActive]);
+    // fetchTasks bergantung pada query aktif dan mode super admin; effect ini memang dipicu ulang saat keduanya berubah.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, activeSearchQuery, isSuperAdmin, hasRequestedTaskLoad]);
 
   // Auto-load KMZ files when detail modal opens
   useEffect(() => {
@@ -199,7 +209,7 @@ export default function DistribusiTugas({ isActive = false }: DistribusiTugasPro
     }
   };
 
-  const fetchTasks = async (forceRefresh = false) => {
+  const fetchTasks = async (forceRefresh = false, overrideSearch?: string) => {
     try {
       setLoadingTasks(true);
       
@@ -207,14 +217,18 @@ export default function DistribusiTugas({ isActive = false }: DistribusiTugasPro
       const storedUser = localStorage.getItem('gesa_user');
       const currentAdmin = storedUser ? JSON.parse(storedUser) : null;
       const adminId = currentAdmin?.uid || null;
+      const effectiveSearch = typeof overrideSearch === "string" ? overrideSearch.trim() : activeSearchQuery.trim();
+      const includeAll = isSuperAdmin;
       
-      const cacheKey = `${TASKS_CACHE_PREFIX}_${adminId || "all"}`;
+      const cacheKey = `${TASKS_CACHE_PREFIX}_${includeAll ? "super_admin_all" : adminId || "all"}_${effectiveSearch || "all"}`;
       if (forceRefresh) {
         clearCachedData(cacheKey);
       }
 
       const params = new URLSearchParams();
-      if (adminId) params.set("adminId", adminId);
+      if (adminId && !includeAll) params.set("adminId", adminId);
+      if (includeAll) params.set("includeAll", "true");
+      if (effectiveSearch) params.set("q", effectiveSearch);
 
       const response = await fetch(`/api/admin/tasks?${params.toString()}`, {
         cache: "no-store",
@@ -954,8 +968,12 @@ export default function DistribusiTugas({ isActive = false }: DistribusiTugasPro
   // Filter tasks
   const filteredTasks = tasks.filter(task => {
     const matchesFilter = selectedTaskFilter === "all" || task.status === selectedTaskFilter;
-    const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         task.surveyorName.toLowerCase().includes(searchQuery.toLowerCase());
+    const normalizedSearch = activeSearchQuery.toLowerCase();
+    const matchesSearch = !normalizedSearch ||
+                         task.title.toLowerCase().includes(normalizedSearch) ||
+                         task.surveyorName.toLowerCase().includes(normalizedSearch) ||
+                         task.surveyorEmail.toLowerCase().includes(normalizedSearch) ||
+                         task.description.toLowerCase().includes(normalizedSearch);
     return matchesFilter && matchesSearch;
   });
 
@@ -966,6 +984,37 @@ export default function DistribusiTugas({ isActive = false }: DistribusiTugasPro
     inProgress: tasks.filter(t => t.status === "in-progress").length,
     completed: tasks.filter(t => t.status === "completed").length,
   };
+
+  const handleSearchSubmit = (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    const nextSearch = searchInput.trim();
+    if (isSuperAdmin && !hasRequestedTaskLoad) {
+      setHasRequestedTaskLoad(true);
+    }
+    if (nextSearch === activeSearchQuery) {
+      void fetchTasks(true, nextSearch);
+      return;
+    }
+    setActiveSearchQuery(nextSearch);
+  };
+
+  const handleResetSearch = () => {
+    setSearchInput("");
+    if (isSuperAdmin) {
+      setActiveSearchQuery("");
+      setHasRequestedTaskLoad(false);
+      setTasks([]);
+      setLoadingTasks(false);
+      return;
+    }
+    if (!activeSearchQuery) {
+      void fetchTasks(true, "");
+      return;
+    }
+    setActiveSearchQuery("");
+  };
+
+  const shouldShowSuperAdminEmptyState = isSuperAdmin && !hasRequestedTaskLoad;
 
   return (
     <>
@@ -978,15 +1027,26 @@ export default function DistribusiTugas({ isActive = false }: DistribusiTugasPro
               <div>
                 <h1 className="text-3xl font-bold text-white mb-2">Manajemen Tugas Survey</h1>
                 <p className="text-blue-100">Pantau dan kelola distribusi tugas untuk tim surveyor</p>
+                {isSuperAdmin ? (
+                  <p className="mt-2 text-xs font-medium text-blue-100/90">
+                    Mode super admin aktif: data seluruh sistem baru dimuat saat Anda memberi perintah.
+                  </p>
+                ) : null}
               </div>
               <button 
-                onClick={() => void fetchTasks(true)}
+                onClick={() => {
+                  if (isSuperAdmin && !hasRequestedTaskLoad) {
+                    setHasRequestedTaskLoad(true);
+                    return;
+                  }
+                  void fetchTasks(true);
+                }}
                 className="flex items-center gap-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-5 py-3 rounded-xl font-semibold transition-all backdrop-blur-sm border border-white border-opacity-30"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                Refresh
+                {isSuperAdmin && !hasRequestedTaskLoad ? "Muat Tugas" : "Refresh"}
               </button>
             </div>
           </div>
@@ -994,59 +1054,71 @@ export default function DistribusiTugas({ isActive = false }: DistribusiTugasPro
 
         {/* Stats Cards */}
         <div className="max-w-7xl mx-auto px-8 -mt-6 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-            {/* Total Tugas */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all border border-gray-100">
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
+          {shouldShowSuperAdminEmptyState ? (
+            <div className="rounded-2xl border border-blue-100 bg-white p-6 shadow-lg">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Mode Manual Super Admin</h3>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Statistik dan daftar tugas belum dimuat. Gunakan `Cari` untuk pencarian tertentu atau `Muat Tugas` jika ingin menampilkan seluruh tugas sistem.
+                  </p>
                 </div>
-                <span className="text-3xl font-bold text-gray-900">{stats.total}</span>
+                <div className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                  Menunggu perintah
+                </div>
               </div>
-              <p className="text-sm font-medium text-gray-600">Total Tugas</p>
             </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+              <div className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all border border-gray-100">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                  </div>
+                  <span className="text-3xl font-bold text-gray-900">{stats.total}</span>
+                </div>
+                <p className="text-sm font-medium text-gray-600">Total Tugas</p>
+              </div>
 
-            {/* Sedang Berjalan */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all border border-gray-100">
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+              <div className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all border border-gray-100">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
+                    <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <span className="text-3xl font-bold text-gray-900">{stats.pending}</span>
                 </div>
-                <span className="text-3xl font-bold text-gray-900">{stats.pending}</span>
+                <p className="text-sm font-medium text-gray-600">Sedang Berjalan</p>
               </div>
-              <p className="text-sm font-medium text-gray-600">Sedang Berjalan</p>
-            </div>
 
-            {/* Selesai */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all border border-gray-100">
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+              <div className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all border border-gray-100">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <span className="text-3xl font-bold text-gray-900">{stats.completed}</span>
                 </div>
-                <span className="text-3xl font-bold text-gray-900">{stats.completed}</span>
+                <p className="text-sm font-medium text-gray-600">Selesai</p>
               </div>
-              <p className="text-sm font-medium text-gray-600">Selesai</p>
-            </div>
 
-            {/* Pending */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all border border-gray-100">
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+              <div className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all border border-gray-100">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
+                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <span className="text-3xl font-bold text-gray-900">{stats.inProgress}</span>
                 </div>
-                <span className="text-3xl font-bold text-gray-900">{stats.inProgress}</span>
+                <p className="text-sm font-medium text-gray-600">Pending</p>
               </div>
-              <p className="text-sm font-medium text-gray-600">Pending</p>
             </div>
-          </div>
+          )}
 
           <div className="mt-5 rounded-2xl border border-gray-100 bg-white p-5 shadow-lg">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1081,20 +1153,42 @@ export default function DistribusiTugas({ isActive = false }: DistribusiTugasPro
           <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
               {/* Search */}
-              <div className="flex-1 w-full md:w-auto">
-                <div className="relative">
-                  <svg className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  <input
-                    type="text"
-                    placeholder="Cari tugas atau surveyor..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
+              <form onSubmit={handleSearchSubmit} className="flex-1 w-full md:w-auto">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                  <div className="relative flex-1">
+                    <svg className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder={isSuperAdmin ? "Cari seluruh tugas sistem..." : "Cari tugas atau surveyor..."}
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                      className="w-full pl-12 pr-4 py-3 bg-white border-2 border-gray-300 rounded-xl text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-slate-800"
+                    >
+                      Cari
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleResetSearch}
+                      className="rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50"
+                    >
+                      Reset
+                    </button>
+                  </div>
                 </div>
-              </div>
+                {isSuperAdmin ? (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Search akan memanggil data hanya saat Anda klik `Cari`, bukan otomatis saat halaman dibuka.
+                  </p>
+                ) : null}
+              </form>
 
               {/* Filter Status */}
               <div className="flex gap-3">
@@ -1189,7 +1283,9 @@ export default function DistribusiTugas({ isActive = false }: DistribusiTugasPro
           <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200">
               <h2 className="text-lg font-bold text-gray-900">Daftar Tugas</h2>
-              <p className="text-sm text-gray-500 mt-1">{filteredTasks.length} tugas ditemukan</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {shouldShowSuperAdminEmptyState ? "Belum ada data. Jalankan pencarian atau muat semua tugas." : `${filteredTasks.length} tugas ditemukan`}
+              </p>
             </div>
 
             {loadingTasks ? (
@@ -1198,6 +1294,18 @@ export default function DistribusiTugas({ isActive = false }: DistribusiTugasPro
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
                   <p className="text-gray-500">Memuat data tugas...</p>
                 </div>
+              </div>
+            ) : shouldShowSuperAdminEmptyState ? (
+              <div className="flex flex-col items-center justify-center py-20 px-4">
+                <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mb-4">
+                  <svg className="w-12 h-12 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Pencarian Belum Dijalankan</h3>
+                <p className="text-gray-500 text-center max-w-xl">
+                  Untuk menjaga halaman tetap ringan, super admin tidak langsung memuat seluruh tugas. Gunakan kolom pencarian atau tombol `Muat Tugas` di atas saat diperlukan.
+                </p>
               </div>
             ) : filteredTasks.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 px-4">
