@@ -155,29 +155,15 @@ export default function DistribusiTugas({ isActive = false }: DistribusiTugasPro
   useEffect(() => {
     if (!isActive) return;
     fetchOfflineSettings();
-    fetchTasks();
-
-    const intervalId = window.setInterval(() => {
-      void fetchTasks(true);
-    }, 10_000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
+    void fetchTasks();
   }, [isActive]);
 
   // Auto-load KMZ files when detail modal opens
   useEffect(() => {
     if (!isActive) return;
     if (showDetailModal && selectedTaskDetail) {
-      loadDetailKmzFiles(selectedTaskDetail);
+      void loadDetailKmzFiles(selectedTaskDetail);
       void loadTaskProgress(selectedTaskDetail);
-      const intervalId = window.setInterval(() => {
-        void loadTaskProgress(selectedTaskDetail);
-      }, 10_000);
-      return () => {
-        window.clearInterval(intervalId);
-      };
     }
     // Fungsi loader didefinisikan di komponen yang sama dan aman dipicu ulang saat task detail berubah.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2522,6 +2508,22 @@ export default function DistribusiTugas({ isActive = false }: DistribusiTugasPro
                   </svg>
                   Progress Tugas di Peta
                 </h4>
+
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs text-slate-600">
+                    Data progress tidak refresh otomatis lagi. Gunakan refresh manual saat ingin ambil data terbaru.
+                  </p>
+                  <button
+                    onClick={() => void loadTaskProgress(selectedTaskDetail)}
+                    disabled={loadingTaskProgress}
+                    className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    {loadingTaskProgress ? "Memuat..." : "Refresh Progress"}
+                  </button>
+                </div>
 
                 {loadingTaskProgress ? (
                   <div className="flex h-[220px] items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50">

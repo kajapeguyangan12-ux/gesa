@@ -21,6 +21,7 @@ interface User {
 
 interface UsersPagePayload {
   hasMore: boolean;
+  query?: string;
   users: User[];
   nextOffset?: number;
 }
@@ -131,11 +132,13 @@ function UserAdminContent() {
   const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
   const [lastVisibleCreatedAt, setLastVisibleCreatedAt] = useState<any>(null);
   const [supabaseOffset, setSupabaseOffset] = useState(0);
+  const [searchInput, setSearchInput] = useState("");
+  const [activeSearchQuery, setActiveSearchQuery] = useState("");
 
   const isSuperAdmin = user?.role === "super-admin";
 
   useEffect(() => {
-    fetchUsers();
+    void fetchUsers(false, "");
   }, []);
 
   const applyUserBuckets = (users: User[]) => {
@@ -161,49 +164,77 @@ function UserAdminContent() {
     return value;
   };
 
-  const fetchUsers = async (forceRefresh = false) => {
+  const fetchUsers = async (forceRefresh = false, searchQuery = activeSearchQuery) => {
     try {
+      const normalizedSearchQuery = searchQuery.trim();
       if (forceRefresh) {
         setRefreshing(true);
-        clearCachedData(USERS_CACHE_KEY);
+        if (!normalizedSearchQuery) {
+          clearCachedData(USERS_CACHE_KEY);
+        }
       } else {
         setLoading(true);
       }
       setExpandedSections({});
+      setHasMoreUsers(false);
+      setSupabaseOffset(0);
+      setLastVisibleCreatedAt(null);
 
-      const pagePayload = await fetchWithCache<UsersPagePayload>(
-        USERS_CACHE_KEY,
-        async () => {
-          try {
-            const response = await fetch(`/api/admin/user-admin?limit=${USER_FETCH_LIMIT}&offset=0`, {
-              cache: "no-store",
-            });
-            if (response.ok) {
-              const payload = (await response.json()) as UsersPagePayload;
-              return payload;
-            }
-          } catch (error) {
-            console.error("Supabase user-admin fetch failed, fallback to Firestore:", error);
+      const loadUsersPage = async () => {
+        try {
+          const params = new URLSearchParams({
+            limit: String(USER_FETCH_LIMIT),
+            offset: "0",
+          });
+          if (normalizedSearchQuery) {
+            params.set("q", normalizedSearchQuery);
           }
 
-          const usersQuery = query(
-            collection(db, "User-Admin"),
-            orderBy("createdAt", "desc"),
-            limit(USER_FETCH_LIMIT)
+          const response = await fetch(`/api/admin/user-admin?${params.toString()}`, {
+            cache: "no-store",
+          });
+          if (response.ok) {
+            const payload = (await response.json()) as UsersPagePayload;
+            return payload;
+          }
+        } catch (error) {
+          console.error("Supabase user-admin fetch failed, fallback to Firestore:", error);
+        }
+
+        const usersQuery = query(
+          collection(db, "User-Admin"),
+          orderBy("createdAt", "desc"),
+          limit(USER_FETCH_LIMIT)
+        );
+        const usersSnapshot = await getDocs(usersQuery);
+        const users = usersSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as User[];
+        const filteredUsers = normalizedSearchQuery
+          ? users.filter((entry) =>
+              [entry.name, entry.username, entry.email, entry.role]
+                .filter(Boolean)
+                .some((value) => String(value).toLowerCase().includes(normalizedSearchQuery.toLowerCase()))
+            )
+          : users;
+        return {
+          query: normalizedSearchQuery,
+          users: filteredUsers,
+          hasMore: !normalizedSearchQuery && usersSnapshot.docs.length === USER_FETCH_LIMIT,
+        };
+      };
+
+      const pagePayload = normalizedSearchQuery
+        ? await loadUsersPage()
+        : await fetchWithCache<UsersPagePayload>(
+            USERS_CACHE_KEY,
+            loadUsersPage,
+            USERS_CACHE_TTL_MS
           );
-          const usersSnapshot = await getDocs(usersQuery);
-          const users = usersSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as User[];
-          return {
-            users,
-            hasMore: usersSnapshot.docs.length === USER_FETCH_LIMIT,
-          };
-        },
-        USERS_CACHE_TTL_MS
-      );
+
       applyUserBuckets(pagePayload.users);
+      setActiveSearchQuery(normalizedSearchQuery);
       setHasMoreUsers(pagePayload.hasMore);
       setSupabaseOffset(pagePayload.nextOffset || pagePayload.users.length);
       setLastVisibleCreatedAt(
@@ -225,7 +256,15 @@ function UserAdminContent() {
     setLoadingMoreUsers(true);
     try {
       try {
-        const response = await fetch(`/api/admin/user-admin?limit=${USER_FETCH_LIMIT}&offset=${supabaseOffset}`, {
+        const params = new URLSearchParams({
+          limit: String(USER_FETCH_LIMIT),
+          offset: String(supabaseOffset),
+        });
+        if (activeSearchQuery) {
+          params.set("q", activeSearchQuery);
+        }
+
+        const response = await fetch(`/api/admin/user-admin?${params.toString()}`, {
           cache: "no-store",
         });
         if (response.ok) {
@@ -243,6 +282,11 @@ function UserAdminContent() {
         }
       } catch (error) {
         console.error("Supabase load more users failed, fallback to Firestore:", error);
+      }
+
+      if (activeSearchQuery) {
+        setHasMoreUsers(false);
+        return;
       }
 
       const usersQuery = query(
@@ -347,6 +391,15 @@ function UserAdminContent() {
     } finally {
       setDeleting(false);
     }
+  };
+
+  const handleSearchUsers = async () => {
+    await fetchUsers(true, searchInput);
+  };
+
+  const handleResetSearch = async () => {
+    setSearchInput("");
+    await fetchUsers(true, "");
   };
 
   const formatDate = (timestamp: any) => {
@@ -614,12 +667,64 @@ function UserAdminContent() {
           </div>
         ) : (
           <>
+            <div className="mb-4 rounded-2xl border border-purple-100 bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                <div className="flex-1">
+                  <label className="mb-2 block text-sm font-semibold text-gray-800">
+                    Cari Pengguna
+                  </label>
+                  <input
+                    type="text"
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void handleSearchUsers();
+                      }
+                    }}
+                    placeholder="Cari nama, username, email, atau role..."
+                    className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-sm font-medium text-gray-900 outline-none transition-all placeholder:text-gray-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void handleSearchUsers()}
+                    className="rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-purple-700"
+                  >
+                    Cari
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleResetSearch()}
+                    disabled={!searchInput && !activeSearchQuery}
+                    className="rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
+              {activeSearchQuery ? (
+                <p className="mt-3 text-xs font-medium text-purple-700">
+                  Menampilkan hasil pencarian untuk: <span className="font-bold">{activeSearchQuery}</span>
+                </p>
+              ) : (
+                <p className="mt-3 text-xs text-gray-500">
+                  Pencarian dilakukan ke backend, jadi user bisa ditemukan walau belum tampil di batch awal.
+                </p>
+              )}
+            </div>
+
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-purple-100 bg-white px-4 py-3 shadow-sm">
               <p className="text-sm font-medium text-gray-700">
-                Total pengguna yang sudah dimuat: <span className="font-bold text-purple-700">{allUsers.length}</span>
+                {activeSearchQuery ? "Total hasil pencarian: " : "Total pengguna yang sudah dimuat: "}
+                <span className="font-bold text-purple-700">{allUsers.length}</span>
               </p>
               <p className="text-xs text-gray-500">
-                Data dimuat bertahap per {USER_FETCH_LIMIT} item.
+                {activeSearchQuery
+                  ? "Hasil diambil dari query pencarian backend."
+                  : `Data dimuat bertahap per ${USER_FETCH_LIMIT} item.`}
               </p>
             </div>
 
@@ -635,7 +740,7 @@ function UserAdminContent() {
               {renderUserSection("Petugas BMD & Gudang Project", bmdGudang, "pink")}
             </div>
 
-            {hasMoreUsers && (
+            {hasMoreUsers && !activeSearchQuery && (
               <div className="mt-8 flex items-center justify-center">
                 <button
                   type="button"

@@ -50,12 +50,21 @@ export async function DELETE(
       throw new Error(deleteAuthError.message);
     }
 
-    await getAdminDb().collection("User-Admin").doc(userId).delete().catch(() => undefined);
-    if (authUserId !== userId) {
-      await getAdminDb().collection("User-Admin").doc(authUserId).delete().catch(() => undefined);
+    let firebaseMirrorWarning: string | null = null;
+    try {
+      await getAdminDb().collection("User-Admin").doc(userId).delete().catch(() => undefined);
+      if (authUserId !== userId) {
+        await getAdminDb().collection("User-Admin").doc(authUserId).delete().catch(() => undefined);
+      }
+    } catch (firebaseError) {
+      firebaseMirrorWarning =
+        firebaseError instanceof Error
+          ? firebaseError.message
+          : "Sinkronisasi hapus user ke Firestore gagal.";
+      console.warn("[user-admin] Firebase mirror delete failed:", firebaseMirrorWarning);
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, warning: firebaseMirrorWarning });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Gagal menghapus user admin." },
