@@ -4,8 +4,6 @@ import { useState, useEffect, memo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { collection, getDocs, query, orderBy, limit, startAfter, Timestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 
 interface User {
@@ -130,7 +128,6 @@ function UserAdminContent() {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [hasMoreUsers, setHasMoreUsers] = useState(false);
   const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
-  const [lastVisibleCreatedAt, setLastVisibleCreatedAt] = useState<any>(null);
   const [supabaseOffset, setSupabaseOffset] = useState(0);
   const [searchInput, setSearchInput] = useState("");
   const [activeSearchQuery, setActiveSearchQuery] = useState("");
@@ -154,16 +151,6 @@ function UserAdminContent() {
     setBmdGudang(users.filter((item) => item.role === "petugas-bmd-gudang"));
   };
 
-  const normalizeCreatedAtCursor = (value: any) => {
-    if (!value) return null;
-    if (value instanceof Timestamp) return value;
-    if (typeof value?.toDate === "function") return value;
-    if (typeof value?.seconds === "number") {
-      return new Timestamp(value.seconds, value.nanoseconds ?? 0);
-    }
-    return value;
-  };
-
   const fetchUsers = async (forceRefresh = false, searchQuery = activeSearchQuery) => {
     try {
       const normalizedSearchQuery = searchQuery.trim();
@@ -178,51 +165,60 @@ function UserAdminContent() {
       setExpandedSections({});
       setHasMoreUsers(false);
       setSupabaseOffset(0);
-      setLastVisibleCreatedAt(null);
 
       const loadUsersPage = async () => {
-        try {
-          const params = new URLSearchParams({
-            limit: String(USER_FETCH_LIMIT),
-            offset: "0",
-          });
-          if (normalizedSearchQuery) {
-            params.set("q", normalizedSearchQuery);
+        if (normalizedSearchQuery) {
+          const searchBatchSize = 200;
+          let offset = 0;
+          let hasMore = true;
+          const users: User[] = [];
+
+          while (hasMore) {
+            const params = new URLSearchParams({
+              limit: String(searchBatchSize),
+              offset: String(offset),
+              q: normalizedSearchQuery,
+            });
+
+            const response = await fetch(`/api/admin/user-admin?${params.toString()}`, {
+              cache: "no-store",
+            });
+            const payload = (await response.json()) as UsersPagePayload & { error?: string; total?: number };
+            if (!response.ok) {
+              throw new Error(payload.error || "Gagal memuat hasil pencarian user dari Supabase.");
+            }
+
+            const batchUsers = payload.users || [];
+            users.push(...batchUsers);
+            hasMore = Boolean(payload.hasMore);
+            offset = payload.nextOffset || offset + batchUsers.length;
+
+            if (batchUsers.length === 0) {
+              hasMore = false;
+            }
           }
 
-          const response = await fetch(`/api/admin/user-admin?${params.toString()}`, {
-            cache: "no-store",
-          });
-          if (response.ok) {
-            const payload = (await response.json()) as UsersPagePayload;
-            return payload;
-          }
-        } catch (error) {
-          console.error("Supabase user-admin fetch failed, fallback to Firestore:", error);
+          return {
+            query: normalizedSearchQuery,
+            users,
+            hasMore: false,
+            nextOffset: users.length,
+          };
         }
 
-        const usersQuery = query(
-          collection(db, "User-Admin"),
-          orderBy("createdAt", "desc"),
-          limit(USER_FETCH_LIMIT)
-        );
-        const usersSnapshot = await getDocs(usersQuery);
-        const users = usersSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as User[];
-        const filteredUsers = normalizedSearchQuery
-          ? users.filter((entry) =>
-              [entry.name, entry.username, entry.email, entry.role]
-                .filter(Boolean)
-                .some((value) => String(value).toLowerCase().includes(normalizedSearchQuery.toLowerCase()))
-            )
-          : users;
-        return {
-          query: normalizedSearchQuery,
-          users: filteredUsers,
-          hasMore: !normalizedSearchQuery && usersSnapshot.docs.length === USER_FETCH_LIMIT,
-        };
+        const params = new URLSearchParams({
+          limit: String(USER_FETCH_LIMIT),
+          offset: "0",
+        });
+
+        const response = await fetch(`/api/admin/user-admin?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const payload = (await response.json()) as UsersPagePayload & { error?: string };
+        if (!response.ok) {
+          throw new Error(payload.error || "Gagal memuat data user dari Supabase.");
+        }
+        return payload;
       };
 
       const pagePayload = normalizedSearchQuery
@@ -237,11 +233,6 @@ function UserAdminContent() {
       setActiveSearchQuery(normalizedSearchQuery);
       setHasMoreUsers(pagePayload.hasMore);
       setSupabaseOffset(pagePayload.nextOffset || pagePayload.users.length);
-      setLastVisibleCreatedAt(
-        pagePayload.users.length > 0
-          ? normalizeCreatedAtCursor(pagePayload.users[pagePayload.users.length - 1].createdAt)
-          : null
-      );
     } catch (error) {
       console.error("Error fetching users:", error);
     } finally {
@@ -251,56 +242,26 @@ function UserAdminContent() {
   };
 
   const handleLoadMoreUsers = async () => {
-    if (!hasMoreUsers || !lastVisibleCreatedAt || loadingMoreUsers) return;
+    if (!hasMoreUsers || loadingMoreUsers) return;
 
     setLoadingMoreUsers(true);
     try {
-      try {
-        const params = new URLSearchParams({
-          limit: String(USER_FETCH_LIMIT),
-          offset: String(supabaseOffset),
-        });
-        if (activeSearchQuery) {
-          params.set("q", activeSearchQuery);
-        }
-
-        const response = await fetch(`/api/admin/user-admin?${params.toString()}`, {
-          cache: "no-store",
-        });
-        if (response.ok) {
-          const payload = (await response.json()) as UsersPagePayload;
-          const nextUsers = payload.users || [];
-          if (nextUsers.length > 0) {
-            const mergedUsers = [...allUsers, ...nextUsers];
-            applyUserBuckets(mergedUsers);
-            setHasMoreUsers(Boolean(payload.hasMore));
-            setSupabaseOffset(payload.nextOffset || mergedUsers.length);
-            return;
-          }
-          setHasMoreUsers(false);
-          return;
-        }
-      } catch (error) {
-        console.error("Supabase load more users failed, fallback to Firestore:", error);
-      }
-
+      const params = new URLSearchParams({
+        limit: String(USER_FETCH_LIMIT),
+        offset: String(supabaseOffset),
+      });
       if (activeSearchQuery) {
-        setHasMoreUsers(false);
-        return;
+        params.set("q", activeSearchQuery);
       }
 
-      const usersQuery = query(
-        collection(db, "User-Admin"),
-        orderBy("createdAt", "desc"),
-        startAfter(lastVisibleCreatedAt),
-        limit(USER_FETCH_LIMIT)
-      );
-      const usersSnapshot = await getDocs(usersQuery);
-      const nextUsers = usersSnapshot.docs.map((snapshotDoc) => ({
-        id: snapshotDoc.id,
-        ...snapshotDoc.data(),
-      })) as User[];
-
+      const response = await fetch(`/api/admin/user-admin?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as UsersPagePayload & { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Gagal memuat data user berikutnya dari Supabase.");
+      }
+      const nextUsers = payload.users || [];
       if (nextUsers.length === 0) {
         setHasMoreUsers(false);
         return;
@@ -308,10 +269,8 @@ function UserAdminContent() {
 
       const mergedUsers = [...allUsers, ...nextUsers];
       applyUserBuckets(mergedUsers);
-      setHasMoreUsers(usersSnapshot.docs.length === USER_FETCH_LIMIT);
-      setLastVisibleCreatedAt(
-        normalizeCreatedAtCursor(nextUsers[nextUsers.length - 1]?.createdAt)
-      );
+      setHasMoreUsers(Boolean(payload.hasMore));
+      setSupabaseOffset(payload.nextOffset || mergedUsers.length);
     } catch (error) {
       console.error("Error loading more users:", error);
     } finally {
@@ -630,7 +589,7 @@ function UserAdminContent() {
                   Kelola dan pantau aktivitas pengguna sistem
                 </p>
                 <p className="mt-2 text-xs lg:text-sm text-purple-100/90">
-                  Memuat {USER_FETCH_LIMIT} pengguna per halaman untuk mengurangi read Firestore.
+                  Memuat {USER_FETCH_LIMIT} pengguna per halaman dari Supabase.
                 </p>
               </div>
             </div>

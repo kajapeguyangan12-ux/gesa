@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebaseAdmin";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
 
 interface UserAdminRow {
@@ -144,28 +143,8 @@ export async function POST(request: NextRequest) {
       throw new Error(profileError.message);
     }
 
-    let firebaseMirrorWarning: string | null = null;
-    try {
-      await getAdminDb().collection("User-Admin").doc(authUserId).set({
-        uid: authUserId,
-        name,
-        username,
-        email,
-        password,
-        role,
-        createdAt,
-      });
-    } catch (firebaseError) {
-      firebaseMirrorWarning =
-        firebaseError instanceof Error
-          ? firebaseError.message
-          : "Sinkronisasi user ke Firestore gagal.";
-      console.warn("[user-admin] Firebase mirror create failed:", firebaseMirrorWarning);
-    }
-
     return NextResponse.json({
       ok: true,
-      warning: firebaseMirrorWarning,
       user: {
         id: authUserId,
         uid: authUserId,

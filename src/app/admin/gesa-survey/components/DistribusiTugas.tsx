@@ -114,7 +114,7 @@ interface DistribusiTugasProps {
 export default function DistribusiTugas({ isSuperAdmin = false, isActive = false }: DistribusiTugasProps) {
   const TASKS_CACHE_PREFIX = "distribusi_tugas_tasks";
   const TASK_PROGRESS_CACHE_PREFIX = "distribusi_tugas_progress";
-  const PETUGAS_CACHE_KEY = "distribusi_tugas_petugas_list_firestore_v3";
+  const PETUGAS_CACHE_KEY = "distribusi_tugas_petugas_list_supabase_v1";
   const [showTaskDropdown, setShowTaskDropdown] = useState(false);
   const [showProposeModal, setShowProposeModal] = useState(false);
   const [showExistingModal, setShowExistingModal] = useState(false);
@@ -297,29 +297,86 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
             "petugas-bmd-gudang",
           ]);
 
-          const usersRef = collection(db, "User-Admin");
-          const petsQuery = query(
-            usersRef,
-            where("role", "in", Array.from(allowedRoles))
-          );
-          const snapshot = await getDocs(petsQuery);
+          try {
+            const pageSize = 200;
+            let offset = 0;
+            let hasMore = true;
+            const supabaseUsers: (Petugas & { role: string; uid: string })[] = [];
 
-          return snapshot.docs.map((userDoc) => {
-            const user = userDoc.data() as {
-              uid?: string;
-              name?: string;
-              email?: string;
-              role?: string;
-            };
+            while (hasMore) {
+              const params = new URLSearchParams({
+                limit: String(pageSize),
+                offset: String(offset),
+              });
+              const response = await fetch(`/api/admin/user-admin?${params.toString()}`, {
+                cache: "no-store",
+              });
 
-            return {
-              id: userDoc.id,
-              name: user.name || "-",
-              email: user.email || "-",
-              role: typeof user.role === "string" ? user.role.trim() : "",
-              uid: user.uid || userDoc.id,
-            };
-          });
+              if (!response.ok) {
+                throw new Error("Gagal memuat petugas dari Supabase.");
+              }
+
+              const payload = (await response.json()) as {
+                users?: Array<{
+                  id?: string;
+                  uid?: string;
+                  name?: string;
+                  email?: string;
+                  role?: string;
+                }>;
+                hasMore?: boolean;
+                nextOffset?: number;
+              };
+
+              const rows = Array.isArray(payload.users) ? payload.users : [];
+              supabaseUsers.push(
+                ...rows
+                  .map((user) => ({
+                    id: user.id || user.uid || "",
+                    name: user.name || "-",
+                    email: user.email || "-",
+                    role: typeof user.role === "string" ? user.role.trim() : "",
+                    uid: user.uid || user.id || "",
+                  }))
+                  .filter((user) => allowedRoles.has(user.role))
+              );
+
+              hasMore = Boolean(payload.hasMore);
+              offset = typeof payload.nextOffset === "number" ? payload.nextOffset : offset + rows.length;
+
+              if (rows.length === 0) {
+                hasMore = false;
+              }
+            }
+
+            return supabaseUsers;
+          } catch (supabaseError) {
+            console.error("Supabase petugas fetch failed, fallback to Firestore:", supabaseError);
+
+            const usersRef = collection(db, "User-Admin");
+            const petsQuery = query(
+              usersRef,
+              where("role", "in", Array.from(allowedRoles))
+            );
+            const snapshot = await getDocs(petsQuery);
+
+            return snapshot.docs.map((userDoc) => {
+              const user = userDoc.data() as {
+                uid?: string;
+                name?: string;
+                email?: string;
+                role?: string;
+              };
+
+              return {
+                id: userDoc.id,
+                name: user.name || "-",
+                email: user.email || "-",
+                role: typeof user.role === "string" ? user.role.trim() : "",
+                uid: user.uid || userDoc.id,
+              };
+            });
+          }
         },
         300_000
       );
