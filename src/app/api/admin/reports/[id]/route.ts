@@ -89,3 +89,29 @@ export async function GET(
     );
   }
 }
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const supabase = getSupabaseAdminClient();
+
+    const { error } = await supabase
+      .from("reports")
+      .delete()
+      .or(`id.eq.${id},fb_doc_id.eq.${id}`);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Gagal menghapus report dari Supabase." },
+      { status: 500 }
+    );
+  }
+}

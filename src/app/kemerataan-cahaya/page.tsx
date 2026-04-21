@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { collection, getDocs, query, orderBy, limit, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { fetchWithCache } from "@/utils/firestoreCache";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
@@ -420,13 +418,16 @@ export function KemeratanCahayaContent() {
     return meta.length > 0 ? `${mainLeft} - ${meta.join(" | ")}` : mainLeft;
   };
 
-  function buildReportsConstraints(sortDirection: "asc" | "desc", maxItems: number) {
-    const constraints: any[] = [];
+  function buildReportsParams(sortDirection: "asc" | "desc", maxItems: number) {
+    const params = new URLSearchParams({
+      limit: String(maxItems),
+      includeData: "1",
+      sort: sortDirection,
+    });
     if (useKabupatenFilter && activeKabupaten) {
-      constraints.push(where("kabupaten", "==", activeKabupaten));
+      params.set("kabupaten", activeKabupaten);
     }
-    constraints.push(orderBy("createdAt", sortDirection), limit(maxItems));
-    return constraints;
+    return params;
   }
 
   async function fetchCachedReportList() {
@@ -434,12 +435,25 @@ export function KemeratanCahayaContent() {
     return fetchWithCache<ReportOption[]>(
       cacheKey,
       async () => {
-        const q = query(collection(db, "reports"), ...buildReportsConstraints("desc", 100));
-        const snapshot = await getDocs(q);
-        return snapshot.docs.map((docSnap) => {
-          const data = docSnap.data();
+        const response = await fetch(`/api/admin/reports?${buildReportsParams("desc", 100).toString()}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          let message = "Gagal memuat daftar report dari Supabase.";
+          try {
+            const payload = (await response.json()) as { error?: string };
+            if (typeof payload.error === "string" && payload.error.trim()) {
+              message = payload.error.trim();
+            }
+          } catch {
+            // Keep fallback message.
+          }
+          throw new Error(message);
+        }
+        const payload = (await response.json()) as { reports?: Array<Record<string, unknown>> };
+        return (Array.isArray(payload.reports) ? payload.reports : []).map((data) => {
           return {
-            id: docSnap.id,
+            id: typeof data.id === "string" ? data.id : "",
             label: deriveReportLabel(data),
             data,
           };
@@ -453,15 +467,29 @@ export function KemeratanCahayaContent() {
     return fetchWithCache<CachedReportEntry | null>(
       cacheKey,
       async () => {
-        const q = query(collection(db, "reports"), ...buildReportsConstraints(sortDirection, 1));
-        const snapshot = await getDocs(q);
-        if (snapshot.empty) {
+        const response = await fetch(`/api/admin/reports?${buildReportsParams(sortDirection, 1).toString()}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          let message = "Gagal memuat report dari Supabase.";
+          try {
+            const payload = (await response.json()) as { error?: string };
+            if (typeof payload.error === "string" && payload.error.trim()) {
+              message = payload.error.trim();
+            }
+          } catch {
+            // Keep fallback message.
+          }
+          throw new Error(message);
+        }
+        const payload = (await response.json()) as { reports?: Array<Record<string, unknown>> };
+        const firstReport = Array.isArray(payload.reports) ? payload.reports[0] : null;
+        if (!firstReport || typeof firstReport.id !== "string") {
           return null;
         }
-        const firstDoc = snapshot.docs[0];
         return {
-          id: firstDoc.id,
-          data: firstDoc.data(),
+          id: firstReport.id,
+          data: firstReport,
         };
       },
       15 * 60_000

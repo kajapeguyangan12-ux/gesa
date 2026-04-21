@@ -1,13 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { collection, query, orderBy, getDocs, limit, deleteDoc, doc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
-import { FIREBASE_COLLECTIONS, KABUPATEN_OPTIONS } from "@/utils/constants";
+import { KABUPATEN_OPTIONS } from "@/utils/constants";
 
 interface SurveyData {
   id: string;
@@ -77,7 +75,7 @@ function AdminPanelContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasLoadedData, setHasLoadedData] = useState(false);
-  const [dataSource, setDataSource] = useState<"supabase" | "firestore">("firestore");
+  const [dataSource, setDataSource] = useState<"supabase" | "firestore">("supabase");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string>("");
   const latestReportsFingerprintRef = useRef("");
   const [filters, setFilters] = useState<FilterState>({
@@ -105,216 +103,12 @@ function AdminPanelContent() {
     applyFilters();
   }, [surveys, filters]);
 
-  const toDateValue = (value: any): Date | null => {
-    if (!value) return null;
-    if (value?.toDate && typeof value.toDate === "function") return value.toDate();
-    if (value instanceof Date) return value;
-    const parsed = new Date(value);
-    return isNaN(parsed.getTime()) ? null : parsed;
-  };
-
-  const pickFirstString = (...vals: any[]) => {
-    for (const v of vals) {
-      if (v === null || v === undefined) continue;
-      const s = String(v).trim();
-      if (s) return s;
-    }
-    return "";
-  };
-
-  const formatWatt = (val: any) => {
-    if (val === null || val === undefined || val === "") return "-";
-    const n = typeof val === "number" ? val : parseFloat(String(val).replace(",", "."));
-    if (!isNaN(n) && isFinite(n)) return `${n}W`;
-    return String(val);
-  };
-
-  const formatMeter = (val: any) => {
-    if (val === null || val === undefined || val === "") return "-";
-    const n = typeof val === "number" ? val : parseFloat(String(val).replace(",", "."));
-    if (!isNaN(n) && isFinite(n)) return `${n} Meter`;
-    return String(val);
-  };
-
-  const formatVoltage = (val: any) => {
-    if (val === null || val === undefined || val === "") return "-";
-    const n = typeof val === "number" ? val : parseFloat(String(val).replace(",", "."));
-    if (!isNaN(n) && isFinite(n)) return `${n}V`;
-    return String(val);
-  };
-
-  const normalizeDateInput = (val: any): string => {
-    if (!val) return "";
-    const s = String(val).trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    const parsed = new Date(s);
-    if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
-    return "";
-  };
-
-  const normalizeTimeInput = (val: any): string => {
-    if (!val) return "";
-    const s = String(val).trim();
-    if (/^\d{1,2}[:.]\d{2}$/.test(s)) return s.replace(":", ".");
-    const parsed = new Date(`1970-01-01T${s}`);
-    if (!isNaN(parsed.getTime())) {
-      return parsed.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }).replace(":", ".");
-    }
-    return "";
-  };
-
-  const mapReportToSurvey = (docId: string, data: any): SurveyData => {
-    const createdAt = data?.createdAt;
-    const projectDate = data?.projectDate;
-    const dateObj = toDateValue(createdAt);
-    const projectDateObj = toDateValue(projectDate);
-    const dateRaw = pickFirstString(data?.date, data?.tanggal, data?.tgl, data?.createdDate);
-    const timeRaw = pickFirstString(data?.time, data?.waktu, data?.jam);
-    const dateFilter = normalizeDateInput(dateRaw) || (projectDateObj ? projectDateObj.toISOString().slice(0, 10) : "") || (dateObj ? dateObj.toISOString().slice(0, 10) : "");
-    const timeFilter = normalizeTimeInput(timeRaw) ||
-      (projectDateObj ? projectDateObj.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }).replace(":", ".") : "") ||
-      (dateObj ? dateObj.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }).replace(":", ".") : "");
-    const dateDisplay = projectDateObj
-      ? projectDateObj.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
-      : (dateObj
-        ? dateObj.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
-        : (dateFilter ? new Date(dateFilter).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : ""));
-    const timeDisplay = timeFilter ||
-      (projectDateObj ? projectDateObj.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }).replace(":", ".") : "") ||
-      (dateObj ? dateObj.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }).replace(":", ".") : "");
-
-    const lamp = data?.lamp || data?.lampu || data?.spesifikasi || data?.spec || {};
-    const meta = data?.meta || data?.metadata || {};
-
-    return {
-      id: docId,
-      title: pickFirstString(
-        data?.projectTitle,
-        data?.title,
-        data?.judul,
-        data?.name,
-        data?.nama,
-        data?.namaLampu,
-        data?.lampName,
-        data?.lokasiJalan,
-        data?.namaJalan,
-        data?.location,
-        data?.lokasi,
-        data?.place,
-        "Tanpa Judul"
-      ),
-      date: dateFilter || "-",
-      dateDisplay: dateDisplay || (dateRaw ? String(dateRaw) : ""),
-      time: timeFilter || "-",
-      timeDisplay: timeDisplay || (timeRaw ? String(timeRaw) : ""),
-      location: pickFirstString(
-        data?.projectLocation,
-        data?.location,
-        data?.lokasi,
-        data?.place,
-        data?.lokasiJalan,
-        data?.namaJalan,
-        data?.namaGang,
-        data?.lokasiProyek,
-        data?.alamatProyek,
-        data?.alamat_lokasi,
-        data?.alamatJalan,
-        data?.alamat,
-        meta?.location,
-        meta?.lokasi,
-        "-"
-      ),
-      officer: pickFirstString(
-        data?.officer,
-        data?.petugas,
-        data?.reporterName,
-        data?.nama_pelapor,
-        data?.petugasSurvey,
-        data?.surveyor,
-        data?.userName,
-        data?.displayName,
-        data?.createdBy,
-        data?.modifiedBy,
-        data?.author,
-        meta?.officer,
-        meta?.petugas,
-        data?.user,
-        data?.reporter,
-        "-"
-      ),
-      kabupaten: pickFirstString(
-        data?.kabupaten,
-        data?.kabupaten_id,
-        data?.kabupatenId,
-        meta?.kabupaten
-      ),
-      watt: formatWatt(
-        data?.watt ??
-          data?.power ??
-          data?.daya ??
-          data?.dayaLampu ??
-          data?.lampPower ??
-          data?.lamp_watt ??
-          data?.lampuWatt ??
-          lamp?.watt ??
-          lamp?.power ??
-          lamp?.daya ??
-          meta?.watt ??
-          meta?.power ??
-          meta?.daya
-      ),
-      meter: formatMeter(
-        data?.meter ??
-          data?.poleHeight ??
-          data?.tinggiTiang ??
-          data?.tinggi_tiang ??
-          data?.tinggi_tiang_m ??
-          data?.tiangTinggi ??
-          data?.poleHeight ??
-          lamp?.poleHeight ??
-          lamp?.height ??
-          lamp?.tinggi ??
-          meta?.tinggiTiang ??
-          meta?.poleHeight
-      ),
-      voltage: formatVoltage(
-        data?.voltage ??
-        data?.tegangan ??
-        data?.teganganAwal ??
-        data?.initialVoltage ??
-        data?.volt ??
-        data?.lamp_voltage ??
-        data?.initial_voltage ??
-        data?.teganganLampu ??
-        lamp?.voltage ??
-        meta?.voltage ??
-        meta?.tegangan
-      ),
-      modifiedBy: data?.modifiedBy || data?.modified_by || data?.modifiedBy,
-      status: data?.status,
-      createdAt,
-    };
-  };
-
   const fetchSurveysFromSupabaseSource = async () => {
     const payload = await fetchSurveysFromSupabase(REPORT_FETCH_LIMIT);
     setDataSource("supabase");
     setLastUpdatedAt(payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString());
     latestReportsFingerprintRef.current = [payload.lastDataChangeAt || payload.generatedAt || "", payload.reports.length].join("|");
     return payload.reports;
-  };
-
-  const fetchSurveysFromFirestore = async () => {
-    const surveysRef = collection(db, FIREBASE_COLLECTIONS.SURVEYS);
-    const q = query(surveysRef, orderBy("createdAt", "desc"), limit(REPORT_FETCH_LIMIT));
-    const querySnapshot = await getDocs(q);
-    const result: SurveyData[] = [];
-    querySnapshot.forEach((item) => {
-      result.push(mapReportToSurvey(item.id, item.data()));
-    });
-    setDataSource("firestore");
-    setLastUpdatedAt(new Date().toISOString());
-    return result;
   };
 
   const fetchSurveys = async (forceRefresh = false) => {
@@ -327,16 +121,7 @@ function AdminPanelContent() {
       }
       const surveysData = await fetchWithCache<SurveyData[]>(
         REPORTS_CACHE_KEY,
-        async () => {
-          try {
-            const supabaseReports = await fetchSurveysFromSupabaseSource();
-            if (supabaseReports.length > 0) return supabaseReports;
-          } catch (error) {
-            console.error("Supabase reports fetch failed, fallback to Firestore:", error);
-          }
-
-          return await fetchSurveysFromFirestore();
-        },
+        async () => await fetchSurveysFromSupabaseSource(),
         REPORTS_CACHE_TTL_MS
       );
       
@@ -452,19 +237,34 @@ function AdminPanelContent() {
 
   // Get user display name or email
   const displayName = user?.displayName || user?.email?.split('@')[0] || 'Admin';
-  const activeSourceLabel = dataSource === "supabase" ? "Supabase" : "Firestore langsung";
+  const activeSourceLabel = "Supabase";
   const activeTimestamp = lastUpdatedAt;
 
   const handleDeleteReport = async (reportId: string, title: string) => {
     const ok = window.confirm(`Hapus laporan "${title}"? Tindakan ini tidak bisa dibatalkan.`);
     if (!ok) return;
     try {
-      await deleteDoc(doc(db, FIREBASE_COLLECTIONS.SURVEYS, reportId));
+      const response = await fetch(`/api/admin/reports/${reportId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        let message = "Gagal menghapus laporan.";
+        try {
+          const payload = (await response.json()) as { error?: string };
+          if (typeof payload.error === "string" && payload.error.trim()) {
+            message = payload.error.trim();
+          }
+        } catch {
+          // Keep fallback message.
+        }
+        throw new Error(message);
+      }
       setSurveys(prev => prev.filter(s => s.id !== reportId));
       setFilteredSurveys(prev => prev.filter(s => s.id !== reportId));
+      clearCachedData(REPORTS_CACHE_KEY);
     } catch (error) {
       console.error("Delete error:", error);
-      alert("Gagal menghapus laporan.");
+      alert(error instanceof Error ? error.message : "Gagal menghapus laporan.");
     }
   };
 

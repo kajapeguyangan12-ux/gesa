@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
-import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { fetchWithCache } from "@/utils/firestoreCache";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
@@ -106,21 +104,32 @@ function DashboardPengukuranContent() {
       const list = await fetchWithCache<Array<{ id: string; label: string }>>(
         `reports_${activeKabupaten}_${user?.uid || "all"}`,
         async () => {
-          const q = query(
-            collection(db, "reports"),
-            where("kabupaten", "==", activeKabupaten),
-            orderBy("createdAt", "desc"),
-            limit(100)
-          );
-          const snapshot = await getDocs(q);
-          let docs = snapshot.docs;
+          const params = new URLSearchParams({
+            limit: "100",
+            kabupaten: activeKabupaten,
+          });
           if (user?.uid) {
-            const mine = docs.filter((doc) => doc.data()?.createdById === user.uid);
-            if (mine.length > 0) docs = mine;
+            params.set("createdById", user.uid);
           }
-          return docs.map((doc) => ({
-            id: doc.id,
-            label: buildReportLabel(doc.data()),
+          const response = await fetch(`/api/admin/reports?${params.toString()}`, {
+            cache: "no-store",
+          });
+          if (!response.ok) {
+            let message = "Gagal memuat laporan dari Supabase.";
+            try {
+              const payload = (await response.json()) as { error?: string };
+              if (typeof payload.error === "string" && payload.error.trim()) {
+                message = payload.error.trim();
+              }
+            } catch {
+              // Keep fallback message.
+            }
+            throw new Error(message);
+          }
+          const payload = (await response.json()) as { reports?: Array<Record<string, unknown>> };
+          return (Array.isArray(payload.reports) ? payload.reports : []).map((report) => ({
+            id: typeof report.id === "string" ? report.id : "",
+            label: buildReportLabel(report),
           }));
         },
         180_000 // 3min cache

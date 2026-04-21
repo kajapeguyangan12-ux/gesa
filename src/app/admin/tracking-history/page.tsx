@@ -4,8 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import dynamic from "next/dynamic";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 
 // Interface for TrackingHistoryMap props
@@ -73,25 +71,21 @@ function TrackingHistoryContent() {
       const sessions = await fetchWithCache(
         TRACKING_SESSIONS_CACHE_KEY,
         async () => {
-          try {
-            const response = await fetch("/api/admin/tracking-sessions", { cache: "no-store" });
-            if (response.ok) {
-              const payload = (await response.json()) as { sessions?: TrackingSession[] };
-              if (Array.isArray(payload.sessions)) return payload.sessions;
+          const response = await fetch("/api/admin/tracking-sessions", { cache: "no-store" });
+          if (!response.ok) {
+            let message = "Gagal memuat tracking sessions dari Supabase.";
+            try {
+              const payload = (await response.json()) as { error?: string };
+              if (typeof payload.error === "string" && payload.error.trim()) {
+                message = payload.error.trim();
+              }
+            } catch {
+              // Keep fallback message when response body is not JSON.
             }
-          } catch (error) {
-            console.error("Supabase tracking fetch failed, fallback to Firestore:", error);
+            throw new Error(message);
           }
-
-          const sessionsQuery = query(
-            collection(db, "tracking-sessions"),
-            orderBy("startTime", "desc")
-          );
-          const querySnapshot = await getDocs(sessionsQuery);
-          return querySnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          })) as TrackingSession[];
+          const payload = (await response.json()) as { sessions?: TrackingSession[] };
+          return Array.isArray(payload.sessions) ? payload.sessions : [];
         },
         TRACKING_SESSIONS_CACHE_TTL
       );
