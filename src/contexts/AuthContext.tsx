@@ -2,8 +2,6 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, getDocs, limit, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { getSupabaseBrowserClient } from "@/lib/supabaseBrowser";
 
 interface User {
@@ -112,40 +110,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const legacySignIn = async (identifier: string, password: string) => {
-    const usersRef = collection(db, "User-Admin");
-    let authQuery = query(usersRef, where("email", "==", identifier), limit(1));
-    let querySnapshot = await getDocs(authQuery);
-
-    if (querySnapshot.empty) {
-      authQuery = query(usersRef, where("username", "==", identifier), limit(1));
-      querySnapshot = await getDocs(authQuery);
-    }
-
-    if (querySnapshot.empty) {
-      throw new Error("Username atau email tidak ditemukan");
-    }
-
-    const userDoc = querySnapshot.docs[0];
-    const userData = userDoc.data();
-
-    if (userData.password !== password) {
-      throw new Error("Password salah");
-    }
-
-    const authenticatedUser: User = {
-      email: userData.email,
-      username: userData.username,
-      displayName: userData.name,
-      name: userData.name,
-      role: userData.role,
-      uid: userData.uid || userDoc.id,
-      phoneNumber: userData.phoneNumber || userData.phone || userData.noTelp || userData.no_telp || "",
-    };
-
-    persistUser(authenticatedUser);
-  };
-
   useEffect(() => {
     let isMounted = true;
 
@@ -211,8 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const normalizedIdentifier = identifier.trim().toLowerCase();
       if (useLegacyAuth) {
-        await legacySignIn(normalizedIdentifier, password);
-        return;
+        throw new Error("Legacy auth Firestore sudah dimatikan. Gunakan Supabase Auth.");
       }
 
       const supabase = getSupabaseBrowserClient();
