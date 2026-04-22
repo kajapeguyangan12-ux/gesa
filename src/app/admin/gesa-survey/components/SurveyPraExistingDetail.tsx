@@ -34,6 +34,9 @@ interface Survey {
   verifiedBy: string;
   validatedAt: TimestampLike;
   validatedBy: string;
+  rejectedAt?: TimestampLike;
+  rejectedBy?: string;
+  rejectionReason?: string;
   latitude: number;
   longitude: number;
   adminLatitude?: number;
@@ -922,10 +925,28 @@ export default function SurveyPraExistingDetail({
                     {selectedSurvey.status}
                   </span>
                   <span className="text-gray-500 text-sm">
-                    Divalidasi oleh <span className="font-medium text-gray-700">{selectedSurvey.validatedBy}</span> pada{" "}
-                    {formatDate(selectedSurvey.validatedAt)}
+                    {selectedSurvey.status === "ditolak" ? (
+                      <>
+                        Ditolak oleh <span className="font-medium text-gray-700">{selectedSurvey.rejectedBy || "Admin"}</span> pada{" "}
+                        {formatDate(selectedSurvey.rejectedAt)}
+                      </>
+                    ) : (
+                      <>
+                        Divalidasi oleh <span className="font-medium text-gray-700">{selectedSurvey.validatedBy}</span> pada{" "}
+                        {formatDate(selectedSurvey.validatedAt)}
+                      </>
+                    )}
                   </span>
                 </div>
+
+                {selectedSurvey.status === "ditolak" ? (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5">
+                    <h3 className="text-lg font-bold text-rose-900">Alasan Ditolak</h3>
+                    <p className="mt-2 text-sm leading-6 text-rose-900">
+                      {selectedSurvey.rejectionReason || "Admin belum menuliskan alasan penolakan."}
+                    </p>
+                  </div>
+                ) : null}
 
                 <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-4 border border-gray-200">
                   <h3 className="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">

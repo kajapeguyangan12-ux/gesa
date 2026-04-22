@@ -585,15 +585,16 @@ export default function DashboardContent({
   });
   const [endDate, setEndDate] = useState(() => formatDateInputValue(new Date()));
   const reportCacheKey = useMemo(
-    () => `dashboard_reports_${isSuperAdmin ? "super" : user?.uid || "guest"}_${activeKabupaten || "all"}`,
-    [activeKabupaten, isSuperAdmin, user?.uid]
+    () => `dashboard_reports_${isSuperAdmin ? "super" : user?.uid || user?.email || "guest"}_${activeKabupaten || "all"}`,
+    [activeKabupaten, isSuperAdmin, user?.email, user?.uid]
   );
   const dashboardApiQuery = useMemo(() => {
     const params = new URLSearchParams();
     if (activeKabupaten) params.set("kabupaten", activeKabupaten);
     if (!isSuperAdmin && user?.uid) params.set("adminId", user.uid);
+    if (!isSuperAdmin && user?.email) params.set("adminEmail", user.email);
     return params.toString();
-  }, [activeKabupaten, isSuperAdmin, user?.uid]);
+  }, [activeKabupaten, isSuperAdmin, user?.email, user?.uid]);
   const dashboardSummaryApiQuery = useMemo(() => {
     const params = new URLSearchParams(dashboardApiQuery);
     params.set("compact", "1");
@@ -602,12 +603,11 @@ export default function DashboardContent({
   const dashboardVerifierApiQuery = useMemo(() => {
     const params = new URLSearchParams();
     if (activeKabupaten) params.set("kabupaten", activeKabupaten);
-    if (!isSuperAdmin && user?.uid) params.set("adminId", user.uid);
     params.set("status", "diverifikasi");
     params.set("includeDetails", "1");
     params.set("dashboardDetail", "1");
     return params.toString();
-  }, [activeKabupaten, isSuperAdmin, user?.uid]);
+  }, [activeKabupaten]);
 
   const persistReportCache = (data: DashboardReportState) => {
     if (isSuperAdmin || typeof window === "undefined") return;

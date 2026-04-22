@@ -35,6 +35,9 @@ interface Survey {
   verifiedBy: string;
   validatedAt: any;
   validatedBy: string;
+  rejectedAt?: any;
+  rejectedBy?: string;
+  rejectionReason?: string;
   latitude: number;
   longitude: number;
   accuracy?: number;
@@ -610,9 +613,26 @@ export default function SurveyProposeDetail({ onBack, statusFilter = "diverifika
                     {selectedSurvey.status}
                   </span>
                   <span className="text-gray-500 text-sm">
-                    Divalidasi oleh <span className="font-medium text-gray-700">{selectedSurvey.validatedBy}</span> pada {formatDate(selectedSurvey.validatedAt)}
+                    {selectedSurvey.status === "ditolak" ? (
+                      <>
+                        Ditolak oleh <span className="font-medium text-gray-700">{selectedSurvey.rejectedBy || "Admin"}</span> pada {formatDate(selectedSurvey.rejectedAt)}
+                      </>
+                    ) : (
+                      <>
+                        Divalidasi oleh <span className="font-medium text-gray-700">{selectedSurvey.validatedBy}</span> pada {formatDate(selectedSurvey.validatedAt)}
+                      </>
+                    )}
                   </span>
                 </div>
+
+                {selectedSurvey.status === "ditolak" ? (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5">
+                    <h3 className="text-lg font-bold text-rose-900">Alasan Ditolak</h3>
+                    <p className="mt-2 text-sm leading-6 text-rose-900">
+                      {selectedSurvey.rejectionReason || "Admin belum menuliskan alasan penolakan."}
+                    </p>
+                  </div>
+                ) : null}
 
                 {/* Map Section */}
                 <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-4 border border-gray-200">

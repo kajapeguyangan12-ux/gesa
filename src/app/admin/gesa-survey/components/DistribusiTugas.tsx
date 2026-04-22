@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, type FormEvent } from "react";
-import { getDoc, serverTimestamp, doc, setDoc } from "firebase/firestore";
+import { serverTimestamp, doc, setDoc } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -136,7 +136,7 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [offlineSettings, setOfflineSettings] = useState<PraExistingOfflineSettings>(DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS);
-  const [loadingOfflineSettings, setLoadingOfflineSettings] = useState(true);
+  const [loadingOfflineSettings] = useState(false);
   const [savingOfflineSettings, setSavingOfflineSettings] = useState(false);
   const [savingTaskOfflineId, setSavingTaskOfflineId] = useState<string | null>(null);
   const [selectedTaskFilter, setSelectedTaskFilter] = useState<"all" | "pending" | "in-progress" | "completed">("all");
@@ -157,7 +157,6 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
   // Fetch tasks on component mount
   useEffect(() => {
     if (!isActive) return;
-    fetchOfflineSettings();
     if (isSuperAdmin && !hasRequestedTaskLoad) {
       setTasks([]);
       setLoadingTasks(false);
@@ -178,36 +177,6 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
     // Fungsi loader didefinisikan di komponen yang sama dan aman dipicu ulang saat task detail berubah.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showDetailModal, selectedTaskDetail, isActive]);
-
-  const fetchOfflineSettings = async () => {
-    try {
-      setLoadingOfflineSettings(true);
-      const settingsRef = doc(
-        db,
-        PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION,
-        PRA_EXISTING_OFFLINE_SETTINGS_DOC
-      );
-      const settingsSnap = await getDoc(settingsRef);
-
-      if (!settingsSnap.exists()) {
-        setOfflineSettings(DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS);
-        return;
-      }
-
-      const data = settingsSnap.data() as { globalEnabled?: unknown };
-      setOfflineSettings({
-        globalEnabled:
-          typeof data.globalEnabled === "boolean"
-            ? data.globalEnabled
-            : DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS.globalEnabled,
-      });
-    } catch (error) {
-      console.error("Error fetching pra-existing offline settings:", error);
-      setOfflineSettings(DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS);
-    } finally {
-      setLoadingOfflineSettings(false);
-    }
-  };
 
   const fetchTasks = async (forceRefresh = false, overrideSearch?: string) => {
     try {

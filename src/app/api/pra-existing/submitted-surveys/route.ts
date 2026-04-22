@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
           id: String(row.fb_doc_id || ""),
           latitude: Number(row.latitude || 0),
           longitude: Number(row.longitude || 0),
+          title: typeof rawPayload.title === "string" ? rawPayload.title : "",
           kecamatan: typeof rawPayload.kecamatan === "string" ? rawPayload.kecamatan : "",
           desa: typeof rawPayload.desa === "string" ? rawPayload.desa : "",
           banjar: typeof rawPayload.banjar === "string" ? rawPayload.banjar : "",
@@ -58,6 +59,9 @@ export async function GET(request: NextRequest) {
           surveyorName: typeof rawPayload.surveyorName === "string" ? rawPayload.surveyorName : "",
           createdAt: row.created_at,
           status: typeof rawPayload.status === "string" ? rawPayload.status : "",
+          rejectedAt: typeof rawPayload.rejectedAt === "string" ? rawPayload.rejectedAt : null,
+          rejectedBy: typeof rawPayload.rejectedBy === "string" ? rawPayload.rejectedBy : "",
+          rejectionReason: typeof rawPayload.rejectionReason === "string" ? rawPayload.rejectionReason : "",
         };
       })
       .filter((item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude) && item.latitude !== 0 && item.longitude !== 0);

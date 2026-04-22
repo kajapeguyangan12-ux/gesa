@@ -401,6 +401,7 @@ export async function GET(request: NextRequest) {
     const dashboardDetail = request.nextUrl.searchParams.get("dashboardDetail") === "1";
     const activeKabupaten = request.nextUrl.searchParams.get("kabupaten")?.trim() || null;
     const adminId = request.nextUrl.searchParams.get("adminId")?.trim() || null;
+    const adminEmail = request.nextUrl.searchParams.get("adminEmail")?.trim().toLowerCase() || null;
     const requestedType = request.nextUrl.searchParams.get("type")?.trim() || null;
     const changedSinceRaw = request.nextUrl.searchParams.get("changedSince")?.trim() || "";
     const changedSince = changedSinceRaw ? new Date(changedSinceRaw) : null;
@@ -416,7 +417,10 @@ export async function GET(request: NextRequest) {
     );
     const supabase = getSupabaseAdminClient();
 
-    const applyStatusFilter = <T extends { eq: Function; in: Function }>(query: T, statusFilters: Set<string>) => {
+    const applyStatusFilter = <T extends {
+      eq: (column: string, value: string) => T;
+      in: (column: string, values: string[]) => T;
+    }>(query: T, statusFilters: Set<string>) => {
       if (statusFilters.size === 0) return query;
       if (statusFilters.size === 1) {
         const [statusValue] = Array.from(statusFilters);
@@ -476,11 +480,18 @@ export async function GET(request: NextRequest) {
     };
 
     let allowedTaskIds: Set<string> | null = null;
-    if (adminId) {
-      const { data: taskRows, error: taskError } = await supabase
-        .from("tasks")
-        .select("fb_doc_id")
-        .eq("created_by_admin_id", adminId);
+    if (adminId || adminEmail) {
+      let taskQuery = supabase.from("tasks").select("fb_doc_id");
+
+      if (adminId && adminEmail) {
+        taskQuery = taskQuery.or(`created_by_admin_id.eq.${adminId},created_by_admin_email.eq.${adminEmail}`);
+      } else if (adminId) {
+        taskQuery = taskQuery.eq("created_by_admin_id", adminId);
+      } else if (adminEmail) {
+        taskQuery = taskQuery.eq("created_by_admin_email", adminEmail);
+      }
+
+      const { data: taskRows, error: taskError } = await taskQuery;
 
       if (taskError) throw new Error(taskError.message);
 
@@ -492,7 +503,7 @@ export async function GET(request: NextRequest) {
     }
 
     const allowedTaskIdsArray = allowedTaskIds ? Array.from(allowedTaskIds) : null;
-    if (adminId && allowedTaskIdsArray && allowedTaskIdsArray.length === 0) {
+    if ((adminId || adminEmail) && allowedTaskIdsArray && allowedTaskIdsArray.length === 0) {
       return NextResponse.json({
         source: "supabase",
         generatedAt: new Date().toISOString(),

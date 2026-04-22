@@ -54,6 +54,7 @@ function mapTaskRow(row: TaskRow) {
 export async function GET(request: NextRequest) {
   try {
     const adminId = request.nextUrl.searchParams.get("adminId")?.trim();
+    const adminEmail = request.nextUrl.searchParams.get("adminEmail")?.trim().toLowerCase();
     const search = request.nextUrl.searchParams.get("q")?.trim();
     const includeAll = request.nextUrl.searchParams.get("includeAll") === "true";
     const supabase = getSupabaseAdminClient();
@@ -63,8 +64,14 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(includeAll ? 500 : 200);
 
-    if (adminId && !includeAll) {
-      query = query.eq("created_by_admin_id", adminId);
+    if (!includeAll && (adminId || adminEmail)) {
+      if (adminId && adminEmail) {
+        query = query.or(`created_by_admin_id.eq.${adminId},created_by_admin_email.eq.${adminEmail}`);
+      } else if (adminId) {
+        query = query.eq("created_by_admin_id", adminId);
+      } else if (adminEmail) {
+        query = query.eq("created_by_admin_email", adminEmail);
+      }
     }
 
     if (search) {
@@ -86,7 +93,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       source: "supabase",
-      scope: includeAll ? "all" : adminId ? "admin" : "default",
+      scope: includeAll ? "all" : adminId || adminEmail ? "admin" : "default",
       tasks: ((data || []) as TaskRow[]).map(mapTaskRow),
     });
   } catch (error) {

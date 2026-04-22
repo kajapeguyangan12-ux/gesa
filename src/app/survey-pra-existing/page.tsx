@@ -103,6 +103,7 @@ interface SubmittedSurveyItem {
   id: string;
   latitude: number;
   longitude: number;
+  title?: string;
   kecamatan?: string;
   desa?: string;
   banjar?: string;
@@ -111,6 +112,9 @@ interface SubmittedSurveyItem {
   surveyorName?: string;
   createdAt?: { toDate?: () => Date } | Date | string | number | null;
   status?: string;
+  rejectedAt?: { toDate?: () => Date } | Date | string | number | null;
+  rejectedBy?: string;
+  rejectionReason?: string;
 }
 
 const initialFormState: FormState = {
@@ -970,6 +974,7 @@ function SurveyPraExistingContent() {
   const isFormLocked = checkingTaskAccess || !isTaskEditable;
   const syncStatusLabel = isSyncingQueue ? "Menyinkronkan..." : pendingSyncCount > 0 ? `${pendingSyncCount} antrean` : "Sinkron";
   const basemapStatusLabel = !isOfflineAllowed ? "Offline dimatikan" : offlineBasemapReady ? "Peta offline siap" : "Peta offline belum siap";
+  const rejectedSurveyCount = submittedSurveys.filter((survey) => survey.status?.toLowerCase() === "ditolak").length;
   const compactOfflineInfo = isOnline
     ? !isOfflineAllowed
       ? "Mode offline dimatikan admin. Form hanya mengikuti koneksi online."
@@ -1385,6 +1390,61 @@ function SurveyPraExistingContent() {
                   />
                 </div>
               ) : null}
+              <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">Status Data Terkirim</h3>
+                    <p className="text-[11px] text-slate-500">
+                      Riwayat ini mengambil status terbaru dari Supabase. Jika admin menolak data, alasan penolakan akan muncul di sini.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200">
+                      {submittedSurveys.length} data
+                    </span>
+                    <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${rejectedSurveyCount > 0 ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"}`}>
+                      {rejectedSurveyCount > 0 ? `${rejectedSurveyCount} ditolak` : "Belum ada penolakan"}
+                    </span>
+                  </div>
+                </div>
+                {loadingSubmittedSurveys ? (
+                  <p className="mt-3 text-xs text-slate-500">Memuat riwayat survey...</p>
+                ) : submittedSurveys.length === 0 ? (
+                  <p className="mt-3 text-xs text-slate-500">Belum ada survey yang tersimpan untuk kabupaten ini.</p>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {submittedSurveys.slice(0, 5).map((survey) => (
+                      <div key={survey.id} className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900">
+                              {survey.title || `Survey Pra Existing - ${survey.desa || "-"} - ${survey.banjar || "-"}`}
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              {formatSubmissionDate(survey.createdAt)} • {survey.kecamatan || "-"}, {survey.desa || "-"}, {survey.banjar || "-"}
+                            </p>
+                          </div>
+                          <StatusPill status={survey.status} />
+                        </div>
+                        {survey.status?.toLowerCase() === "ditolak" ? (
+                          <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+                            <p className="font-semibold">Alasan penolakan</p>
+                            <p className="mt-1 leading-5">{survey.rejectionReason || "Alasan penolakan belum diisi admin."}</p>
+                            <p className="mt-2 text-[11px] text-rose-700">
+                              Ditolak oleh {survey.rejectedBy || "Admin"}{survey.rejectedAt ? ` pada ${formatSubmissionDate(survey.rejectedAt)}` : ""}.
+                            </p>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                    {rejectedSurveyCount > 0 ? (
+                      <p className="text-[11px] text-slate-500">
+                        Catatan: untuk data pra-existing, satu penolakan dari admin bisa ikut menandai data duplikat yang masih menunggu dengan judul dan koordinat yang sama pada tugas yang sama.
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
 
@@ -1577,6 +1637,47 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return <div className="rounded-xl bg-slate-50 p-2"><p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p><p className="mt-0.5 text-sm font-medium text-slate-800">{value}</p></div>;
+}
+
+function formatSubmissionDate(value: { toDate?: () => Date } | Date | string | number | null | undefined) {
+  if (!value) return "-";
+
+  const date =
+    value instanceof Date
+      ? value
+      : typeof value === "object" && value !== null && "toDate" in value && typeof value.toDate === "function"
+        ? value.toDate()
+        : typeof value === "string" || typeof value === "number"
+          ? new Date(value)
+          : null;
+
+  if (!date || Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function StatusPill({ status }: { status?: string }) {
+  const normalizedStatus = status?.toLowerCase() || "menunggu";
+  const className =
+    normalizedStatus === "ditolak"
+      ? "bg-rose-100 text-rose-700"
+      : normalizedStatus === "tervalidasi"
+        ? "bg-emerald-100 text-emerald-700"
+        : normalizedStatus === "diverifikasi"
+          ? "bg-blue-100 text-blue-700"
+          : "bg-amber-100 text-amber-700";
+
+  return (
+    <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold ${className}`}>
+      {normalizedStatus}
+    </span>
+  );
 }
 
 function InfoMiniCard({ label, value, monospace = false }: { label: string; value: string; monospace?: boolean }) {
