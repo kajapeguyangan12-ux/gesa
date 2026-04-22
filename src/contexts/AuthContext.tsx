@@ -45,6 +45,31 @@ export const useAuth = () => {
   return context;
 };
 
+function isRetryableSupabaseAuthError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { name?: unknown; message?: unknown; __isAuthError?: unknown; status?: unknown };
+  const name = typeof candidate.name === "string" ? candidate.name : "";
+  const message = typeof candidate.message === "string" ? candidate.message : "";
+  return (
+    name === "AuthRetryableFetchError" ||
+    message.toLowerCase().includes("authretryablefetcherror") ||
+    message.toLowerCase().includes("failed to fetch") ||
+    candidate.status === 0
+  );
+}
+
+function getReadableAuthErrorMessage(error: unknown, fallback: string) {
+  if (isRetryableSupabaseAuthError(error)) {
+    return "Supabase Auth sedang tidak stabil atau tidak bisa dijangkau. Coba ulang beberapa saat lagi.";
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  return fallback;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -149,7 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           persistUser(null);
         }
       } catch (error) {
-        console.error("Error restoring auth state:", error);
+        console.error("Error restoring auth state:", getReadableAuthErrorMessage(error, "Gagal memulihkan sesi login."));
         if (isMounted) {
           persistUser(null);
         }
@@ -218,8 +243,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       persistUser(authenticatedUser);
     } catch (error: unknown) {
-      console.error("Login error:", error);
-      throw new Error(error instanceof Error ? error.message : "Login gagal. Silakan coba lagi.");
+      const message = getReadableAuthErrorMessage(error, "Login gagal. Silakan coba lagi.");
+      console.error("Login error:", message);
+      throw new Error(message);
     }
   };
 
@@ -240,8 +266,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       persistUser(null);
       router.push("/");
     } catch (error) {
-      console.error("Logout error:", error);
-      throw error;
+      const message = getReadableAuthErrorMessage(error, "Logout gagal.");
+      console.error("Logout error:", message);
+      throw new Error(message);
     }
   };
 

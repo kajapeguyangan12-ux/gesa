@@ -67,6 +67,15 @@ const emptySummary: ReportSummary = {
 
 const SUPABASE_PAGE_SIZE = 1000;
 
+function chunkArray<T>(items: T[], size: number) {
+  if (size <= 0) return [items];
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function toTimestamp(value: unknown) {
   if (typeof value === "string" || typeof value === "number" || value instanceof Date) {
     const parsed = new Date(value);
@@ -421,39 +430,46 @@ export async function GET(request: NextRequest) {
         ? "id, fb_doc_id, task_id, title, status, surveyor_name, surveyor_email, surveyor_uid, kabupaten, created_at, verified_at, updated_at"
         : "id, fb_doc_id, task_id, title, status, surveyor_name, surveyor_email, surveyor_uid, kabupaten, created_at, verified_at, updated_at, raw_payload";
 
-    const fetchAllTableRows = async (table: string, statusFilters: Set<string>) => {
+    const fetchAllTableRows = async (table: string, statusFilters: Set<string>, taskIds: string[] | null) => {
       const rows: Record<string, unknown>[] = [];
-      let offset = 0;
+      const taskIdGroups = taskIds && taskIds.length > 0 ? chunkArray(taskIds, 200) : [null];
 
-      while (true) {
-        let query = supabase
-          .from(table)
-          .select(selectClause)
-          .order("created_at", { ascending: false });
+      for (const taskIdGroup of taskIdGroups) {
+        let offset = 0;
 
-        if (!useDelta) {
-          query = applyStatusFilter(query, statusFilters);
+        while (true) {
+          let query = supabase
+            .from(table)
+            .select(selectClause)
+            .order("created_at", { ascending: false });
+
+          if (!useDelta) {
+            query = applyStatusFilter(query, statusFilters);
+          }
+          if (activeKabupaten) {
+            query = query.ilike("kabupaten", `%${activeKabupaten}%`);
+          }
+          if (useDelta && changedSince) {
+            const changedSinceIso = changedSince.toISOString();
+            query = query.or(`updated_at.gte.${changedSinceIso},created_at.gte.${changedSinceIso}`);
+          }
+          if (taskIdGroup && taskIdGroup.length > 0) {
+            query = query.in("task_id", taskIdGroup);
+          }
+
+          const { data, error } = await query.range(offset, offset + SUPABASE_PAGE_SIZE - 1);
+
+          if (error) throw new Error(error.message);
+
+          const batch = (data || []) as Record<string, unknown>[];
+          rows.push(...batch);
+
+          if (batch.length < SUPABASE_PAGE_SIZE) {
+            break;
+          }
+
+          offset += SUPABASE_PAGE_SIZE;
         }
-        if (activeKabupaten) {
-          query = query.ilike("kabupaten", `%${activeKabupaten}%`);
-        }
-        if (useDelta && changedSince) {
-          const changedSinceIso = changedSince.toISOString();
-          query = query.or(`updated_at.gte.${changedSinceIso},created_at.gte.${changedSinceIso}`);
-        }
-
-        const { data, error } = await query.range(offset, offset + SUPABASE_PAGE_SIZE - 1);
-
-        if (error) throw new Error(error.message);
-
-        const batch = (data || []) as Record<string, unknown>[];
-        rows.push(...batch);
-
-        if (batch.length < SUPABASE_PAGE_SIZE) {
-          break;
-        }
-
-        offset += SUPABASE_PAGE_SIZE;
       }
 
       return rows;
@@ -475,8 +491,25 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const allowedTaskIdsArray = allowedTaskIds ? Array.from(allowedTaskIds) : null;
+    if (adminId && allowedTaskIdsArray && allowedTaskIdsArray.length === 0) {
+      return NextResponse.json({
+        source: "supabase",
+        generatedAt: new Date().toISOString(),
+        lastDataChangeAt: new Date().toISOString(),
+        isDelta: useDelta,
+        totalUniqueSurveyors: 0,
+        propose: { ...emptySummary },
+        existing: { ...emptySummary },
+        praExisting: { ...emptySummary },
+        praExistingByKecamatan: [],
+        totalRows: 0,
+        allRows: [],
+      });
+    }
+
     const loadTable = async (table: string, type: SurveyType) => {
-      const data = await fetchAllTableRows(table, statusFilters);
+      const data = await fetchAllTableRows(table, statusFilters, allowedTaskIdsArray);
       let mappedRows = compact && !includeDetails
         ? data.map((item) => mapCompactSupabaseSurveyRow(type, item as CompactSurveyRow))
         : dashboardDetail && includeDetails
@@ -488,7 +521,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (!allowedTaskIds) return mappedRows;
-      return mappedRows.filter((row) => row.taskId && allowedTaskIds?.has(row.taskId));
+      return mappedRows.filter((row) => row.taskId && allowedTaskIds.has(row.taskId));
     };
 
     const tablesToLoad: Array<{ table: string; type: SurveyType }> = [];

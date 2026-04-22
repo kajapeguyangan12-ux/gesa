@@ -183,6 +183,11 @@ function buildPraExistingOwnershipDisplay(kepemilikanTiang: string, tipeTiangPLN
 const LIVE_REFRESH_INTERVAL_MS = 30000;
 const TAB_DATA_FETCH_LIMIT = 10000;
 
+function isDocumentVisible() {
+  if (typeof document === "undefined") return true;
+  return document.visibilityState === "visible";
+}
+
 export default function ValidasiSurvey({
   activeKabupaten,
   isActive = true,
@@ -396,6 +401,7 @@ export default function ValidasiSurvey({
         activeKabupaten,
         adminId: null,
         statuses: ["menunggu"],
+        type: activeTab,
         limit: TAB_DATA_FETCH_LIMIT,
       });
       setSurveys(payload.rows.map(mapSupabaseSurvey));
@@ -431,6 +437,7 @@ export default function ValidasiSurvey({
       activeKabupaten,
       adminId: null,
       statuses: ["menunggu"],
+      type: activeTab,
       limit: TAB_DATA_FETCH_LIMIT,
       changedSince,
     });
@@ -469,12 +476,13 @@ export default function ValidasiSurvey({
 
   useEffect(() => {
     void Promise.all([fetchStatistics(), fetchSurveys()]);
-  }, [activeKabupaten]);
+  }, [activeKabupaten, activeTab]);
 
   useEffect(() => {
     if (!isActive) return;
 
     const intervalId = window.setInterval(() => {
+      if (!isDocumentVisible()) return;
       void (async () => {
         const payload = await fetchStatistics(false);
         if (!payload) return;
@@ -491,7 +499,7 @@ export default function ValidasiSurvey({
     }, LIVE_REFRESH_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [isActive, activeKabupaten]);
+  }, [isActive, activeKabupaten, activeTab]);
 
   const currentTabSurveys = useMemo(
     () => surveys.filter((survey) => survey.type === activeTab),

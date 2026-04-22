@@ -100,6 +100,11 @@ const DASHBOARD_REPORT_CACHE_TTL_MS = 5 * 60 * 1000;
 const DASHBOARD_SUMMARY_CACHE_TTL_MS = 10 * 60 * 1000;
 const DASHBOARD_SUMMARY_REFRESH_INTERVAL_MS = 30000;
 
+function isDocumentVisible() {
+  if (typeof document === "undefined") return true;
+  return document.visibilityState === "visible";
+}
+
 interface DashboardSummaryDocument {
   totalUniqueSurveyors?: number;
   propose?: Partial<ReportSummary>;
@@ -736,6 +741,7 @@ export default function DashboardContent({
     void hydrateFromSummary();
 
     const intervalId = window.setInterval(() => {
+      if (!isDocumentVisible()) return;
       void hydrateFromSummary(true);
     }, DASHBOARD_SUMMARY_REFRESH_INTERVAL_MS);
 

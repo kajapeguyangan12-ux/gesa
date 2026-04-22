@@ -121,6 +121,11 @@ type TimestampLike =
 export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupaten?: string | null }) {
   const FULL_FETCH_LIMIT = 10000;
   const LIVE_REFRESH_INTERVAL_MS = 30000;
+
+  const isDocumentVisible = () => {
+    if (typeof document === "undefined") return true;
+    return document.visibilityState === "visible";
+  };
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -283,6 +288,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
+      if (!isDocumentVisible()) return;
       void (async () => {
         try {
           const payload = await fetchAdminSurveyRows({
