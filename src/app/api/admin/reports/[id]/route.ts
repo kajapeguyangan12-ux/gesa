@@ -28,6 +28,29 @@ interface ReportDetailRow {
   raw_payload: Record<string, unknown> | null;
 }
 
+function pickString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return null;
+}
+
+function normalizeTimestamp(value: unknown, fallback?: string | null) {
+  if (!value) return fallback ?? null;
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? fallback ?? null : parsed.toISOString();
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === "object" && value && "seconds" in value) {
+    const seconds = Number((value as { seconds?: unknown }).seconds);
+    return Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString() : fallback ?? null;
+  }
+  return fallback ?? null;
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -111,6 +134,121 @@ export async function DELETE(
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Gagal menghapus report dari Supabase." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const patch = (await request.json()) as Record<string, unknown>;
+    const supabase = getSupabaseAdminClient() as any;
+
+    const { data: existing, error: fetchError } = await supabase
+      .from("reports")
+      .select("id, fb_doc_id, title, project_title, project_location, location, reporter_name, officer, created_by_id, created_by_email, created_by_name, created_by_role, watt, meter, voltage, date, time, status, source, kabupaten, project_date, created_at, grid_data, raw_payload")
+      .or(`id.eq.${id},fb_doc_id.eq.${id}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (fetchError) {
+      throw new Error(fetchError.message);
+    }
+
+    if (!existing) {
+      return NextResponse.json({ error: "Report tidak ditemukan." }, { status: 404 });
+    }
+
+    const current = existing as ReportDetailRow;
+    const currentRawPayload = current.raw_payload || {};
+    const nowIso = new Date().toISOString();
+    const modifiedAt = normalizeTimestamp(patch.modifiedAt, nowIso);
+    const modifiedBy = pickString(patch.modifiedBy, currentRawPayload.modifiedBy) || "Admin";
+    const mergedRawPayload: Record<string, unknown> = {
+      ...currentRawPayload,
+      ...patch,
+      modifiedBy,
+      modifiedAt,
+      updatedAt: normalizeTimestamp(patch.updatedAt, modifiedAt) || modifiedAt,
+    };
+
+    const updateRow = {
+      title: pickString(
+        patch.title,
+        patch.projectTitle,
+        mergedRawPayload.title,
+        mergedRawPayload.projectTitle,
+        current.title,
+        current.project_title
+      ),
+      project_title: pickString(
+        patch.projectTitle,
+        patch.title,
+        mergedRawPayload.projectTitle,
+        mergedRawPayload.title,
+        current.project_title,
+        current.title
+      ),
+      project_location: pickString(
+        patch.projectLocation,
+        patch.location,
+        mergedRawPayload.projectLocation,
+        mergedRawPayload.location,
+        current.project_location,
+        current.location
+      ),
+      location: pickString(
+        patch.location,
+        patch.projectLocation,
+        mergedRawPayload.location,
+        mergedRawPayload.projectLocation,
+        current.location,
+        current.project_location
+      ),
+      reporter_name: pickString(patch.reporterName, mergedRawPayload.reporterName, current.reporter_name),
+      officer: pickString(
+        patch.officer,
+        patch.reporterName,
+        mergedRawPayload.officer,
+        mergedRawPayload.reporterName,
+        current.officer,
+        current.reporter_name
+      ),
+      watt: pickString(patch.watt, mergedRawPayload.watt, current.watt),
+      meter: pickString(patch.meter, mergedRawPayload.meter, current.meter),
+      voltage: pickString(patch.voltage, mergedRawPayload.voltage, current.voltage),
+      date: pickString(patch.date, mergedRawPayload.date, current.date),
+      time: pickString(patch.time, mergedRawPayload.time, current.time),
+      status: pickString(patch.status, mergedRawPayload.status, current.status),
+      source: pickString(patch.source, mergedRawPayload.source, current.source),
+      kabupaten: pickString(patch.kabupaten, mergedRawPayload.kabupaten, current.kabupaten),
+      project_date: normalizeTimestamp(patch.projectDate, current.project_date),
+      grid_data: patch.gridData ?? current.grid_data ?? currentRawPayload.gridData ?? null,
+      raw_payload: {
+        ...mergedRawPayload,
+        gridData: patch.gridData ?? current.grid_data ?? currentRawPayload.gridData ?? null,
+        modifiedBy,
+        modifiedAt,
+      },
+    };
+
+    const { error: updateError } = await supabase
+      .from("reports")
+      .update(updateRow)
+      .or(`id.eq.${id},fb_doc_id.eq.${id}`);
+
+    if (updateError) {
+      throw new Error(updateError.message);
+    }
+
+    return NextResponse.json({ ok: true, modifiedAt, modifiedBy });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Gagal memperbarui report di Supabase." },
       { status: 500 }
     );
   }

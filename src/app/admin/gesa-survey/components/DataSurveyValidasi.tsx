@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { doc, updateDoc, deleteDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 import { fetchAdminSurveyRows, type AdminSurveyRow } from "./supabaseSurveyClient";
@@ -343,14 +341,6 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     
     try {
       setIsSaving(true);
-      const collectionName =
-        editFormData.type === "existing"
-          ? "survey-existing"
-          : editFormData.type === "propose"
-          ? "survey-apj-propose"
-          : "survey-pra-existing";
-      const surveyDoc = doc(db, collectionName, editFormData.id);
-      
       const storedUser = localStorage.getItem('gesa_user');
       const currentUser = storedUser ? JSON.parse(storedUser) : null;
       const normalizedLatitude = Number(editFormData.latitude);
@@ -424,14 +414,6 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     if (!confirm('Apakah Anda yakin ingin memvalidasi survey ini? Survey akan dipindahkan ke Data Survey Valid.')) return;
     
     try {
-      const collectionName =
-        survey.type === "existing"
-          ? "survey-existing"
-          : survey.type === "propose"
-          ? "survey-apj-propose"
-          : "survey-pra-existing";
-      const surveyDoc = doc(db, collectionName, survey.id);
-      
       const storedUser = localStorage.getItem('gesa_user');
       const currentUser = storedUser ? JSON.parse(storedUser) : null;
       const normalizedAdminLatitude = Number(survey.adminLatitude);
@@ -488,13 +470,6 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
 
       await Promise.all(
         selectedSurveys.map(async (survey) => {
-          const collectionName =
-            survey.type === "existing"
-              ? "survey-existing"
-              : survey.type === "propose"
-              ? "survey-apj-propose"
-              : "survey-pra-existing";
-          const surveyDoc = doc(db, collectionName, survey.id);
           const normalizedAdminLatitude = Number(survey.adminLatitude);
           const normalizedAdminLongitude = Number(survey.adminLongitude);
           const shouldUseAdminCoordinate =
@@ -585,14 +560,6 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     if (!alasan) return;
     
     try {
-      const collectionName =
-        survey.type === "existing"
-          ? "survey-existing"
-          : survey.type === "propose"
-          ? "survey-apj-propose"
-          : "survey-pra-existing";
-      const surveyDoc = doc(db, collectionName, survey.id);
-      
       const storedUser = localStorage.getItem('gesa_user');
       const currentUser = storedUser ? JSON.parse(storedUser) : null;
       
@@ -625,14 +592,6 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     if (!confirm('Apakah Anda yakin ingin menghapus survey ini? Data tidak dapat dikembalikan!')) return;
     
     try {
-      const collectionName =
-        survey.type === "existing"
-          ? "survey-existing"
-          : survey.type === "propose"
-          ? "survey-apj-propose"
-          : "survey-pra-existing";
-      const surveyDoc = doc(db, collectionName, survey.id);
-      
       const response = await fetch(`/api/admin/surveys/${toApiSurveyType(survey.type)}/${survey.id}`, {
         method: "DELETE",
       });

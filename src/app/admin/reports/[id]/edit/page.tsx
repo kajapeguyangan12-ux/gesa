@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -32,31 +30,14 @@ function ReportEditContent() {
     const fetchReport = async () => {
       try {
         setLoading(true);
-        try {
-          const response = await fetch(`/api/admin/reports/${reportId}`, { cache: "no-store" });
-          if (response.ok) {
-            const payload = (await response.json()) as { report?: any | null };
-            if (payload.report) {
-              const data = payload.report;
-              setReport(data);
-              setGridData(parseGridData(data));
-              return;
-            }
-          }
-        } catch (error) {
-          console.error("Supabase report edit fetch failed, fallback to Firestore:", error);
+        const response = await fetch(`/api/admin/reports/${reportId}`, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error("Gagal memuat detail laporan dari Supabase.");
         }
-
-        const ref = doc(db, "reports", reportId);
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          const data = { id: snap.id, ...snap.data() };
-          setReport(data);
-          setGridData(parseGridData(data));
-        } else {
-          setReport(null);
-          setGridData([]);
-        }
+        const payload = (await response.json()) as { report?: any | null };
+        const data = payload.report || null;
+        setReport(data);
+        setGridData(data ? parseGridData(data) : []);
       } catch (e) {
         console.error("Failed to load report:", e);
         setReport(null);
@@ -435,7 +416,15 @@ function ReportEditContent() {
         modifiedBy: user?.displayName || user?.email?.split("@")[0] || "Admin",
         modifiedAt: new Date().toISOString(),
       };
-      await updateDoc(doc(db, "reports", reportId), updates);
+      const response = await fetch(`/api/admin/reports/${reportId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (!response.ok) {
+        throw new Error("Gagal menyimpan perubahan laporan ke Supabase.");
+      }
+      setReport((current: any) => (current ? { ...current, ...updates } : current));
       alert("Perubahan berhasil disimpan.");
     } catch (e) {
       console.error("Failed to update report:", e);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, type FormEvent } from "react";
-import { collection, getDoc, getDocs, addDoc, serverTimestamp, query, orderBy, limit, deleteDoc, doc, setDoc, updateDoc, where } from "firebase/firestore";
+import { getDoc, serverTimestamp, doc, setDoc } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -351,31 +351,8 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
 
             return supabaseUsers;
           } catch (supabaseError) {
-            console.error("Supabase petugas fetch failed, fallback to Firestore:", supabaseError);
-
-            const usersRef = collection(db, "User-Admin");
-            const petsQuery = query(
-              usersRef,
-              where("role", "in", Array.from(allowedRoles))
-            );
-            const snapshot = await getDocs(petsQuery);
-
-            return snapshot.docs.map((userDoc) => {
-              const user = userDoc.data() as {
-                uid?: string;
-                name?: string;
-                email?: string;
-                role?: string;
-              };
-
-              return {
-                id: userDoc.id,
-                name: user.name || "-",
-                email: user.email || "-",
-                role: typeof user.role === "string" ? user.role.trim() : "",
-                uid: user.uid || userDoc.id,
-              };
-            });
+            console.error("Supabase petugas fetch failed:", supabaseError);
+            throw supabaseError;
           }
         },
         300_000

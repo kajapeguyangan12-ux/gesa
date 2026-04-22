@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 type ReportData = any;
@@ -20,26 +18,12 @@ function ReportViewContent() {
     const fetchReport = async () => {
       try {
         setLoading(true);
-        try {
-          const response = await fetch(`/api/admin/reports/${reportId}`, { cache: "no-store" });
-          if (response.ok) {
-            const payload = (await response.json()) as { report?: ReportData | null };
-            if (payload.report) {
-              setReport(payload.report);
-              return;
-            }
-          }
-        } catch (error) {
-          console.error("Supabase report detail fetch failed, fallback to Firestore:", error);
+        const response = await fetch(`/api/admin/reports/${reportId}`, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error("Gagal memuat detail laporan dari Supabase.");
         }
-
-        const ref = doc(db, "reports", reportId);
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          setReport({ id: snap.id, ...snap.data() });
-        } else {
-          setReport(null);
-        }
+        const payload = (await response.json()) as { report?: ReportData | null };
+        setReport(payload.report || null);
       } catch (e) {
         console.error("Failed to load report:", e);
         setReport(null);

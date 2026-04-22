@@ -2,13 +2,12 @@
 
 import { useState, useEffect, Suspense, useMemo, useCallback, memo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { collection, doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
-import { db, storage } from "@/lib/firebase";
-import { FIREBASE_COLLECTIONS, KABUPATEN_OPTIONS } from "@/utils/constants";
+import { storage } from "@/lib/firebase";
+import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
 
 interface CellData {
@@ -350,8 +349,7 @@ function MeasurementGridContent() {
     try {
       setIsSavingReport(true);
       const now = new Date();
-      const reportRef = doc(collection(db, FIREBASE_COLLECTIONS.SURVEYS));
-      const reportId = reportRef.id;
+      const reportId = crypto.randomUUID();
       let attachmentMap = new Map<string, string>();
       try {
         attachmentMap = await uploadCellAttachments(reportId);
@@ -384,9 +382,19 @@ function MeasurementGridContent() {
         status: "pending",
         source: "survey-cahaya",
         kabupaten,
-        createdAt: serverTimestamp(),
+        createdAt: now.toISOString(),
       };
-      await setDoc(reportRef, payload);
+      const response = await fetch("/api/admin/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: reportId,
+          ...payload,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("Gagal menyimpan laporan ke Supabase.");
+      }
       alert("Laporan berhasil disimpan.");
     } catch (error) {
       console.error("Error saving report:", error);

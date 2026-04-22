@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { randomUUID } from "node:crypto";
 
 interface ReportRow {
   id: string | null;
@@ -20,6 +21,29 @@ interface ReportRow {
   created_at: string | null;
   grid_data?: unknown;
   raw_payload?: Record<string, unknown> | null;
+}
+
+function pickString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return null;
+}
+
+function normalizeTimestamp(value: unknown, fallback?: string | null) {
+  if (!value) return fallback ?? null;
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? fallback ?? null : parsed.toISOString();
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === "object" && value && "seconds" in value) {
+    const seconds = Number((value as { seconds?: unknown }).seconds);
+    return Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString() : fallback ?? null;
+  }
+  return fallback ?? null;
 }
 
 function toDisplayDate(value: string | null) {
@@ -119,6 +143,59 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Gagal memuat reports dari Supabase." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const payload = (await request.json()) as Record<string, unknown>;
+    const supabase = getSupabaseAdminClient() as any;
+    const reportId = pickString(payload.id, payload.fb_doc_id) || randomUUID();
+    const createdAt = normalizeTimestamp(payload.createdAt, new Date().toISOString()) || new Date().toISOString();
+    const rawPayload: Record<string, unknown> = {
+      ...payload,
+      id: reportId,
+      createdAt,
+      updatedAt: normalizeTimestamp(payload.updatedAt, createdAt) || createdAt,
+    };
+
+    const row = {
+      fb_doc_id: reportId,
+      title: pickString(payload.title, payload.projectTitle) || "Pengukuran Cahaya",
+      project_title: pickString(payload.projectTitle, payload.title) || "Pengukuran Cahaya",
+      project_location: pickString(payload.projectLocation, payload.location) || "",
+      location: pickString(payload.location, payload.projectLocation) || "",
+      reporter_name: pickString(payload.reporterName, payload.officer) || "",
+      officer: pickString(payload.officer, payload.reporterName) || "",
+      created_by_id: pickString(payload.createdById) || null,
+      created_by_email: pickString(payload.createdByEmail) || null,
+      created_by_name: pickString(payload.createdByName, payload.reporterName, payload.officer) || null,
+      created_by_role: pickString(payload.createdByRole) || null,
+      watt: pickString(payload.watt) || null,
+      meter: pickString(payload.meter) || null,
+      voltage: pickString(payload.voltage) || null,
+      date: pickString(payload.date) || null,
+      time: pickString(payload.time) || null,
+      status: pickString(payload.status) || "pending",
+      source: pickString(payload.source) || "survey-cahaya",
+      kabupaten: pickString(payload.kabupaten) || null,
+      project_date: normalizeTimestamp(payload.projectDate, createdAt),
+      created_at: createdAt,
+      grid_data: payload.gridData ?? null,
+      raw_payload: rawPayload,
+    };
+
+    const { error } = await supabase.from("reports").insert(row);
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return NextResponse.json({ ok: true, id: reportId, source: "supabase" });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Gagal menyimpan report ke Supabase." },
       { status: 500 }
     );
   }
