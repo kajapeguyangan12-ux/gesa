@@ -566,7 +566,7 @@ export default function DashboardContent({
   const [detailLoaded, setDetailLoaded] = useState(false);
   const [summaryRefreshing, setSummaryRefreshing] = useState(false);
   const [taskExporting, setTaskExporting] = useState(false);
-  const [bundleSource, setBundleSource] = useState<DashboardBundleSource>("firestore");
+  const [bundleSource, setBundleSource] = useState<DashboardBundleSource>("supabase");
   const [lastUpdatedAt, setLastUpdatedAt] = useState("");
   const [summaryVersion, setSummaryVersion] = useState(0);
   const [adminVerificationRows, setAdminVerificationRows] = useState<SurveyReportRow[]>([]);
@@ -597,11 +597,12 @@ export default function DashboardContent({
   const dashboardVerifierApiQuery = useMemo(() => {
     const params = new URLSearchParams();
     if (activeKabupaten) params.set("kabupaten", activeKabupaten);
+    if (!isSuperAdmin && user?.uid) params.set("adminId", user.uid);
     params.set("status", "diverifikasi");
     params.set("includeDetails", "1");
     params.set("dashboardDetail", "1");
     return params.toString();
-  }, [activeKabupaten]);
+  }, [activeKabupaten, isSuperAdmin, user?.uid]);
 
   const persistReportCache = (data: DashboardReportState) => {
     if (isSuperAdmin || typeof window === "undefined") return;
@@ -1383,7 +1384,7 @@ export default function DashboardContent({
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   Ringkasan dashboard sedang disembunyikan. Klik `Muat Laporan` untuk menampilkan summary hemat read.
-                  Sistem sekarang memprioritaskan Supabase, lalu fallback ke Firestore bila diperlukan.
+                  Sistem sekarang membaca dashboard dari Supabase.
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div className="rounded-xl bg-slate-50 px-4 py-3">
