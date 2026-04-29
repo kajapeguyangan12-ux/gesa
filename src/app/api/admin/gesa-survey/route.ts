@@ -161,18 +161,8 @@ function mapSupabaseSurveyRow(type: SurveyType, row: Record<string, unknown>): S
   const rawPayload = (row.raw_payload as Record<string, unknown> | null) || {};
   const status = typeof row.status === "string" ? row.status : typeof rawPayload.status === "string" ? rawPayload.status : "";
   const normalizedType = type === "apj-propose" ? "propose" : type;
-  const verifiedBy =
-    typeof rawPayload.verifiedBy === "string"
-      ? rawPayload.verifiedBy
-      : typeof rawPayload.validatedBy === "string"
-        ? rawPayload.validatedBy
-        : "";
-  const verifiedAtRaw =
-    row.verified_at ??
-    rawPayload.verifiedAt ??
-    rawPayload.validatedAt ??
-    row.updated_at ??
-    null;
+  const verifiedBy = resolveVerificationActor(status, rawPayload);
+  const verifiedAtRaw = resolveVerificationTimestamp(status, row, rawPayload, verifiedBy);
   const validatedAtRaw = rawPayload.validatedAt ?? row.updated_at ?? null;
   const kabupaten =
     typeof row.kabupaten === "string"
@@ -229,6 +219,23 @@ function mapSupabaseSurveyRow(type: SurveyType, row: Record<string, unknown>): S
           ? rawPayload.surveyorUid
           : "",
     verifiedBy,
+    validatedBy: typeof rawPayload.validatedBy === "string" ? rawPayload.validatedBy : "",
+    editedBy: typeof rawPayload.editedBy === "string" ? rawPayload.editedBy : "",
+    modifiedBy: typeof rawPayload.modifiedBy === "string" ? rawPayload.modifiedBy : "",
+    userName:
+      typeof rawPayload.userName === "string"
+        ? rawPayload.userName
+        : typeof rawPayload.user_name === "string"
+          ? rawPayload.user_name
+          : "",
+    userEmail:
+      typeof rawPayload.userEmail === "string"
+        ? rawPayload.userEmail
+        : typeof rawPayload.user_email === "string"
+          ? rawPayload.user_email
+          : "",
+    name: typeof rawPayload.name === "string" ? rawPayload.name : "",
+    email: typeof rawPayload.email === "string" ? rawPayload.email : "",
     verifiedAt:
       typeof verifiedAtRaw === "string"
         ? verifiedAtRaw
@@ -311,6 +318,57 @@ function maxTimestamp(...values: unknown[]): number {
   return values.reduce<number>((latest, value) => Math.max(latest, toTimestamp(value)), 0);
 }
 
+function pickActorName(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function resolveVerificationActor(status: string, rawPayload: Record<string, unknown>) {
+  const normalizedStatus = status.trim().toLowerCase();
+  const verifiedBy = pickActorName(rawPayload.verifiedBy);
+  const editedBy = pickActorName(rawPayload.editedBy, rawPayload.modifiedBy);
+  const validatedBy = pickActorName(rawPayload.validatedBy);
+  const fallbackIdentity = pickActorName(
+    rawPayload.userName,
+    rawPayload.user_name,
+    rawPayload.userEmail,
+    rawPayload.user_email,
+    rawPayload.name,
+    rawPayload.email
+  );
+
+  if (verifiedBy) return verifiedBy;
+  if ((normalizedStatus === "diverifikasi" || normalizedStatus === "tervalidasi") && editedBy) return editedBy;
+  if (validatedBy) return validatedBy;
+  return fallbackIdentity;
+}
+
+function resolveVerificationTimestamp(
+  status: string,
+  row: { verified_at?: unknown; updated_at?: unknown },
+  rawPayload: Record<string, unknown>,
+  actorName: string
+) {
+  const normalizedStatus = status.trim().toLowerCase();
+  const directVerifiedAt = row.verified_at ?? rawPayload.verifiedAt ?? null;
+  if (directVerifiedAt) return directVerifiedAt;
+
+  if (normalizedStatus === "tervalidasi") {
+    const validatedAt = rawPayload.validatedAt ?? null;
+    if (validatedAt) return validatedAt;
+  }
+
+  if ((normalizedStatus === "diverifikasi" || normalizedStatus === "tervalidasi") && actorName) {
+    return row.updated_at ?? null;
+  }
+
+  return null;
+}
+
 function mapCompactSupabaseSurveyRow(type: SurveyType, row: CompactSurveyRow): SurveyRow {
   const normalizedType = type === "apj-propose" ? "propose" : type;
 
@@ -338,18 +396,8 @@ function mapDashboardDetailSurveyRow(type: SurveyType, row: DashboardDetailSurve
   const normalizedType = type === "apj-propose" ? "propose" : type;
   const status =
     typeof row.status === "string" ? row.status : typeof rawPayload.status === "string" ? rawPayload.status : "";
-  const verifiedBy =
-    typeof rawPayload.verifiedBy === "string"
-      ? rawPayload.verifiedBy
-      : typeof rawPayload.validatedBy === "string"
-        ? rawPayload.validatedBy
-        : "";
-  const verifiedAtRaw =
-    row.verified_at ??
-    rawPayload.verifiedAt ??
-    rawPayload.validatedAt ??
-    row.updated_at ??
-    null;
+  const verifiedBy = resolveVerificationActor(status, rawPayload);
+  const verifiedAtRaw = resolveVerificationTimestamp(status, row, rawPayload, verifiedBy);
   const kabupaten =
     typeof row.kabupaten === "string"
       ? row.kabupaten
@@ -397,6 +445,23 @@ function mapDashboardDetailSurveyRow(type: SurveyType, row: DashboardDetailSurve
           ? rawPayload.surveyorUid
           : "",
     verifiedBy,
+    validatedBy: typeof rawPayload.validatedBy === "string" ? rawPayload.validatedBy : "",
+    editedBy: typeof rawPayload.editedBy === "string" ? rawPayload.editedBy : "",
+    modifiedBy: typeof rawPayload.modifiedBy === "string" ? rawPayload.modifiedBy : "",
+    userName:
+      typeof rawPayload.userName === "string"
+        ? rawPayload.userName
+        : typeof rawPayload.user_name === "string"
+          ? rawPayload.user_name
+          : "",
+    userEmail:
+      typeof rawPayload.userEmail === "string"
+        ? rawPayload.userEmail
+        : typeof rawPayload.user_email === "string"
+          ? rawPayload.user_email
+          : "",
+    name: typeof rawPayload.name === "string" ? rawPayload.name : "",
+    email: typeof rawPayload.email === "string" ? rawPayload.email : "",
     verifiedAt:
       typeof verifiedAtRaw === "string"
         ? verifiedAtRaw

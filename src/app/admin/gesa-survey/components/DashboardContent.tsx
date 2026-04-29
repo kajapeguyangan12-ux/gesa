@@ -22,6 +22,13 @@ interface SurveyReportRow {
   type: string;
   surveyorName?: string;
   verifiedBy?: string;
+  validatedBy?: string;
+  editedBy?: string;
+  modifiedBy?: string;
+  userName?: string;
+  userEmail?: string;
+  name?: string;
+  email?: string;
   verifiedAt?: TimestampLike;
   updatedAt?: TimestampLike;
   kabupaten?: string;
@@ -100,10 +107,44 @@ const initialReportState: DashboardReportState = {
 const DASHBOARD_REPORT_CACHE_TTL_MS = 5 * 60 * 1000;
 const DASHBOARD_SUMMARY_CACHE_TTL_MS = 10 * 60 * 1000;
 const DASHBOARD_SUMMARY_REFRESH_INTERVAL_MS = 30000;
+const UNKNOWN_VERIFIER_LABEL = "Tanpa Nama Verifikator";
 
 function isDocumentVisible() {
   if (typeof document === "undefined") return true;
   return document.visibilityState === "visible";
+}
+
+function pickFirstNonEmptyString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function resolveVerifierName(row: SurveyReportRow) {
+  return (
+    pickFirstNonEmptyString(
+      row.verifiedBy,
+      row.validatedBy,
+      row.editedBy,
+      row.modifiedBy,
+      row.userName,
+      row.userEmail,
+      row.name,
+      row.email
+    ) || UNKNOWN_VERIFIER_LABEL
+  );
+}
+
+function resolveVerifierIdentityKey(row: SurveyReportRow) {
+  const resolved = resolveVerifierName(row);
+  return resolved === UNKNOWN_VERIFIER_LABEL ? "" : resolved.trim().toLowerCase();
+}
+
+function isKnownVerifierName(value: string) {
+  return value.trim() !== UNKNOWN_VERIFIER_LABEL;
 }
 
 interface DashboardSummaryDocument {
@@ -594,7 +635,7 @@ function buildVerifierDailyExportMatrix(
     const verifiedDate = resolveTimestamp(row.verifiedAt);
     if (!verifiedDate) return;
 
-    const verifierName = row.verifiedBy?.trim() || "Admin";
+    const verifierName = resolveVerifierName(row);
     const dateKey = toDateKey(verifiedDate);
     uniqueDateKeys.add(dateKey);
 
@@ -674,7 +715,7 @@ function buildVerifierSummary(rows: SurveyReportRow[]) {
     const verifiedDate = resolveTimestamp(row.verifiedAt);
     if (!verifiedDate) return;
 
-    const verifierName = row.verifiedBy?.trim() || "Admin";
+    const verifierName = resolveVerifierName(row);
     const current =
       grouped.get(verifierName) ||
       ({
@@ -1181,6 +1222,8 @@ export default function DashboardContent({
   const verifierDetailRows = useMemo(() => {
     return reportState.allRows
       .filter((row) => {
+        const normalizedStatus = (row.status || "").trim().toLowerCase();
+        if (normalizedStatus !== "diverifikasi" && normalizedStatus !== "tervalidasi") return false;
         const verifiedDate = resolveTimestamp(row.verifiedAt);
         if (!verifiedDate) return false;
         if (normalizedDateRange.start && verifiedDate < normalizedDateRange.start) return false;
@@ -1193,6 +1236,10 @@ export default function DashboardContent({
   const verifierSummaryRows = useMemo(
     () => buildVerifierSummary(verifierDetailRows),
     [verifierDetailRows]
+  );
+  const knownVerifierSummaryRows = useMemo(
+    () => verifierSummaryRows.filter((row) => isKnownVerifierName(row.verifierName)),
+    [verifierSummaryRows]
   );
 
   const adminIdentityKeys = useMemo(
@@ -1209,7 +1256,7 @@ export default function DashboardContent({
     const rawRows = adminVerificationRows ?? [];
     return rawRows
       .filter((row) => {
-        const verifiedBy = row.verifiedBy?.trim().toLowerCase();
+        const verifiedBy = resolveVerifierIdentityKey(row);
         return Boolean(verifiedBy && adminIdentityKeys.includes(verifiedBy));
       })
       .filter((row) => {
@@ -1373,7 +1420,7 @@ export default function DashboardContent({
 
     const detailRows = verifierDetailRows.map((row, index) => [
       index + 1,
-      row.verifiedBy?.trim() || "Admin",
+      resolveVerifierName(row),
       row.type,
       row.title || "-",
       row.surveyorName || "-",
@@ -1971,7 +2018,7 @@ export default function DashboardContent({
                         <div className="grid grid-cols-1 gap-4 border-b border-gray-100 px-6 py-5 md:grid-cols-3">
                           <div className="rounded-2xl bg-slate-50 px-4 py-3">
                             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Admin Terdata</p>
-                            <p className="mt-2 text-2xl font-bold text-gray-900">{verifierSummaryRows.length}</p>
+                            <p className="mt-2 text-2xl font-bold text-gray-900">{knownVerifierSummaryRows.length}</p>
                           </div>
                           <div className="rounded-2xl bg-slate-50 px-4 py-3">
                             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Total Titik Diverifikasi</p>

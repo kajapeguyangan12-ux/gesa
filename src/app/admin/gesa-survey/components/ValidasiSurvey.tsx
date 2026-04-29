@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { memo, useState, useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { PRA_EXISTING_TABANAN_DATA } from "@/app/survey-pra-existing/location-data";
@@ -180,6 +180,25 @@ function buildPraExistingOwnershipDisplay(kepemilikanTiang: string, tipeTiangPLN
   return kepemilikanTiang === "PLN" && tipeTiangPLN ? `PLN - ${tipeTiangPLN}` : kepemilikanTiang;
 }
 
+const StatsCard = memo(function StatsCard({
+  title,
+  value,
+  className,
+  valueClassName,
+}: {
+  title: string;
+  value: number | null;
+  className: string;
+  valueClassName: string;
+}) {
+  return (
+    <div className={className}>
+      <p className="text-sm font-medium mb-1">{title}</p>
+      <h3 className={valueClassName}>{value ?? "-"}</h3>
+    </div>
+  );
+});
+
 async function readApiError(response: Response, fallbackMessage: string) {
   try {
     const payload = (await response.json()) as { error?: string };
@@ -208,6 +227,18 @@ const TAB_DATA_FETCH_LIMIT = 10000;
 function isDocumentVisible() {
   if (typeof document === "undefined") return true;
   return document.visibilityState === "visible";
+}
+
+function haveSameStats(
+  left: { total: number; existing: number; propose: number; praExisting: number },
+  right: { total: number; existing: number; propose: number; praExisting: number }
+) {
+  return (
+    left.total === right.total &&
+    left.existing === right.existing &&
+    left.propose === right.propose &&
+    left.praExisting === right.praExisting
+  );
 }
 
 export default function ValidasiSurvey({
@@ -371,20 +402,18 @@ export default function ValidasiSurvey({
         summaryOnly: true,
       });
 
-      setStats(payload.counts);
+      setStats((current) => (haveSameStats(current, payload.counts) ? current : payload.counts));
       setStatsLoaded(true);
       setDataSource(payload.source);
       if (syncFingerprint) {
         latestSurveyFingerprintRef.current = buildSurveyFingerprint(payload.counts, payload.lastDataChangeAt);
         latestSurveyChangeRef.current = payload.lastDataChangeAt || payload.generatedAt || latestSurveyChangeRef.current;
       }
-      setLastUpdatedAt(
-        payload.lastDataChangeAt
-          ? new Date(payload.lastDataChangeAt)
-          : payload.generatedAt
-            ? new Date(payload.generatedAt)
-            : new Date()
-      );
+      const nextUpdatedAtIso = payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString();
+      setLastUpdatedAt((current) => {
+        const currentIso = current instanceof Date && !Number.isNaN(current.getTime()) ? current.toISOString() : "";
+        return currentIso === nextUpdatedAtIso ? current : new Date(nextUpdatedAtIso);
+      });
       return payload;
     } catch (error) {
       setFetchError(error instanceof Error ? error.message : "Gagal memuat statistik verifikasi.");
@@ -435,13 +464,11 @@ export default function ValidasiSurvey({
       }
       setHasNextPage(false);
       setDataSource(payload.source);
-      setLastUpdatedAt(
-        payload.lastDataChangeAt
-          ? new Date(payload.lastDataChangeAt)
-          : payload.generatedAt
-            ? new Date(payload.generatedAt)
-            : new Date()
-      );
+      const nextUpdatedAtIso = payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString();
+      setLastUpdatedAt((current) => {
+        const currentIso = current instanceof Date && !Number.isNaN(current.getTime()) ? current.toISOString() : "";
+        return currentIso === nextUpdatedAtIso ? current : new Date(nextUpdatedAtIso);
+      });
     } catch (error) {
       console.error("Error fetching surveys:", error);
       setFetchError(error instanceof Error ? error.message : "Gagal memuat data verifikasi.");
@@ -455,11 +482,16 @@ export default function ValidasiSurvey({
     }
   };
 
-  const fetchSurveyDelta = async (changedSince: string) => {
+  const fetchSurveyDelta = async (
+    changedSince: string,
+    nextCounts?: { total: number; existing: number; propose: number; praExisting: number },
+    nextLastDataChangeAt?: string,
+    nextGeneratedAt?: string,
+    nextSource?: string
+  ) => {
     const payload = await fetchAdminSurveyRows({
       activeKabupaten,
       adminId: null,
-      statuses: ["menunggu"],
       type: activeTab,
       limit: TAB_DATA_FETCH_LIMIT,
       changedSince,
@@ -467,18 +499,20 @@ export default function ValidasiSurvey({
 
     const deltaRows = payload.rows.map(mapSupabaseSurvey);
     setSurveys((current) => mergeSurveyDelta(current, deltaRows));
-    latestSurveyFingerprintRef.current = buildSurveyFingerprint(payload.counts, payload.lastDataChangeAt);
-    latestSurveyChangeRef.current = payload.lastDataChangeAt || payload.generatedAt || latestSurveyChangeRef.current;
-    setStats(payload.counts);
+    const resolvedCounts = nextCounts ?? payload.counts;
+    const resolvedLastDataChangeAt = nextLastDataChangeAt || payload.lastDataChangeAt;
+    const resolvedGeneratedAt = nextGeneratedAt || payload.generatedAt;
+    const resolvedSource = nextSource || payload.source;
+    latestSurveyFingerprintRef.current = buildSurveyFingerprint(resolvedCounts, resolvedLastDataChangeAt);
+    latestSurveyChangeRef.current = resolvedLastDataChangeAt || resolvedGeneratedAt || latestSurveyChangeRef.current;
+    setStats((current) => (haveSameStats(current, resolvedCounts) ? current : resolvedCounts));
     setStatsLoaded(true);
-    setDataSource(payload.source);
-    setLastUpdatedAt(
-      payload.lastDataChangeAt
-        ? new Date(payload.lastDataChangeAt)
-        : payload.generatedAt
-          ? new Date(payload.generatedAt)
-          : new Date()
-    );
+    setDataSource(resolvedSource);
+    const nextUpdatedAtIso = resolvedLastDataChangeAt || resolvedGeneratedAt || new Date().toISOString();
+    setLastUpdatedAt((current) => {
+      const currentIso = current instanceof Date && !Number.isNaN(current.getTime()) ? current.toISOString() : "";
+      return currentIso === nextUpdatedAtIso ? current : new Date(nextUpdatedAtIso);
+    });
   };
 
   const clearCurrentTabCaches = () => undefined;
@@ -513,7 +547,13 @@ export default function ValidasiSurvey({
         const nextFingerprint = buildSurveyFingerprint(payload.counts, payload.lastDataChangeAt);
         if (nextFingerprint !== latestSurveyFingerprintRef.current) {
           if (latestSurveyChangeRef.current) {
-            await fetchSurveyDelta(latestSurveyChangeRef.current);
+            await fetchSurveyDelta(
+              latestSurveyChangeRef.current,
+              payload.counts,
+              payload.lastDataChangeAt,
+              payload.generatedAt,
+              payload.source
+            );
           } else {
             await fetchSurveys(false, false, true);
           }
@@ -1183,30 +1223,36 @@ export default function ValidasiSurvey({
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
-            <p className="text-sm font-medium text-blue-900 mb-1">Total Survey</p>
-            <h3 className="text-4xl font-bold text-blue-600">{totalSurveys ?? "-"}</h3>
-          </div>
-
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-4 border border-orange-200">
-            <p className="text-sm font-medium text-orange-900 mb-1">Total Survey Existing</p>
-            <h3 className="text-4xl font-bold text-orange-600">{totalExisting ?? "-"}</h3>
-          </div>
-
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
-            <p className="text-sm font-medium text-purple-900 mb-1">Total Survey APJ Propose</p>
-            <h3 className="text-4xl font-bold text-purple-600">{totalPropose ?? "-"}</h3>
-          </div>
-
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
-            <p className="text-sm font-medium text-emerald-900 mb-1">Total Survey Pra Existing</p>
-            <h3 className="text-4xl font-bold text-emerald-600">{totalPraExisting ?? "-"}</h3>
-          </div>
-
-          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
-            <p className="text-sm font-medium text-green-900 mb-1">Menunggu Verifikasi</p>
-            <h3 className="text-4xl font-bold text-green-600">{diverifikasiCount ?? "-"}</h3>
-          </div>
+          <StatsCard
+            title="Total Survey"
+            value={totalSurveys}
+            className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200 text-blue-900"
+            valueClassName="text-4xl font-bold text-blue-600"
+          />
+          <StatsCard
+            title="Total Survey Existing"
+            value={totalExisting}
+            className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-4 border border-orange-200 text-orange-900"
+            valueClassName="text-4xl font-bold text-orange-600"
+          />
+          <StatsCard
+            title="Total Survey APJ Propose"
+            value={totalPropose}
+            className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200 text-purple-900"
+            valueClassName="text-4xl font-bold text-purple-600"
+          />
+          <StatsCard
+            title="Total Survey Pra Existing"
+            value={totalPraExisting}
+            className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200 text-emerald-900"
+            valueClassName="text-4xl font-bold text-emerald-600"
+          />
+          <StatsCard
+            title="Menunggu Verifikasi"
+            value={diverifikasiCount}
+            className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200 text-green-900"
+            valueClassName="text-4xl font-bold text-green-600"
+          />
         </div>
       </div>
 
