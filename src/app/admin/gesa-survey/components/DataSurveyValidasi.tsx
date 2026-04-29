@@ -119,6 +119,8 @@ type TimestampLike =
   | null
   | undefined;
 
+const SUPPRESSED_SURVEY_TTL_MS = 20000;
+
 async function readApiError(response: Response, fallbackMessage: string) {
   try {
     const payload = (await response.json()) as { error?: string };
@@ -182,9 +184,33 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   const [showAll, setShowAll] = useState(false);
   const latestFingerprintRef = useRef("");
   const latestDataChangeRef = useRef("");
+  const surveysRequestSeqRef = useRef(0);
+  const suppressedSurveyIdsRef = useRef(new Map<string, number>());
   const targetStatuses = useMemo(() => new Set(["diverifikasi"]), []);
 
   const mapSupabaseSurvey = (survey: AdminSurveyRow) => survey as Survey;
+
+  const cleanupSuppressedSurveyIds = () => {
+    const now = Date.now();
+    for (const [surveyId, expiresAt] of suppressedSurveyIdsRef.current.entries()) {
+      if (expiresAt <= now) {
+        suppressedSurveyIdsRef.current.delete(surveyId);
+      }
+    }
+  };
+
+  const suppressSurveyIds = (surveyIds: string[]) => {
+    const expiresAt = Date.now() + SUPPRESSED_SURVEY_TTL_MS;
+    surveyIds.filter(Boolean).forEach((surveyId) => {
+      suppressedSurveyIdsRef.current.set(surveyId, expiresAt);
+    });
+  };
+
+  const filterSuppressedSurveys = (rows: Survey[]) => {
+    cleanupSuppressedSurveyIds();
+    if (suppressedSurveyIdsRef.current.size === 0) return rows;
+    return rows.filter((row) => !suppressedSurveyIdsRef.current.has(row.id));
+  };
 
   const getTimestampValue = (timestamp: TimestampLike) => {
     if (!timestamp) return 0;
@@ -248,6 +274,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   }, [activeKabupaten]);
 
   const fetchAllSurveys = async (forceRefresh = false) => {
+    const requestSeq = ++surveysRequestSeqRef.current;
     try {
       if (forceRefresh) {
         setRefreshing(true);
@@ -261,8 +288,11 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         statuses: ["diverifikasi"],
         limit: FULL_FETCH_LIMIT,
       });
+      if (requestSeq !== surveysRequestSeqRef.current) {
+        return;
+      }
       const allSurveys = payload.rows.map(mapSupabaseSurvey);
-      setSurveys(allSurveys);
+      setSurveys(filterSuppressedSurveys(allSurveys));
       setDataLoaded(true);
       setStats(payload.counts);
       latestFingerprintRef.current = buildFingerprint(payload.counts, payload.lastDataChangeAt);
@@ -287,13 +317,16 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   };
 
   const fetchSurveyDelta = async (changedSince: string) => {
+    const requestSeq = ++surveysRequestSeqRef.current;
     const payload = await fetchAdminSurveyRows({
       activeKabupaten,
-      statuses: ["diverifikasi"],
       limit: FULL_FETCH_LIMIT,
       changedSince,
     });
-    const deltaRows = payload.rows.map(mapSupabaseSurvey);
+    if (requestSeq !== surveysRequestSeqRef.current) {
+      return;
+    }
+    const deltaRows = filterSuppressedSurveys(payload.rows.map(mapSupabaseSurvey));
     setSurveys((current) => mergeSurveyDelta(current, deltaRows));
     setDataLoaded(true);
     setStats(payload.counts);
@@ -338,6 +371,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   }, [activeKabupaten]);
 
   const removeSurveyFromList = (surveyId: string) => {
+    suppressSurveyIds([surveyId]);
     setSurveys((current) => current.filter((survey) => survey.id !== surveyId));
     setStats((current) => {
       const removedSurvey = surveys.find((survey) => survey.id === surveyId);
@@ -554,6 +588,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         return;
       }
 
+      suppressSurveyIds(selectedSurveyIds);
       setSelectedSurveyIds([]);
       setSurveys((current) => current.filter((survey) => !selectedSurveyIds.includes(survey.id)));
       setStats((current) => {

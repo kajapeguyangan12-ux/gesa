@@ -241,6 +241,8 @@ function haveSameStats(
   );
 }
 
+const SUPPRESSED_SURVEY_TTL_MS = 20000;
+
 export default function ValidasiSurvey({
   activeKabupaten,
   isActive = true,
@@ -315,6 +317,9 @@ export default function ValidasiSurvey({
   const [hasNextPage, setHasNextPage] = useState(false);
   const latestSurveyFingerprintRef = useRef("");
   const latestSurveyChangeRef = useRef("");
+  const surveysRequestSeqRef = useRef(0);
+  const statsRequestSeqRef = useRef(0);
+  const suppressedSurveyIdsRef = useRef(new Map<string, number>());
   const getCurrentUser = () => {
     const storedUser = localStorage.getItem("gesa_user");
     return storedUser ? JSON.parse(storedUser) : null;
@@ -322,6 +327,28 @@ export default function ValidasiSurvey({
 
   const mapSupabaseSurvey = (survey: AdminSurveyRow) => survey as Survey;
   const targetStatuses = useMemo(() => new Set(["menunggu"]), []);
+
+  const cleanupSuppressedSurveyIds = () => {
+    const now = Date.now();
+    for (const [surveyId, expiresAt] of suppressedSurveyIdsRef.current.entries()) {
+      if (expiresAt <= now) {
+        suppressedSurveyIdsRef.current.delete(surveyId);
+      }
+    }
+  };
+
+  const suppressSurveyIds = (surveyIds: string[]) => {
+    const expiresAt = Date.now() + SUPPRESSED_SURVEY_TTL_MS;
+    surveyIds.filter(Boolean).forEach((surveyId) => {
+      suppressedSurveyIdsRef.current.set(surveyId, expiresAt);
+    });
+  };
+
+  const filterSuppressedSurveys = (rows: Survey[]) => {
+    cleanupSuppressedSurveyIds();
+    if (suppressedSurveyIdsRef.current.size === 0) return rows;
+    return rows.filter((row) => !suppressedSurveyIdsRef.current.has(row.id));
+  };
 
   const mergeSurveyDelta = (current: Survey[], deltaRows: Survey[]) => {
     const byId = new Map(current.map((survey) => [survey.id, survey]));
@@ -363,6 +390,8 @@ export default function ValidasiSurvey({
         : item.id === targetSurvey.id
     );
 
+    suppressSurveyIds(surveysToRemove.map((item) => item.id));
+
     setSurveys((current) =>
       current.filter((item) =>
         mode === "exact-pra-existing-group"
@@ -390,6 +419,7 @@ export default function ValidasiSurvey({
   };
 
   const fetchStatistics = async (forceRefresh = false, syncFingerprint = true) => {
+    const requestSeq = ++statsRequestSeqRef.current;
     try {
       if (forceRefresh) {
         setStatsLoading(true);
@@ -401,6 +431,10 @@ export default function ValidasiSurvey({
         statuses: ["menunggu"],
         summaryOnly: true,
       });
+
+      if (requestSeq !== statsRequestSeqRef.current) {
+        return payload;
+      }
 
       setStats((current) => (haveSameStats(current, payload.counts) ? current : payload.counts));
       setStatsLoaded(true);
@@ -442,6 +476,7 @@ export default function ValidasiSurvey({
   };
 
   const fetchSurveys = async (forceRefresh = false, resetPage = true, backgroundRefresh = false) => {
+    const requestSeq = ++surveysRequestSeqRef.current;
     try {
       if (forceRefresh) {
         setRefreshing(true);
@@ -456,7 +491,10 @@ export default function ValidasiSurvey({
         type: activeTab,
         limit: TAB_DATA_FETCH_LIMIT,
       });
-      setSurveys(payload.rows.map(mapSupabaseSurvey));
+      if (requestSeq !== surveysRequestSeqRef.current) {
+        return;
+      }
+      setSurveys(filterSuppressedSurveys(payload.rows.map(mapSupabaseSurvey)));
       latestSurveyFingerprintRef.current = buildSurveyFingerprint(payload.counts, payload.lastDataChangeAt);
       latestSurveyChangeRef.current = payload.lastDataChangeAt || payload.generatedAt || latestSurveyChangeRef.current;
       if (resetPage) {
@@ -489,6 +527,7 @@ export default function ValidasiSurvey({
     nextGeneratedAt?: string,
     nextSource?: string
   ) => {
+    const requestSeq = ++surveysRequestSeqRef.current;
     const payload = await fetchAdminSurveyRows({
       activeKabupaten,
       adminId: null,
@@ -497,7 +536,11 @@ export default function ValidasiSurvey({
       changedSince,
     });
 
-    const deltaRows = payload.rows.map(mapSupabaseSurvey);
+    if (requestSeq !== surveysRequestSeqRef.current) {
+      return;
+    }
+
+    const deltaRows = filterSuppressedSurveys(payload.rows.map(mapSupabaseSurvey));
     setSurveys((current) => mergeSurveyDelta(current, deltaRows));
     const resolvedCounts = nextCounts ?? payload.counts;
     const resolvedLastDataChangeAt = nextLastDataChangeAt || payload.lastDataChangeAt;
