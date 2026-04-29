@@ -13,7 +13,20 @@ interface ExistingSurveyRecord {
   surveyor_uid?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  status?: string | null;
+  updated_at?: string | null;
   raw_payload?: Record<string, unknown> | null;
+}
+
+function normalizeStatus(value: unknown) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function normalizeTimestampValue(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return "";
+  const parsed = new Date(value);
+  const time = parsed.getTime();
+  return Number.isNaN(time) ? "" : parsed.toISOString();
 }
 
 export async function PATCH(
@@ -25,10 +38,13 @@ export async function PATCH(
     const surveyType = type as HybridSurveyType;
     const table = resolveSurveyTable(surveyType);
     const patch = (await request.json()) as Record<string, unknown>;
+    const expectedStatus = normalizeStatus(patch.expectedStatus);
+    const expectedUpdatedAt = normalizeTimestampValue(patch.expectedUpdatedAt);
+    const preserveCurrentStatus = patch.preserveCurrentStatus === true;
     const supabase = getSupabaseAdminClient() as any;
     const { data: existing, error: readError } = (await supabase
       .from(table)
-      .select("fb_doc_id, title, task_id, surveyor_uid, latitude, longitude, raw_payload")
+      .select("fb_doc_id, title, task_id, surveyor_uid, latitude, longitude, status, updated_at, raw_payload")
       .eq("fb_doc_id", id)
       .maybeSingle()) as { data: ExistingSurveyRecord | null; error: { message: string } | null };
 
@@ -37,14 +53,57 @@ export async function PATCH(
       return NextResponse.json({ error: "Survey tidak ditemukan." }, { status: 404 });
     }
 
-    const row = buildSurveyUpdateRow(surveyType, (existing.raw_payload as Record<string, unknown> | null) || {}, patch);
-    const { error } = await supabase.from(table).update(row).eq("fb_doc_id", id);
+    const currentStatus = normalizeStatus(existing.status);
+    const currentUpdatedAt = normalizeTimestampValue(existing.updated_at);
+
+    if (expectedStatus && currentStatus !== expectedStatus) {
+      return NextResponse.json(
+        { error: "Data survey sudah diproses admin lain. Silakan muat ulang data terbaru." },
+        { status: 409 }
+      );
+    }
+
+    if (expectedUpdatedAt && currentUpdatedAt && currentUpdatedAt !== expectedUpdatedAt) {
+      return NextResponse.json(
+        { error: "Data survey berubah saat Anda membuka panel ini. Silakan muat ulang lalu ulangi proses." },
+        { status: 409 }
+      );
+    }
+
+    const sanitizedPatch = { ...patch };
+    delete sanitizedPatch.expectedStatus;
+    delete sanitizedPatch.expectedUpdatedAt;
+    delete sanitizedPatch.preserveCurrentStatus;
+
+    if (preserveCurrentStatus) {
+      sanitizedPatch.status = existing.status || currentStatus || "menunggu";
+    }
+
+    const row = buildSurveyUpdateRow(
+      surveyType,
+      (existing.raw_payload as Record<string, unknown> | null) || {},
+      sanitizedPatch
+    );
+    let updateQuery = supabase.from(table).update(row).eq("fb_doc_id", id);
+    if (typeof existing.status === "string" && existing.status.trim()) {
+      updateQuery = updateQuery.eq("status", existing.status);
+    }
+    if (existing.updated_at) {
+      updateQuery = updateQuery.eq("updated_at", existing.updated_at);
+    }
+    const { data: updatedRows, error } = await updateQuery.select("fb_doc_id");
     if (error) throw new Error(error.message);
+    if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+      return NextResponse.json(
+        { error: "Data survey baru saja berubah oleh admin lain. Silakan muat ulang data terbaru." },
+        { status: 409 }
+      );
+    }
 
     if (
       surveyType === "pra-existing" &&
-      typeof patch.status === "string" &&
-      ["diverifikasi", "ditolak", "tervalidasi"].includes(patch.status) &&
+      typeof sanitizedPatch.status === "string" &&
+      ["diverifikasi", "ditolak", "tervalidasi"].includes(sanitizedPatch.status) &&
       typeof existing.task_id === "string" &&
       typeof existing.surveyor_uid === "string" &&
       typeof existing.title === "string" &&
@@ -75,7 +134,7 @@ export async function PATCH(
         const duplicateRow = buildSurveyUpdateRow(
           surveyType,
           (duplicate.raw_payload as Record<string, unknown> | null) || {},
-          patch
+          sanitizedPatch
         );
         const { error: duplicateUpdateError } = await supabase.from(table).update(duplicateRow).eq("fb_doc_id", duplicateId);
         if (duplicateUpdateError) {

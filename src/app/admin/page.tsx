@@ -19,6 +19,9 @@ interface SurveyData {
   watt: string;
   meter: string;
   voltage: string;
+  reporterName?: string;
+  createdByName?: string;
+  source?: string;
   kabupaten?: string;
   modifiedBy?: string;
   status?: string;
@@ -40,8 +43,8 @@ interface SupabaseReportsPayload {
   lastDataChangeAt: string;
 }
 
-async function fetchSurveysFromSupabase(limitValue: number): Promise<SupabaseReportsPayload> {
-  const response = await fetch(`/api/admin/reports?limit=${limitValue}`, {
+async function fetchSurveysFromSupabase(limitValue: number, offsetValue = 0): Promise<SupabaseReportsPayload> {
+  const response = await fetch(`/api/admin/reports?limit=${limitValue}&offset=${offsetValue}&includeData=1`, {
     cache: "no-store",
   });
 
@@ -64,9 +67,37 @@ async function fetchSurveysFromSupabase(limitValue: number): Promise<SupabaseRep
   };
 }
 
+async function fetchAllSurveysFromSupabase(batchSize: number): Promise<SupabaseReportsPayload> {
+  const allReports: SurveyData[] = [];
+  let offset = 0;
+  let source = "supabase";
+  let generatedAt = "";
+  let lastDataChangeAt = "";
+
+  while (true) {
+    const payload = await fetchSurveysFromSupabase(batchSize, offset);
+    source = payload.source || source;
+    generatedAt = payload.generatedAt || generatedAt;
+    lastDataChangeAt = payload.lastDataChangeAt || lastDataChangeAt;
+
+    const batch = Array.isArray(payload.reports) ? payload.reports : [];
+    allReports.push(...batch);
+
+    if (batch.length < batchSize) break;
+    offset += batchSize;
+  }
+
+  return {
+    reports: allReports,
+    source,
+    generatedAt,
+    lastDataChangeAt,
+  };
+}
+
 function AdminPanelContent() {
-  const REPORT_FETCH_LIMIT = 10;
-  const REPORTS_CACHE_KEY = "admin_reports_dataset_v3";
+  const REPORT_FETCH_LIMIT = 1000;
+  const REPORTS_CACHE_KEY = "admin_reports_dataset_v4";
   const REPORTS_CACHE_TTL_MS = 15 * 60 * 1000;
   const { user, signOut } = useAuth();
   const router = useRouter();
@@ -95,6 +126,7 @@ function AdminPanelContent() {
 
   // Fetch data from Firebase
   useEffect(() => {
+    clearCachedData("admin_reports_dataset_v3");
     fetchSurveys();
   }, []);
 
@@ -104,7 +136,7 @@ function AdminPanelContent() {
   }, [surveys, filters]);
 
   const fetchSurveysFromSupabaseSource = async () => {
-    const payload = await fetchSurveysFromSupabase(REPORT_FETCH_LIMIT);
+    const payload = await fetchAllSurveysFromSupabase(REPORT_FETCH_LIMIT);
     setDataSource("supabase");
     setLastUpdatedAt(payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString());
     latestReportsFingerprintRef.current = [payload.lastDataChangeAt || payload.generatedAt || "", payload.reports.length].join("|");
@@ -496,6 +528,10 @@ function AdminPanelContent() {
                 </button>
               </div>
             ) : (
+              <>
+              <div className="mb-4 text-sm text-gray-600">
+                Menampilkan <span className="font-semibold text-gray-900">{filteredSurveys.length}</span> laporan.
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {filteredSurveys.map((survey) => (
                   <div
@@ -539,62 +575,83 @@ function AdminPanelContent() {
 
                     {/* Card Body */}
                     <div className="p-5 space-y-3.5">
-                      {survey.kabupaten && (
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-full">
-                          <span className="text-xs font-semibold text-blue-700">
-                            Kabupaten: {survey.kabupaten}
-                          </span>
-                        </div>
-                      )}
-                      {/* Location */}
-                      <div className="flex items-start gap-3">
-                        <div className="w-5 h-5 flex-shrink-0 mt-0.5">
-                          <svg className="w-full h-full text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                          </svg>
-                        </div>
-                        <span className="text-gray-700 text-sm font-medium">{survey.location}</span>
+                      <div className="flex flex-wrap gap-2">
+                        {survey.kabupaten && (
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-full">
+                            <span className="text-xs font-semibold text-blue-700">Kabupaten: {survey.kabupaten}</span>
+                          </div>
+                        )}
+                        {survey.status && (
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-full">
+                            <span className="text-xs font-semibold text-slate-700">Status: {survey.status}</span>
+                          </div>
+                        )}
+                        {survey.source && (
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-violet-50 border border-violet-200 rounded-full">
+                            <span className="text-xs font-semibold text-violet-700">Source: {survey.source}</span>
+                          </div>
+                        )}
                       </div>
-
-                      {/* Officer */}
-                      <div className="flex items-center gap-3">
-                        <div className="w-5 h-5 flex-shrink-0">
-                          <svg className="w-full h-full text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="flex items-start gap-3">
+                          <div className="w-5 h-5 flex-shrink-0 mt-0.5">
+                            <svg className="w-full h-full text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">Lokasi</div>
+                            <div className="text-gray-700 text-sm font-medium break-words">{survey.location}</div>
+                          </div>
                         </div>
-                        <span className="text-gray-700 text-sm font-medium">{survey.officer}</span>
+                        <div className="flex items-start gap-3">
+                          <div className="w-5 h-5 flex-shrink-0 mt-0.5">
+                            <svg className="w-full h-full text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">Petugas</div>
+                            <div className="text-gray-700 text-sm font-medium break-words">{survey.officer}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-5 h-5 flex-shrink-0 mt-0.5">
+                            <svg className="w-full h-full text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">Pelapor</div>
+                            <div className="text-gray-700 text-sm font-medium break-words">{survey.reporterName || survey.createdByName || survey.officer}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-5 h-5 flex-shrink-0 mt-0.5">
+                            <svg className="w-full h-full text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M6 3h12a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">ID Report</div>
+                            <div className="text-gray-700 text-sm font-medium break-all">{survey.id}</div>
+                          </div>
+                        </div>
                       </div>
-
-                      {/* Watt */}
-                      <div className="flex items-center gap-3">
-                        <div className="w-5 h-5 flex-shrink-0">
-                          <svg className="w-full h-full text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
+                      <div className="grid grid-cols-3 gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">Watt</div>
+                          <div className="mt-1 text-sm font-semibold text-gray-800">{survey.watt}</div>
                         </div>
-                        <span className="text-gray-700 text-sm font-medium">{survey.watt}</span>
-                      </div>
-
-                      {/* Meter */}
-                      <div className="flex items-center gap-3">
-                        <div className="w-5 h-5 flex-shrink-0">
-                          <svg className="w-full h-full text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                          </svg>
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">Tinggi</div>
+                          <div className="mt-1 text-sm font-semibold text-gray-800">{survey.meter}</div>
                         </div>
-                        <span className="text-gray-700 text-sm font-medium">{survey.meter}</span>
-                      </div>
-
-                      {/* Voltage */}
-                      <div className="flex items-center gap-3">
-                        <div className="w-5 h-5 flex-shrink-0">
-                          <svg className="w-full h-full text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">Tegangan</div>
+                          <div className="mt-1 text-sm font-semibold text-gray-800">{survey.voltage}</div>
                         </div>
-                        <span className="text-gray-700 text-sm font-medium">{survey.voltage}</span>
                       </div>
                     </div>
 
@@ -634,6 +691,7 @@ function AdminPanelContent() {
                   </div>
                 ))}
               </div>
+              </>
             )}
       </main>
     </div>

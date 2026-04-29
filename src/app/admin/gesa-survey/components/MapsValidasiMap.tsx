@@ -1,7 +1,8 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
-import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
+import { memo, useEffect, useMemo, useState } from "react";
+import { CircleMarker, MapContainer, Polygon, Polyline, Popup, TileLayer } from "react-leaflet";
+import type { ParsedTaskGeometries } from "@/utils/taskNavigation";
 
 interface Survey {
   id: string;
@@ -53,6 +54,7 @@ type TimestampLike =
 
 interface MapsValidasiMapProps {
   surveys: Survey[];
+  overlayGeometries?: ParsedTaskGeometries | null;
 }
 
 const TYPE_STYLES: Record<string, { fillColor: string; label: string; badgeClass: string }> = {
@@ -75,15 +77,55 @@ const TYPE_STYLES: Record<string, { fillColor: string; label: string; badgeClass
 
 const fallbackTypeStyle = TYPE_STYLES["pra-existing"];
 
+function getMarkerStyle(survey: Survey, fillColor: string) {
+  if (survey.status === "ditolak") {
+    return {
+      borderColor: "#E11D48",
+      fillColor: "#FB7185",
+      fillOpacity: 0.95,
+      dashArray: "4 3",
+    };
+  }
+
+  if (survey.status === "menunggu") {
+    return {
+      borderColor: "#F59E0B",
+      fillColor,
+      fillOpacity: 0.85,
+      dashArray: "2 4",
+    };
+  }
+
+  return {
+    borderColor: "#FFFFFF",
+    fillColor,
+    fillOpacity: 0.95,
+    dashArray: undefined,
+  };
+}
+
 const SurveyPopupContent = memo(function SurveyPopupContent({ survey }: { survey: Survey }) {
   const style = TYPE_STYLES[survey.type] ?? fallbackTypeStyle;
 
   return (
     <div className="p-2 min-w-[280px] max-w-[320px]">
       <h4 className="font-bold text-gray-900 mb-1 text-sm">{survey.title}</h4>
-      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${style.badgeClass}`}>
-        {survey.kategori}
-      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${style.badgeClass}`}>
+          {survey.kategori}
+        </span>
+        <span
+          className={`px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${
+            survey.status === "ditolak"
+              ? "bg-rose-100 text-rose-700"
+              : survey.status === "menunggu"
+                ? "bg-amber-100 text-amber-700"
+                : "bg-emerald-100 text-emerald-700"
+          }`}
+        >
+          {survey.status}
+        </span>
+      </div>
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 text-xs">
         {survey.type === "pra-existing" ? (
@@ -180,6 +222,12 @@ const MapLegend = memo(function MapLegend() {
               <div className="w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow"></div>
               <span className="text-sm text-gray-700">Survey Pra Existing</span>
             </div>
+            <div className="mt-3 border-t border-gray-200 pt-3 text-xs text-gray-600">
+              Outline merah putus-putus: status ditolak
+            </div>
+            <div className="text-xs text-gray-600">
+              Outline kuning putus-putus: belum diverifikasi
+            </div>
           </div>
           <p className="text-xs text-gray-500 mt-3">
             Klik marker untuk melihat detail survey
@@ -190,7 +238,21 @@ const MapLegend = memo(function MapLegend() {
   );
 });
 
-export default function MapsValidasiMap({ surveys }: MapsValidasiMapProps) {
+export default function MapsValidasiMap({ surveys, overlayGeometries }: MapsValidasiMapProps) {
+  const [isMounted, setIsMounted] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && typeof document !== "undefined") {
+      const timer = window.setTimeout(() => {
+        setIsMounted(true);
+        window.setTimeout(() => setIsReady(true), 100);
+      }, 100);
+
+      return () => window.clearTimeout(timer);
+    }
+  }, []);
+
   const mapPoints = useMemo(
     () =>
       surveys.map((survey) => ({
@@ -199,6 +261,18 @@ export default function MapsValidasiMap({ surveys }: MapsValidasiMapProps) {
       })).filter(({ survey }) => Number.isFinite(survey.latitude) && Number.isFinite(survey.longitude)),
     [surveys]
   );
+
+  const overlayPoints = overlayGeometries?.points ?? [];
+  const overlayPolylines = overlayGeometries?.polylines ?? [];
+  const overlayPolygons = overlayGeometries?.polygons ?? [];
+
+  if (!isMounted || !isReady) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-gray-50">
+        <div className="text-sm font-medium text-gray-500">Menyiapkan peta...</div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -216,19 +290,88 @@ export default function MapsValidasiMap({ surveys }: MapsValidasiMapProps) {
         />
         
         {mapPoints.map(({ survey, style }) => (
-          <CircleMarker
-            key={`${survey.id}-${survey.latitude}-${survey.longitude}`}
-            center={[survey.latitude, survey.longitude]}
-            radius={8}
+            <CircleMarker
+              key={`${survey.id}-${survey.latitude}-${survey.longitude}`}
+              center={[survey.latitude, survey.longitude]}
+              radius={8}
+              pathOptions={(() => {
+                const markerStyle = getMarkerStyle(survey, style.fillColor);
+                return {
+                  color: markerStyle.borderColor,
+                  weight: 2,
+                  fillColor: markerStyle.fillColor,
+                  fillOpacity: markerStyle.fillOpacity,
+                  dashArray: markerStyle.dashArray,
+                };
+              })()}
+            >
+            <Popup>
+              <SurveyPopupContent survey={survey} />
+            </Popup>
+          </CircleMarker>
+        ))}
+
+        {overlayPolygons.map((polygon, index) => (
+          <Polygon
+            key={`overlay-polygon-${polygon.name}-${index}`}
+            positions={polygon.coordinates.map((coordinate) => [coordinate.lat, coordinate.lng] as [number, number])}
             pathOptions={{
-              color: "#FFFFFF",
+              color: "#7C3AED",
               weight: 2,
-              fillColor: style.fillColor,
+              fillColor: "#A78BFA",
+              fillOpacity: 0.14,
+            }}
+          >
+            <Popup>
+              <div className="min-w-[220px] p-1">
+                <div className="text-sm font-semibold text-slate-900">{polygon.name}</div>
+                <div className="mt-1 text-xs text-slate-500">Polygon dari file KMZ/KML upload</div>
+                <div className="mt-2 text-xs text-slate-600">{polygon.coordinates.length} koordinat</div>
+              </div>
+            </Popup>
+          </Polygon>
+        ))}
+
+        {overlayPolylines.map((polyline, index) => (
+          <Polyline
+            key={`overlay-polyline-${polyline.name}-${index}`}
+            positions={polyline.coordinates.map((coordinate) => [coordinate.lat, coordinate.lng] as [number, number])}
+            pathOptions={{
+              color: "#F59E0B",
+              weight: 3,
+              opacity: 0.9,
+            }}
+          >
+            <Popup>
+              <div className="min-w-[220px] p-1">
+                <div className="text-sm font-semibold text-slate-900">{polyline.name}</div>
+                <div className="mt-1 text-xs text-slate-500">Polyline dari file KMZ/KML upload</div>
+                <div className="mt-2 text-xs text-slate-600">{polyline.coordinates.length} koordinat</div>
+              </div>
+            </Popup>
+          </Polyline>
+        ))}
+
+        {overlayPoints.map((point, index) => (
+          <CircleMarker
+            key={`overlay-point-${point.name}-${index}`}
+            center={[point.coordinate.lat, point.coordinate.lng]}
+            radius={6}
+            pathOptions={{
+              color: "#1E293B",
+              weight: 2,
+              fillColor: "#F59E0B",
               fillOpacity: 0.95,
             }}
           >
             <Popup>
-              <SurveyPopupContent survey={survey} />
+              <div className="min-w-[220px] p-1">
+                <div className="text-sm font-semibold text-slate-900">{point.name}</div>
+                <div className="mt-1 text-xs text-slate-500">Titik dari file KMZ/KML upload</div>
+                <div className="mt-2 text-xs font-mono text-slate-700">
+                  {point.coordinate.lat.toFixed(6)}, {point.coordinate.lng.toFixed(6)}
+                </div>
+              </div>
             </Popup>
           </CircleMarker>
         ))}

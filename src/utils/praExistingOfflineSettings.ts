@@ -1,8 +1,4 @@
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-
-export const PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION = "app_settings";
-export const PRA_EXISTING_OFFLINE_SETTINGS_DOC = "pra_existing_offline";
+export const PRA_EXISTING_OFFLINE_SETTINGS_KEY = "pra_existing_offline";
 
 export interface PraExistingOfflineSettings {
   globalEnabled: boolean;
@@ -17,25 +13,48 @@ export const DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS: PraExistingOfflineSettings =
   globalEnabled: true,
 };
 
-export async function getPraExistingOfflineSettings(): Promise<PraExistingOfflineSettings> {
-  const settingsRef = doc(
-    db,
-    PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION,
-    PRA_EXISTING_OFFLINE_SETTINGS_DOC
-  );
-  const snapshot = await getDoc(settingsRef);
-
-  if (!snapshot.exists()) {
-    return DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS;
-  }
-
-  const data = snapshot.data() as { globalEnabled?: unknown };
+function normalizePraExistingOfflineSettings(data: { globalEnabled?: unknown } | null | undefined): PraExistingOfflineSettings {
   return {
     globalEnabled:
-      typeof data.globalEnabled === "boolean"
+      typeof data?.globalEnabled === "boolean"
         ? data.globalEnabled
         : DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS.globalEnabled,
   };
+}
+
+export async function getPraExistingOfflineSettings(): Promise<PraExistingOfflineSettings> {
+  try {
+    const response = await fetch("/api/pra-existing/offline-settings", {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error("Gagal memuat pengaturan offline pra-existing dari Supabase.");
+    }
+    const payload = (await response.json()) as { settings?: { globalEnabled?: unknown } | null };
+    return normalizePraExistingOfflineSettings(payload.settings);
+  } catch (error) {
+    console.error("Error loading pra-existing offline settings:", error);
+    return DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS;
+  }
+}
+
+export async function updatePraExistingOfflineSettings(
+  settings: PraExistingOfflineSettings
+): Promise<PraExistingOfflineSettings> {
+  const response = await fetch("/api/pra-existing/offline-settings", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(settings),
+  });
+
+  if (!response.ok) {
+    throw new Error("Gagal menyimpan pengaturan offline pra-existing ke Supabase.");
+  }
+
+  const payload = (await response.json()) as { settings?: { globalEnabled?: unknown } | null };
+  return normalizePraExistingOfflineSettings(payload.settings);
 }
 
 export function isPraExistingTaskOfflineEnabled(

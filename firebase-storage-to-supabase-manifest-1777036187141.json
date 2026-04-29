@@ -1,0 +1,182 @@
+[
+  {
+    "sourcePath": "reports/GAAeVLd82t7nyEYwbJB9/cells/0-0-1772680327003-kaca_belakang.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "reports/GAAeVLd82t7nyEYwbJB9/cells/0-0-1772680327003-kaca_belakang.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/reports/GAAeVLd82t7nyEYwbJB9/cells/0-0-1772680327003-kaca_belakang.webp",
+    "contentType": "image/webp",
+    "size": 30202,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "reports/rcWiwD7ikKhZN9mT5u0h/cells/0-0-1772679009720-Gemini_Generated_Image_9b86cd9b86cd9b86.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "reports/rcWiwD7ikKhZN9mT5u0h/cells/0-0-1772679009720-Gemini_Generated_Image_9b86cd9b86cd9b86.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/reports/rcWiwD7ikKhZN9mT5u0h/cells/0-0-1772679009720-Gemini_Generated_Image_9b86cd9b86cd9b86.webp",
+    "contentType": "image/webp",
+    "size": 56744,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-apj-propose/zona_kemerataan_1768189654263.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-apj-propose/zona_kemerataan_1768189654263.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-apj-propose/zona_kemerataan_1768189654263.webp",
+    "contentType": "image/webp",
+    "size": 15724,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-apj-propose/zona_titik_actual_1768189654263.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-apj-propose/zona_titik_actual_1768189654263.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-apj-propose/zona_titik_actual_1768189654263.webp",
+    "contentType": "image/webp",
+    "size": 15724,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-existing/admin_tiang_apm_1767852690058.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-existing/admin_tiang_apm_1767852690058.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-existing/admin_tiang_apm_1767852690058.webp",
+    "contentType": "image/webp",
+    "size": 15724,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-existing/admin_titik_actual_1767852690058.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-existing/admin_titik_actual_1767852690058.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-existing/admin_titik_actual_1767852690058.webp",
+    "contentType": "image/webp",
+    "size": 15724,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-existing/petugasexisting_tiang_arm_1773642272730.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-existing/petugasexisting_tiang_arm_1773642272730.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-existing/petugasexisting_tiang_arm_1773642272730.webp",
+    "contentType": "image/webp",
+    "size": 111442,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-existing/petugasexisting_titik_actual_1773642272730.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-existing/petugasexisting_titik_actual_1773642272730.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-existing/petugasexisting_titik_actual_1773642272730.webp",
+    "contentType": "image/webp",
+    "size": 111442,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-existing/zona_tiang_apm_1768206719425.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-existing/zona_tiang_apm_1768206719425.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-existing/zona_tiang_apm_1768206719425.webp",
+    "contentType": "image/webp",
+    "size": 83054,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-existing/zona_tiang_apm_1768207237219.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-existing/zona_tiang_apm_1768207237219.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-existing/zona_tiang_apm_1768207237219.webp",
+    "contentType": "image/webp",
+    "size": 15724,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-existing/zona_titik_actual_1768206719425.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-existing/zona_titik_actual_1768206719425.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-existing/zona_titik_actual_1768206719425.webp",
+    "contentType": "image/webp",
+    "size": 20314,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-existing/zona_titik_actual_1768207237219.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-existing/zona_titik_actual_1768207237219.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-existing/zona_titik_actual_1768207237219.webp",
+    "contentType": "image/webp",
+    "size": 15724,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776414636542-17764146089452839106145018396380-geostamp.jpg",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776414636542-17764146089452839106145018396380-geostamp.jpg",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776414636542-17764146089452839106145018396380-geostamp.jpg",
+    "contentType": "image/jpeg",
+    "size": 1219995,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776414780413-17764147517911796345241015556308-geostamp.jpg",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776414780413-17764147517911796345241015556308-geostamp.jpg",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776414780413-17764147517911796345241015556308-geostamp.jpg",
+    "contentType": "image/jpeg",
+    "size": 1289772,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776414884337-17764148657727577314972367736475-geostamp.jpg",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776414884337-17764148657727577314972367736475-geostamp.jpg",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776414884337-17764148657727577314972367736475-geostamp.jpg",
+    "contentType": "image/jpeg",
+    "size": 1190141,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776414999301-17764149785581690176953521891187-geostamp.jpg",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776414999301-17764149785581690176953521891187-geostamp.jpg",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776414999301-17764149785581690176953521891187-geostamp.jpg",
+    "contentType": "image/jpeg",
+    "size": 1054722,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776415110372-17764150926651725941999853655955-geostamp.jpg",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776415110372-17764150926651725941999853655955-geostamp.jpg",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776415110372-17764150926651725941999853655955-geostamp.jpg",
+    "contentType": "image/jpeg",
+    "size": 1185351,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776415233296-17764152109418904713243026445033-geostamp.jpg",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776415233296-17764152109418904713243026445033-geostamp.jpg",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776415233296-17764152109418904713243026445033-geostamp.jpg",
+    "contentType": "image/jpeg",
+    "size": 1368841,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776415358200-17764153427311081058928222093475-geostamp.jpg",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776415358200-17764153427311081058928222093475-geostamp.jpg",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776415358200-17764153427311081058928222093475-geostamp.jpg",
+    "contentType": "image/jpeg",
+    "size": 1666676,
+    "status": "uploaded"
+  },
+  {
+    "sourcePath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776415521444-17764154752353887345478028090274-geostamp.jpg",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776415521444-17764154752353887345478028090274-geostamp.jpg",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-pra-existing/00I29QUkHXXFewtbpoP0kUSSq823-1776415521444-17764154752353887345478028090274-geostamp.jpg",
+    "contentType": "image/jpeg",
+    "size": 1151186,
+    "status": "uploaded"
+  }
+]

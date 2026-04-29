@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
 
 type RiwayatItem = {
@@ -81,14 +79,10 @@ export default function RiwayatList({
       setLoading(true);
       setError("");
       try {
-        const submissionsQuery = query(collection(db, "kontruksi-submissions"), orderBy("createdAt", "desc"));
-        const validQuery = query(collection(db, "kontruksi-valid"), orderBy("validatedAt", "desc"));
-
-        const [subSnap, validSnap] = await Promise.all([getDocs(submissionsQuery), getDocs(validQuery)]);
-        const allItems: RiwayatItem[] = [
-          ...subSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
-          ...validSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
-        ];
+        const response = await fetch("/api/admin/kontruksi?resource=history&limit=1000", { cache: "no-store" });
+        const payload = (await response.json()) as { items?: RiwayatItem[]; error?: string };
+        if (!response.ok) throw new Error(payload.error || "Gagal memuat riwayat kontruksi.");
+        const allItems: RiwayatItem[] = Array.isArray(payload.items) ? payload.items : [];
 
         const filteredByStage = allItems.filter((item) => {
           const stage =

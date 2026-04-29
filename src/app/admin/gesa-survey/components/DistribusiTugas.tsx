@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, type FormEvent } from "react";
-import { serverTimestamp, doc, setDoc } from "firebase/firestore";
-import { db, storage } from "@/lib/firebase";
+import { serverTimestamp } from "firebase/firestore";
+import { storage } from "@/lib/firebase";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import dynamic from "next/dynamic";
@@ -12,8 +12,7 @@ import type { UnifiedSurveyMarker } from "@/components/SurveyTaskUnifiedMap";
 import { fetchAdminSurveyRows, type AdminSurveyRow } from "./supabaseSurveyClient";
 import {
   DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS,
-  PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION,
-  PRA_EXISTING_OFFLINE_SETTINGS_DOC,
+  updatePraExistingOfflineSettings,
   type PraExistingOfflineSettings,
 } from "@/utils/praExistingOfflineSettings";
 
@@ -785,15 +784,8 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
   const handleSaveGlobalOfflineSettings = async (nextEnabled: boolean) => {
     try {
       setSavingOfflineSettings(true);
-      await setDoc(
-        doc(db, PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION, PRA_EXISTING_OFFLINE_SETTINGS_DOC),
-        {
-          globalEnabled: nextEnabled,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-      setOfflineSettings({ globalEnabled: nextEnabled });
+      const settings = await updatePraExistingOfflineSettings({ globalEnabled: nextEnabled });
+      setOfflineSettings(settings);
       alert(`Mode offline pra-existing ${nextEnabled ? "diaktifkan" : "dinonaktifkan"} untuk seluruh sistem.`);
     } catch (error) {
       console.error("Error updating global offline settings:", error);

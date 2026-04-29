@@ -188,6 +188,19 @@ function mapSupabaseSurveyRow(type: SurveyType, row: Record<string, unknown>): S
   const adminLongitude = normalizeCoordinate(rawPayload.adminLongitude);
   const finalLatitude = normalizeCoordinate(rawPayload.finalLatitude) ?? adminLatitude ?? latitude;
   const finalLongitude = normalizeCoordinate(rawPayload.finalLongitude) ?? adminLongitude ?? longitude;
+  const rejectedAtRaw = rawPayload.rejectedAt ?? row.updated_at ?? null;
+  const rejectedBy =
+    typeof rawPayload.rejectedBy === "string"
+      ? rawPayload.rejectedBy
+      : typeof rawPayload.editedBy === "string"
+        ? rawPayload.editedBy
+        : "";
+  const rejectionReason =
+    typeof rawPayload.rejectionReason === "string"
+      ? rawPayload.rejectionReason
+      : typeof rawPayload.rejectReason === "string"
+        ? rawPayload.rejectReason
+        : "";
 
   return {
     ...rawPayload,
@@ -228,6 +241,14 @@ function mapSupabaseSurveyRow(type: SurveyType, row: Record<string, unknown>): S
         : typeof validatedAtRaw === "object" && validatedAtRaw && "seconds" in validatedAtRaw
           ? new Date(Number((validatedAtRaw as { seconds: number }).seconds) * 1000).toISOString()
           : null,
+    rejectedAt:
+      typeof rejectedAtRaw === "string"
+        ? rejectedAtRaw
+        : typeof rejectedAtRaw === "object" && rejectedAtRaw && "seconds" in rejectedAtRaw
+          ? new Date(Number((rejectedAtRaw as { seconds: number }).seconds) * 1000).toISOString()
+          : null,
+    rejectedBy,
+    rejectionReason,
     latitude,
     longitude,
     adminLatitude,
@@ -333,6 +354,19 @@ function mapDashboardDetailSurveyRow(type: SurveyType, row: DashboardDetailSurve
         : typeof rawPayload.kabupaten === "string"
           ? rawPayload.kabupaten
           : "";
+  const rejectedAtRaw = rawPayload.rejectedAt ?? row.updated_at ?? null;
+  const rejectedBy =
+    typeof rawPayload.rejectedBy === "string"
+      ? rawPayload.rejectedBy
+      : typeof rawPayload.editedBy === "string"
+        ? rawPayload.editedBy
+        : "";
+  const rejectionReason =
+    typeof rawPayload.rejectionReason === "string"
+      ? rawPayload.rejectionReason
+      : typeof rawPayload.rejectReason === "string"
+        ? rawPayload.rejectReason
+        : "";
 
   return {
     id: String(row.fb_doc_id || row.id || ""),
@@ -366,6 +400,14 @@ function mapDashboardDetailSurveyRow(type: SurveyType, row: DashboardDetailSurve
           ? new Date(Number((verifiedAtRaw as { seconds: number }).seconds) * 1000).toISOString()
           : null,
     validatedAt: null,
+    rejectedAt:
+      typeof rejectedAtRaw === "string"
+        ? rejectedAtRaw
+        : typeof rejectedAtRaw === "object" && rejectedAtRaw && "seconds" in rejectedAtRaw
+          ? new Date(Number((rejectedAtRaw as { seconds: number }).seconds) * 1000).toISOString()
+          : null,
+    rejectedBy,
+    rejectionReason,
     kabupaten,
     kabupatenName: kabupaten,
     kecamatan:

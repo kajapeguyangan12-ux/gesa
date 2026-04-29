@@ -180,6 +180,28 @@ function buildPraExistingOwnershipDisplay(kepemilikanTiang: string, tipeTiangPLN
   return kepemilikanTiang === "PLN" && tipeTiangPLN ? `PLN - ${tipeTiangPLN}` : kepemilikanTiang;
 }
 
+async function readApiError(response: Response, fallbackMessage: string) {
+  try {
+    const payload = (await response.json()) as { error?: string };
+    if (typeof payload.error === "string" && payload.error.trim()) {
+      return payload.error.trim();
+    }
+  } catch {
+    // Ignore JSON parse failures and use fallback message.
+  }
+  return fallbackMessage;
+}
+
+async function handleConflictAndReload(response: Response, reload: () => Promise<void>, fallbackMessage: string) {
+  const message = await readApiError(response, fallbackMessage);
+  if (response.status === 409) {
+    await reload();
+    alert(`Data ini baru saja diproses admin lain. Daftar akan dimuat ulang.\n\n${message}`);
+    return true;
+  }
+  throw new Error(message);
+}
+
 const LIVE_REFRESH_INTERVAL_MS = 30000;
 const TAB_DATA_FETCH_LIMIT = 10000;
 
@@ -865,11 +887,24 @@ export default function ValidasiSurvey({
             (Math.abs(normalizedAdminLatitude - normalizedOriginalLatitude) > 0.0000001 ||
               Math.abs(normalizedAdminLongitude - normalizedOriginalLongitude) > 0.0000001),
           editedBy: editedByName,
-          updatedAt: updatedAtValue.toISOString()
+          updatedAt: updatedAtValue.toISOString(),
+          expectedStatus: editFormData.status,
+          expectedUpdatedAt: editFormData.updatedAt ?? null,
+          preserveCurrentStatus: true,
         }),
       });
       if (!response.ok) {
-        throw new Error("Gagal memperbarui survey di Supabase.");
+        if (
+          await handleConflictAndReload(
+            response,
+            () => Promise.all([fetchStatistics(true), fetchSurveys(true, false)]).then(() => undefined),
+            "Gagal memperbarui survey di Supabase."
+          )
+        ) {
+          setShowEditModal(false);
+          setEditFormData(null);
+          return;
+        }
       }
 
       const savedSurvey = {
@@ -933,11 +968,23 @@ export default function ValidasiSurvey({
                 }
               : {}),
           verifiedBy: currentUser?.name || currentUser?.email || 'Admin',
-          verifiedAt: new Date().toISOString()
+          verifiedAt: new Date().toISOString(),
+          expectedStatus: survey.status,
+          expectedUpdatedAt: survey.updatedAt ?? null,
         }),
       });
       if (!response.ok) {
-        throw new Error("Gagal memverifikasi survey di Supabase.");
+        if (
+          await handleConflictAndReload(
+            response,
+            () => Promise.all([fetchStatistics(true), fetchSurveys(true, false)]).then(() => undefined),
+            "Gagal memverifikasi survey di Supabase."
+          )
+        ) {
+          setShowDetailModal(false);
+          setSelectedSurvey(null);
+          return;
+        }
       }
 
       removeSurveyFromWorkingSet(
@@ -995,11 +1042,23 @@ export default function ValidasiSurvey({
           status: "ditolak",
           rejectedBy: currentUser?.name || currentUser?.email || 'Admin',
           rejectedAt: new Date().toISOString(),
-          rejectionReason: alasan
+          rejectionReason: alasan,
+          expectedStatus: survey.status,
+          expectedUpdatedAt: survey.updatedAt ?? null,
         }),
       });
       if (!response.ok) {
-        throw new Error("Gagal menolak survey di Supabase.");
+        if (
+          await handleConflictAndReload(
+            response,
+            () => Promise.all([fetchStatistics(true), fetchSurveys(true, false)]).then(() => undefined),
+            "Gagal menolak survey di Supabase."
+          )
+        ) {
+          setShowDetailModal(false);
+          setSelectedSurvey(null);
+          return;
+        }
       }
 
       removeSurveyFromWorkingSet(

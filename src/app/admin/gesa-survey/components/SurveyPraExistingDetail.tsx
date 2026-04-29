@@ -30,6 +30,7 @@ interface Survey {
   surveyorName: string;
   surveyorEmail?: string;
   createdAt: TimestampLike;
+  updatedAt?: TimestampLike;
   verifiedAt: TimestampLike;
   verifiedBy: string;
   validatedAt: TimestampLike;
@@ -79,6 +80,28 @@ interface SurveyPraExistingDetailProps {
   onBack: () => void;
   statusFilter?: string;
   activeKabupaten?: string | null;
+}
+
+async function readApiError(response: Response, fallbackMessage: string) {
+  try {
+    const payload = (await response.json()) as { error?: string };
+    if (typeof payload.error === "string" && payload.error.trim()) {
+      return payload.error.trim();
+    }
+  } catch {
+    // Ignore JSON parse failures and use fallback message.
+  }
+  return fallbackMessage;
+}
+
+async function handleConflictAndReload(response: Response, reload: () => Promise<void>, fallbackMessage: string) {
+  const message = await readApiError(response, fallbackMessage);
+  if (response.status === 409) {
+    await reload();
+    alert(`Data ini baru saja diproses admin lain. Daftar akan dimuat ulang.\n\n${message}`);
+    return true;
+  }
+  throw new Error(message);
 }
 
 function resolveStatusFilters(statusFilter?: string) {
@@ -353,6 +376,48 @@ export default function SurveyPraExistingDetail({
     } catch (error) {
       console.error("Error deleting survey:", error);
       alert("Gagal menghapus data: " + error);
+    }
+  };
+
+  const handleRestore = async (survey: Survey) => {
+    const targetStatus = isSuperAdmin ? "tervalidasi" : "diverifikasi";
+    const actorName = user?.name || user?.displayName || user?.email || "Admin";
+    const actorLabel = isSuperAdmin ? "tervalidasi" : "diverifikasi";
+
+    if (!confirm(`Kembalikan data ini ke status ${actorLabel}?`)) return;
+
+    try {
+      const response = await fetch(`/api/admin/surveys/pra-existing/${encodeURIComponent(survey.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: targetStatus,
+          verifiedBy: !isSuperAdmin ? actorName : survey.verifiedBy || actorName,
+          verifiedAt: !isSuperAdmin ? new Date().toISOString() : survey.verifiedAt || new Date().toISOString(),
+          validatedBy: isSuperAdmin ? actorName : survey.validatedBy || "",
+          validatedAt: isSuperAdmin ? new Date().toISOString() : survey.validatedAt || null,
+          rejectedBy: "",
+          rejectedAt: null,
+          rejectionReason: "",
+          expectedStatus: survey.status,
+          expectedUpdatedAt: survey.updatedAt ?? null,
+        }),
+      });
+      if (!response.ok) {
+        if (await handleConflictAndReload(response, () => fetchSurveys(), "Gagal memulihkan status survey pra-existing.")) {
+          setShowDetailModal(false);
+          setSelectedSurvey(null);
+          return;
+        }
+      }
+
+      await fetchSurveys();
+      setShowDetailModal(false);
+      setSelectedSurvey(null);
+      alert(`Data berhasil dikembalikan ke status ${actorLabel}.`);
+    } catch (error) {
+      console.error("Error restoring survey:", error);
+      alert("Gagal memulihkan data: " + error);
     }
   };
 
@@ -1093,6 +1158,18 @@ export default function SurveyPraExistingDetail({
                 >
                   Tutup
                 </button>
+                {selectedSurvey.status === "ditolak" ? (
+                  <button
+                    onClick={() => handleRestore(selectedSurvey)}
+                    className={`px-6 py-2.5 text-white font-medium rounded-xl transition-colors ${
+                      isSuperAdmin
+                        ? "bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700"
+                        : "bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
+                    }`}
+                  >
+                    {isSuperAdmin ? "Terima Kembali" : "Kembalikan ke Verifikasi"}
+                  </button>
+                ) : null}
                 <button
                   onClick={() => handleViewMaps(getDisplayLatitude(selectedSurvey), getDisplayLongitude(selectedSurvey))}
                   className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-medium rounded-xl transition-colors flex items-center gap-2"

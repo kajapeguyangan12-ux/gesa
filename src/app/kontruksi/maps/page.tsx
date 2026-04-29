@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -33,7 +31,7 @@ type KontruksiPoint = {
   zona: string;
   idTitik: string;
   statusKontruksi: KontruksiStatus;
-  updatedAt: any;
+  updatedAt: unknown;
   source: "valid" | "submission";
 };
 
@@ -44,7 +42,7 @@ const statusLabels: Record<KontruksiStatus, string> = {
   "terkendala": "Terkendala",
 };
 
-function normalizeStatus(value: any): KontruksiStatus {
+function normalizeStatus(value: unknown): KontruksiStatus {
   const raw = String(value || "").toLowerCase();
   if (raw.includes("selesai") || raw.includes("done") || raw.includes("valid")) return "selesai";
   if (raw.includes("jalan") || raw.includes("progress") || raw.includes("ongoing")) return "berjalan";
@@ -52,7 +50,7 @@ function normalizeStatus(value: any): KontruksiStatus {
   return "belum-dimulai";
 }
 
-function parseNumber(value: any) {
+function parseNumber(value: unknown) {
   if (typeof value === "number") return value;
   if (typeof value === "string") {
     const parsed = parseFloat(value.replace(",", "."));
@@ -61,7 +59,7 @@ function parseNumber(value: any) {
   return 0;
 }
 
-function getOwnerId(item: any) {
+function getOwnerId(item: Record<string, unknown>) {
   return (
     item.submittedById ||
     item.createdById ||
@@ -79,6 +77,8 @@ export default function KontruksiMapsPage() {
   const [points, setPoints] = useState<KontruksiPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showValidPoints, setShowValidPoints] = useState(true);
+  const [showPendingPoints, setShowPendingPoints] = useState(false);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -88,38 +88,14 @@ export default function KontruksiMapsPage() {
       setLoading(true);
       setError("");
       try {
-        const submissionsQuery = query(
-          collection(db, "kontruksi-submissions"),
-          orderBy("createdAt", "desc"),
-          limit(100)
+        const response = await fetch(
+          `/api/admin/kontruksi?resource=map-data&ownerId=${encodeURIComponent(user.uid)}&limit=200`,
+          { cache: "no-store" }
         );
-        const validQuery = query(
-          collection(db, "kontruksi-valid"),
-          orderBy("validatedAt", "desc"),
-          limit(100)
-        );
+        const payload = (await response.json()) as { items?: Record<string, unknown>[]; error?: string };
+        if (!response.ok) throw new Error(payload.error || "Gagal memuat data peta kontruksi.");
 
-        const [subSnap, validSnap] = await Promise.all([getDocs(submissionsQuery), getDocs(validQuery)]);
-
-        const submissionPoints: KontruksiPoint[] = subSnap.docs
-          .map((doc) => ({ id: doc.id, ...(doc.data() as any) }) as any)
-          .filter((item) => getOwnerId(item) === user.uid)
-          .map((data) => ({
-            id: data.id,
-            title: data.namaTitik || data.idTitik || "Titik Kontruksi",
-            type: (data.type === "propose" ? "propose" : "existing") as "existing" | "propose",
-            latitude: parseNumber(data.latitude) || parseNumber(data.lat) || 0,
-            longitude: parseNumber(data.longitude) || parseNumber(data.lng) || parseNumber(data.lon) || 0,
-            zona: data.zona || data.group || "N/A",
-            idTitik: data.idTitik || data.namaTitik || "N/A",
-            statusKontruksi: normalizeStatus(data.kontruksiStatus || data.status || data.stage),
-            updatedAt: data.updatedAt || data.createdAt,
-            source: "submission",
-          } as KontruksiPoint))
-          .filter((point) => point.latitude !== 0 && point.longitude !== 0);
-
-        const validPoints: KontruksiPoint[] = validSnap.docs
-          .map((doc) => ({ id: doc.id, ...(doc.data() as any) }) as any)
+        const allPoints: KontruksiPoint[] = (Array.isArray(payload.items) ? payload.items : [])
           .filter((item) => getOwnerId(item) === user.uid)
           .map((data) => ({
             id: data.id,
@@ -131,11 +107,9 @@ export default function KontruksiMapsPage() {
             idTitik: data.idTitik || data.namaTitik || "N/A",
             statusKontruksi: normalizeStatus(data.kontruksiStatus || data.status || data.stage),
             updatedAt: data.updatedAt || data.validatedAt || data.createdAt,
-            source: "valid",
+            source: data.source === "valid" ? "valid" : "submission",
           } as KontruksiPoint))
           .filter((point) => point.latitude !== 0 && point.longitude !== 0);
-
-        const allPoints: KontruksiPoint[] = [...submissionPoints, ...validPoints];
 
         if (mounted) {
           setPoints(allPoints);
@@ -156,20 +130,33 @@ export default function KontruksiMapsPage() {
     };
   }, [user?.uid]);
 
+  const visiblePoints = useMemo(() => {
+    return points.filter((point) => {
+      if (point.source === "valid") return showValidPoints;
+      if (point.source === "submission") return showPendingPoints;
+      return false;
+    });
+  }, [points, showPendingPoints, showValidPoints]);
+
   const stats = useMemo(() => {
     return {
-      total: points.length,
-      belum: points.filter((p) => p.statusKontruksi === "belum-dimulai").length,
-      berjalan: points.filter((p) => p.statusKontruksi === "berjalan").length,
-      selesai: points.filter((p) => p.statusKontruksi === "selesai").length,
-      terkendala: points.filter((p) => p.statusKontruksi === "terkendala").length,
+      total: visiblePoints.length,
+      valid: points.filter((p) => p.source === "valid").length,
+      pending: points.filter((p) => p.source === "submission").length,
+      belum: visiblePoints.filter((p) => p.statusKontruksi === "belum-dimulai").length,
+      berjalan: visiblePoints.filter((p) => p.statusKontruksi === "berjalan").length,
+      selesai: visiblePoints.filter((p) => p.statusKontruksi === "selesai").length,
+      terkendala: visiblePoints.filter((p) => p.statusKontruksi === "terkendala").length,
     };
-  }, [points]);
+  }, [points, visiblePoints]);
 
-  const formatDate = (value: any) => {
+  const formatDate = (value: unknown) => {
     if (!value) return "-";
     try {
-      const date = typeof value?.toDate === "function" ? value.toDate() : new Date(value);
+      const date =
+        typeof value === "object" && value !== null && "toDate" in value && typeof value.toDate === "function"
+          ? value.toDate()
+          : new Date(value as string | number | Date);
       if (Number.isNaN(date.getTime())) return "-";
       return date.toLocaleString("id-ID", {
         day: "2-digit",
@@ -208,7 +195,7 @@ export default function KontruksiMapsPage() {
 
             <div className="flex-1 text-center">
               <div className="text-base font-semibold text-gray-900">Maps Hasil Kontruksi</div>
-              <div className="text-xs text-gray-500">Menampilkan titik kontruksi yang dikerjakan oleh Anda.</div>
+              <div className="text-xs text-gray-500">Menampilkan titik kontruksi Anda, termasuk opsi lihat data yang belum diverifikasi.</div>
             </div>
 
             <div className="relative w-12 h-12">
@@ -218,6 +205,33 @@ export default function KontruksiMapsPage() {
 
           <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1.3fr_0.7fr]">
             <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden min-h-[520px]">
+              <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setShowValidPoints((value) => !value)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                    showValidPoints
+                      ? "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200"
+                      : "bg-gray-100 text-gray-500 ring-1 ring-gray-200"
+                  }`}
+                >
+                  Data Valid ({stats.valid})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPendingPoints((value) => !value)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                    showPendingPoints
+                      ? "bg-amber-100 text-amber-700 ring-1 ring-amber-200"
+                      : "bg-gray-100 text-gray-500 ring-1 ring-gray-200"
+                  }`}
+                >
+                  Belum Diverifikasi ({stats.pending})
+                </button>
+                <div className="text-xs text-gray-500">
+                  Pilih data yang ingin ditampilkan di peta.
+                </div>
+              </div>
               <div className="h-[520px] relative">
                 {loading ? (
                   <div className="h-full flex items-center justify-center bg-gray-50">
@@ -225,11 +239,11 @@ export default function KontruksiMapsPage() {
                   </div>
                 ) : (
                   <>
-                    <MapsKontruksiValidMap points={points} statusLabels={statusLabels} />
-                    {points.length === 0 && !error && (
+                    <MapsKontruksiValidMap points={visiblePoints} statusLabels={statusLabels} />
+                    {visiblePoints.length === 0 && !error && (
                       <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 text-center px-8">
-                        <p className="text-lg font-semibold text-gray-700">Belum ada titik kontruksi</p>
-                        <p className="mt-2 text-sm text-gray-500">Titik akan tampil di peta setelah data kontruksi terkirim.</p>
+                        <p className="text-lg font-semibold text-gray-700">Belum ada titik untuk filter ini</p>
+                        <p className="mt-2 text-sm text-gray-500">Aktifkan pilihan data valid atau belum diverifikasi untuk menampilkan titik.</p>
                       </div>
                     )}
                   </>
@@ -237,10 +251,10 @@ export default function KontruksiMapsPage() {
               </div>
             </div>
 
-            <div className="space-y-4">
+              <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
-                  <div className="text-xs text-gray-500">Total Titik</div>
+                  <div className="text-xs text-gray-500">Tampil di Peta</div>
                   <div className="mt-2 text-3xl font-bold text-gray-900">{stats.total}</div>
                 </div>
                 <div className="rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -257,11 +271,22 @@ export default function KontruksiMapsPage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm">
+                  <div className="text-xs text-emerald-700">Total Data Valid</div>
+                  <div className="mt-2 text-2xl font-bold text-emerald-700">{stats.valid}</div>
+                </div>
+                <div className="rounded-3xl border border-amber-100 bg-amber-50 p-4 shadow-sm">
+                  <div className="text-xs text-amber-700">Belum Diverifikasi</div>
+                  <div className="mt-2 text-2xl font-bold text-amber-700">{stats.pending}</div>
+                </div>
+              </div>
+
               <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4">
                 <div className="flex items-center justify-between gap-2 mb-4">
                   <div>
                     <div className="text-sm font-semibold text-gray-900">Detail Data</div>
-                    <div className="text-xs text-gray-500">{points.length} titik terdeteksi</div>
+                    <div className="text-xs text-gray-500">{visiblePoints.length} titik sesuai filter</div>
                   </div>
                 </div>
 
@@ -269,18 +294,26 @@ export default function KontruksiMapsPage() {
                   <div className="text-sm text-gray-500">Memuat data...</div>
                 ) : error ? (
                   <div className="text-sm text-red-600">{error}</div>
-                ) : points.length === 0 ? (
-                  <div className="text-sm text-gray-500">Tidak ada titik kontruksi yang dapat ditampilkan.</div>
+                ) : visiblePoints.length === 0 ? (
+                  <div className="text-sm text-gray-500">Tidak ada titik kontruksi untuk filter yang dipilih.</div>
                 ) : (
                   <div className="space-y-3">
-                    {points.slice(0, 8).map((point) => (
+                    {visiblePoints.slice(0, 8).map((point) => (
                       <div key={point.id} className="rounded-3xl border border-gray-200 bg-gray-50 p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="text-sm font-semibold text-gray-900">{point.title}</div>
                             <div className="text-xs text-gray-500">{point.idTitik}</div>
                           </div>
-                          <span className="text-xs font-semibold uppercase text-gray-500">{point.source}</span>
+                          <span
+                            className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${
+                              point.source === "valid"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-amber-100 text-amber-700"
+                            }`}
+                          >
+                            {point.source === "valid" ? "valid" : "belum verif"}
+                          </span>
                         </div>
                         <div className="mt-3 grid gap-2 text-xs text-gray-600">
                           <div>ZONA: {point.zona}</div>
@@ -289,8 +322,8 @@ export default function KontruksiMapsPage() {
                         </div>
                       </div>
                     ))}
-                    {points.length > 8 && (
-                      <div className="text-xs text-gray-500">Menampilkan 8 data terbaru.</div>
+                    {visiblePoints.length > 8 && (
+                      <div className="text-xs text-gray-500">Menampilkan 8 data terbaru sesuai filter.</div>
                     )}
                   </div>
                 )}

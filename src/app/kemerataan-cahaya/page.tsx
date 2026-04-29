@@ -16,6 +16,21 @@ interface ReportOption {
   id: string;
   label: string;
   data: any;
+  meta?: {
+    primary: string;
+    secondary: string;
+    watt: string;
+    poleHeight: string;
+    voltage?: string;
+    title?: string;
+    location?: string;
+    officer?: string;
+    date?: string;
+    time?: string;
+    status?: string;
+    source?: string;
+    kabupaten?: string;
+  };
 }
 
 interface CachedReportEntry {
@@ -372,8 +387,16 @@ export function KemeratanCahayaContent() {
     })();
   }, [selectedReportMiddleData, selectedReportMiddleId, lastLoadedMiddleId, activeKabupaten, fetchCachedSingleReport]);
 
-  const deriveReportLabel = (data: any) => {
-    if (!data) return "(untitled)";
+  const deriveReportMeta = (data: any) => {
+    if (!data) {
+      return {
+        primary: "(untitled)",
+        secondary: "",
+        watt: "",
+        poleHeight: "",
+      };
+    }
+
     const name =
       data.reporterName ||
       data.nama_pelapor ||
@@ -401,21 +424,118 @@ export function KemeratanCahayaContent() {
       data.nama ||
       data.namaLampu;
     const lamp = data.lamp || data.lampu || data.spesifikasi || data.spec || {};
-    const watt =
+    const wattRaw =
       data.watt || data.power || data.potency || data.wattage || data.lamp_watt ||
-      data.daya || data.daya_lampu || data.dayaLampu || data.lamp_power || data.lampPower || data.lampPower ||
+      data.daya || data.daya_lampu || data.dayaLampu || data.lamp_power || data.lampPower ||
       lamp.watt || lamp.power || lamp.daya || lamp.daya_lampu || lamp.wattage;
-    const pole =
-      data.poleHeight || data.tinggi_tiang || data.height || data.pole_height || data.ketinggian || data.tinggi || data.tinggiTiang || data.poleHeight ||
+    const poleRaw =
+      data.meter || data.tinggiMeter || data.tinggiTiangMeter ||
+      data.poleHeight || data.tinggi_tiang || data.height || data.pole_height || data.ketinggian || data.tinggi || data.tinggiTiang ||
       lamp.poleHeight || lamp.tinggi || lamp.height || lamp.tinggi_tiang || lamp.ketinggian;
-    const extras: string[] = [];
-    if (watt) extras.push(`${watt}W`);
-    if (pole) extras.push(`${pole}m`);
-    const mainLeft = extras.length > 0 ? extras.join(" | ") : (title || data.note || "(untitled)");
-    const meta: string[] = [];
-    if (name) meta.push(`oleh ${name}`);
-    if (lokasi) meta.push(String(lokasi));
-    return meta.length > 0 ? `${mainLeft} - ${meta.join(" | ")}` : mainLeft;
+    const watt = wattRaw ? `${String(wattRaw).replace(/\s*[Ww]\s*$/, "")}W` : "";
+    const poleHeight = poleRaw ? `${String(poleRaw).replace(/\s*[Mm]\s*$/, "")}m` : "";
+    const primary = [watt, poleHeight].filter(Boolean).join(" • ") || title || data.note || "(untitled)";
+    const secondary = [name ? `oleh ${name}` : "", lokasi ? String(lokasi) : ""].filter(Boolean).join(" • ");
+
+    return {
+      primary,
+      secondary,
+      watt,
+      poleHeight,
+    };
+  };
+
+  const deriveReportLabel = (data: any) => {
+    const meta = deriveReportMetaSafe(data);
+    return meta.secondary ? `${meta.primary} - ${meta.secondary}` : meta.primary;
+  };
+
+  const deriveReportMetaSafe = (data: any) => {
+    if (!data) {
+      return {
+        primary: "(untitled)",
+        secondary: "",
+        watt: "",
+        poleHeight: "",
+        voltage: "",
+        title: "",
+        location: "",
+        officer: "",
+        date: "",
+        time: "",
+        status: "",
+        source: "",
+        kabupaten: "",
+      };
+    }
+
+    const raw = data.rawPayload || {};
+    const merged = { ...raw, ...data };
+    const lamp = merged.lamp || merged.lampu || merged.spesifikasi || merged.spec || {};
+    const officer =
+      merged.officer ||
+      merged.reporterName ||
+      merged.createdByName ||
+      merged.nama_pelapor ||
+      merged.petugas ||
+      merged.userName ||
+      merged.displayName ||
+      merged.modifiedBy ||
+      merged.createdBy ||
+      merged.user ||
+      merged.reporter ||
+      "";
+    const location =
+      merged.projectLocation ||
+      merged.location ||
+      merged.lokasi ||
+      merged.place ||
+      merged.lokasiJalan ||
+      merged.namaJalan ||
+      merged.alamat ||
+      merged.alamatJalan ||
+      "";
+    const title =
+      merged.projectTitle ||
+      merged.title ||
+      merged.judul ||
+      merged.nama ||
+      merged.namaLampu ||
+      merged.lampName ||
+      merged.name ||
+      "";
+    const wattRaw =
+      merged.watt || merged.power || merged.potency || merged.wattage || merged.lamp_watt ||
+      merged.daya || merged.daya_lampu || merged.dayaLampu || merged.lamp_power || merged.lampPower ||
+      lamp.watt || lamp.power || lamp.daya || lamp.daya_lampu || lamp.wattage;
+    const poleRaw =
+      merged.meter || merged.tinggiMeter || merged.tinggiTiangMeter ||
+      merged.poleHeight || merged.tinggi_tiang || merged.tinggi_tiang_m || merged.height || merged.pole_height || merged.ketinggian || merged.tinggi || merged.tinggiTiang ||
+      lamp.poleHeight || lamp.tinggi || lamp.height || lamp.tinggi_tiang || lamp.ketinggian;
+    const voltageRaw =
+      merged.voltage || merged.tegangan || merged.teganganAwal || merged.initialVoltage || merged.volt || merged.lamp_voltage ||
+      lamp.voltage;
+    const watt = wattRaw ? `${String(wattRaw).replace(/\s*[Ww]\s*$/, "")}W` : "";
+    const poleHeight = poleRaw ? `${String(poleRaw).replace(/\s*[Mm]\s*$/, "")}m` : "";
+    const voltage = voltageRaw ? `${String(voltageRaw).replace(/\s*[Vv]\s*$/, "")}V` : "";
+    const primary = [watt, poleHeight].filter(Boolean).join(" • ") || title || merged.note || "(untitled)";
+    const secondary = [officer ? `oleh ${officer}` : "", location ? String(location) : ""].filter(Boolean).join(" • ");
+
+    return {
+      primary,
+      secondary,
+      watt,
+      poleHeight,
+      voltage,
+      title: title ? String(title) : "",
+      location: location ? String(location) : "",
+      officer: officer ? String(officer) : "",
+      date: merged.dateDisplay || merged.date || "",
+      time: merged.timeDisplay || merged.time || "",
+      status: merged.status || "",
+      source: merged.source || "",
+      kabupaten: merged.kabupaten || "",
+    };
   };
 
   function buildReportsParams(sortDirection: "asc" | "desc", maxItems: number) {
@@ -452,9 +572,11 @@ export function KemeratanCahayaContent() {
         }
         const payload = (await response.json()) as { reports?: Array<Record<string, unknown>> };
         return (Array.isArray(payload.reports) ? payload.reports : []).map((data) => {
+          const meta = deriveReportMetaSafe(data);
           return {
             id: typeof data.id === "string" ? data.id : "",
             label: deriveReportLabel(data),
+            meta,
             data,
           };
         });
@@ -1278,15 +1400,27 @@ export function KemeratanCahayaContent() {
                     <div className="px-3 py-2 text-xs text-gray-500">{reportsList.length} data tersedia</div>
                     <div className="max-h-40 overflow-auto">
                       {reportsList.map((r) => {
-                        const [main, by] = r.label.split(" - oleh ");
                         return (
                           <button
                             key={`top-${r.id}`}
                             onClick={() => handleSelectReportTop(r)}
                             className={`w-full text-left px-3 py-2 border-t border-gray-100 transition-all ${selectedReportTopId === r.id ? "bg-red-50" : "hover:bg-gray-50"}`}
                           >
-                            <div className="text-sm font-semibold text-gray-800">{main}</div>
-                            <div className="text-xs text-gray-500">{by ? `oleh ${by}` : ""}</div>
+                            <div className="text-sm font-semibold text-gray-800">{r.meta?.primary || r.label}</div>
+                            {(r.meta?.watt || r.meta?.poleHeight) && (
+                              <div className="mt-1 flex flex-wrap gap-2 text-[11px] font-semibold">
+                                {r.meta?.watt && <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-700">{r.meta.watt}</span>}
+                                {r.meta?.poleHeight && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">Tiang {r.meta.poleHeight}</span>}
+                                {r.meta?.voltage && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-700">{r.meta.voltage}</span>}
+                              </div>
+                            )}
+                            <div className="text-xs text-gray-500 mt-1">{r.meta?.secondary || ""}</div>
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                              {r.meta?.title && <span>{r.meta.title}</span>}
+                              {r.meta?.date && <span>{r.meta.date}</span>}
+                              {r.meta?.time && <span>{r.meta.time}</span>}
+                              {r.meta?.kabupaten && <span>{r.meta.kabupaten}</span>}
+                            </div>
                           </button>
                         );
                       })}
@@ -1332,15 +1466,27 @@ export function KemeratanCahayaContent() {
                       <div className="px-3 py-2 text-xs text-gray-500">{reportsList.length} data tersedia</div>
                       <div className="max-h-40 overflow-auto">
                         {reportsList.map((r) => {
-                          const [main, by] = r.label.split(" - oleh ");
                           return (
                             <button
                               key={`middle-${r.id}`}
                               onClick={() => handleSelectReportMiddle(r)}
                               className={`w-full text-left px-3 py-2 border-t border-gray-100 transition-all ${selectedReportMiddleId === r.id ? "bg-green-50" : "hover:bg-gray-50"}`}
                             >
-                              <div className="text-sm font-semibold text-gray-800">{main}</div>
-                              <div className="text-xs text-gray-500">{by ? `oleh ${by}` : ""}</div>
+                              <div className="text-sm font-semibold text-gray-800">{r.meta?.primary || r.label}</div>
+                              {(r.meta?.watt || r.meta?.poleHeight) && (
+                                <div className="mt-1 flex flex-wrap gap-2 text-[11px] font-semibold">
+                                  {r.meta?.watt && <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">{r.meta.watt}</span>}
+                                  {r.meta?.poleHeight && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">Tiang {r.meta.poleHeight}</span>}
+                                  {r.meta?.voltage && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-700">{r.meta.voltage}</span>}
+                                </div>
+                              )}
+                              <div className="text-xs text-gray-500 mt-1">{r.meta?.secondary || ""}</div>
+                              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                                {r.meta?.title && <span>{r.meta.title}</span>}
+                                {r.meta?.date && <span>{r.meta.date}</span>}
+                                {r.meta?.time && <span>{r.meta.time}</span>}
+                                {r.meta?.kabupaten && <span>{r.meta.kabupaten}</span>}
+                              </div>
                             </button>
                           );
                         })}
@@ -1386,15 +1532,27 @@ export function KemeratanCahayaContent() {
                     <div className="px-3 py-2 text-xs text-gray-500">{reportsList.length} data tersedia</div>
                     <div className="max-h-40 overflow-auto">
                       {reportsList.map((r) => {
-                        const [main, by] = r.label.split(" - oleh ");
                         return (
                           <button
                             key={`bottom-${r.id}`}
                             onClick={() => handleSelectReportBottom(r)}
                             className={`w-full text-left px-3 py-2 border-t border-gray-100 transition-all ${selectedReportBottomId === r.id ? "bg-green-50" : "hover:bg-gray-50"}`}
                           >
-                            <div className="text-sm font-semibold text-gray-800">{main}</div>
-                            <div className="text-xs text-gray-500">{by ? `oleh ${by}` : ""}</div>
+                            <div className="text-sm font-semibold text-gray-800">{r.meta?.primary || r.label}</div>
+                            {(r.meta?.watt || r.meta?.poleHeight) && (
+                              <div className="mt-1 flex flex-wrap gap-2 text-[11px] font-semibold">
+                                {r.meta?.watt && <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">{r.meta.watt}</span>}
+                                {r.meta?.poleHeight && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">Tiang {r.meta.poleHeight}</span>}
+                                {r.meta?.voltage && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-700">{r.meta.voltage}</span>}
+                              </div>
+                            )}
+                            <div className="text-xs text-gray-500 mt-1">{r.meta?.secondary || ""}</div>
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                              {r.meta?.title && <span>{r.meta.title}</span>}
+                              {r.meta?.date && <span>{r.meta.date}</span>}
+                              {r.meta?.time && <span>{r.meta.time}</span>}
+                              {r.meta?.kabupaten && <span>{r.meta.kabupaten}</span>}
+                            </div>
                           </button>
                         );
                       })}

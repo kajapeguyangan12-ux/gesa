@@ -1,0 +1,20 @@
+[
+  {
+    "sourcePath": "reports/GAAeVLd82t7nyEYwbJB9/cells/0-0-1772680327003-kaca_belakang.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "reports/GAAeVLd82t7nyEYwbJB9/cells/0-0-1772680327003-kaca_belakang.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/reports/GAAeVLd82t7nyEYwbJB9/cells/0-0-1772680327003-kaca_belakang.webp",
+    "contentType": "image/webp",
+    "size": 30202,
+    "status": "dry-run"
+  },
+  {
+    "sourcePath": "reports/rcWiwD7ikKhZN9mT5u0h/cells/0-0-1772679009720-Gemini_Generated_Image_9b86cd9b86cd9b86.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "reports/rcWiwD7ikKhZN9mT5u0h/cells/0-0-1772679009720-Gemini_Generated_Image_9b86cd9b86cd9b86.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/reports/rcWiwD7ikKhZN9mT5u0h/cells/0-0-1772679009720-Gemini_Generated_Image_9b86cd9b86cd9b86.webp",
+    "contentType": "image/webp",
+    "size": 56744,
+    "status": "dry-run"
+  }
+]

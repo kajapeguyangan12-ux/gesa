@@ -4,11 +4,10 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useSta
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { doc, getDoc } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
-import { db, storage } from "@/lib/firebase";
+import { storage } from "@/lib/firebase";
 import { setupPolling } from "@/utils/firestoreCache";
 import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
 import { prepareOfflineBasemapForTask } from "@/utils/offlineBasemap";
@@ -28,8 +27,8 @@ import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
 import {
   DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS,
-  PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION,
-  PRA_EXISTING_OFFLINE_SETTINGS_DOC,
+  PRA_EXISTING_OFFLINE_SETTINGS_KEY,
+  getPraExistingOfflineSettings,
   isPraExistingTaskOfflineEnabled,
   type PraExistingOfflineSettings,
 } from "@/utils/praExistingOfflineSettings";
@@ -349,28 +348,9 @@ function SurveyPraExistingContent() {
   }, [isOnline, syncPendingSurveys]);
 
   useEffect(() => {
-    // Use polling instead of onSnapshot to reduce Firestore reads
-    const settingsRef = doc(
-      db,
-      PRA_EXISTING_OFFLINE_SETTINGS_COLLECTION,
-      PRA_EXISTING_OFFLINE_SETTINGS_DOC
-    );
-
     const cleanup = setupPolling(
-      `pra_existing_settings_${PRA_EXISTING_OFFLINE_SETTINGS_DOC}`,
-      async () => {
-        const snapshot = await getDoc(settingsRef);
-        if (!snapshot.exists()) {
-          return DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS;
-        }
-        const data = snapshot.data() as { globalEnabled?: unknown };
-        return {
-          globalEnabled:
-            typeof data.globalEnabled === "boolean"
-              ? data.globalEnabled
-              : DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS.globalEnabled,
-        };
-      },
+      `pra_existing_settings_${PRA_EXISTING_OFFLINE_SETTINGS_KEY}`,
+      getPraExistingOfflineSettings,
       (settings) => setOfflineSettings(settings),
       60_000, // 1 minute TTL
       30_000 // poll every 30 seconds

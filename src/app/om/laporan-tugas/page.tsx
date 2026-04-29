@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 
 export default function OMLaporanTugasPage() {
   const router = useRouter();
@@ -45,21 +43,17 @@ export default function OMLaporanTugasPage() {
         reporterUid: user.uid,
         reporterName: user.displayName || user.email || "Petugas O&M",
         reporterRole: user.role || "petugas-om",
-        status: "new",
-        createdAt: serverTimestamp(),
       };
 
-      const reportRef = await addDoc(collection(db, "om-reports"), reportData);
-
-      await addDoc(collection(db, "notifications"), {
-        title: `${reportType === "preventif" ? "Laporan Preventif" : "Laporan Korektif"}`,
-        message: `${reportData.reporterName} mengirim laporan O&M: ${reportData.title}`,
-        category: "O&M",
-        source: "om-report",
-        reportId: reportRef.id,
-        targetRoles: ["admin", "super-admin"],
-        createdAt: serverTimestamp(),
+      const response = await fetch("/api/om/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reportData),
       });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Gagal mengirim laporan O&M.");
+      }
 
       setTitle("");
       setDescription("");

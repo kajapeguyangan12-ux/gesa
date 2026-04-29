@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
-import { collection, getDocs, orderBy, query, where, limit } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { fetchWithCache } from "@/utils/firestoreCache";
 
 type DesignTask = {
@@ -53,14 +51,13 @@ function DaftarTugasContent() {
       const tasksData = await fetchWithCache<DesignTask[]>(
         `design_tasks_${user?.uid}`,
         async () => {
-          const q = query(
-            collection(db, "design_tasks"),
-            where("assigneeId", "==", user?.uid || ""),
-            orderBy("createdAt", "desc"),
-            limit(100)
+          const response = await fetch(
+            `/api/admin/kontruksi?resource=design-tasks&assigneeId=${encodeURIComponent(user?.uid || "")}&limit=100`,
+            { cache: "no-store" }
           );
-          const snapshot = await getDocs(q);
-          return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as DesignTask));
+          const payload = (await response.json()) as { items?: DesignTask[]; error?: string };
+          if (!response.ok) throw new Error(payload.error || "Gagal memuat tugas kontruksi.");
+          return Array.isArray(payload.items) ? payload.items : [];
         },
         120_000
       );

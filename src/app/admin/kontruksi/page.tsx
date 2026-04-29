@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
-import { addDoc, collection, getDocs, orderBy, query, serverTimestamp, where, deleteDoc, doc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import * as XLSX from "xlsx";
 import MapsKontruksiValid from "./components/MapsKontruksiValid";
 
@@ -120,13 +118,10 @@ export default function AdminKontruksiPage() {
   const loadKontruksiUsers = async () => {
     try {
       setLoadingUsers(true);
-      const q = query(
-        collection(db, "User-Admin"),
-        where("role", "==", "petugas-kontruksi"),
-        orderBy("createdAt", "desc")
-      );
-      const snapshot = await getDocs(q);
-      setKontruksiUsers(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      const response = await fetch("/api/admin/kontruksi?resource=users", { cache: "no-store" });
+      const payload = (await response.json()) as { users?: any[]; error?: string };
+      if (!response.ok) throw new Error(payload.error || "Gagal memuat petugas kontruksi.");
+      setKontruksiUsers(Array.isArray(payload.users) ? payload.users : []);
     } catch (e) {
       console.error("Failed to load kontruksi users:", e);
       setKontruksiUsers([]);
@@ -138,9 +133,10 @@ export default function AdminKontruksiPage() {
   const loadDesignUploads = async () => {
     try {
       setLoadingDesigns(true);
-      const q = query(collection(db, "design_uploads"), orderBy("createdAt", "desc"));
-      const snapshot = await getDocs(q);
-      setDesignUploads(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      const response = await fetch("/api/admin/kontruksi?resource=design-uploads", { cache: "no-store" });
+      const payload = (await response.json()) as { items?: any[]; error?: string };
+      if (!response.ok) throw new Error(payload.error || "Gagal memuat design uploads.");
+      setDesignUploads(Array.isArray(payload.items) ? payload.items : []);
     } catch (e) {
       console.error("Failed to load design uploads:", e);
       setDesignUploads([]);
@@ -152,9 +148,10 @@ export default function AdminKontruksiPage() {
   const loadHistory = async () => {
     try {
       setLoadingHistory(true);
-      const q = query(collection(db, "design_tasks"), orderBy("createdAt", "desc"));
-      const snapshot = await getDocs(q);
-      setHistoryItems(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      const response = await fetch("/api/admin/kontruksi?resource=design-tasks", { cache: "no-store" });
+      const payload = (await response.json()) as { items?: TaskHistoryItem[]; error?: string };
+      if (!response.ok) throw new Error(payload.error || "Gagal memuat riwayat tugas.");
+      setHistoryItems(Array.isArray(payload.items) ? payload.items : []);
     } catch (e) {
       console.error("Failed to load history:", e);
       setHistoryItems([]);
@@ -183,9 +180,10 @@ export default function AdminKontruksiPage() {
   const loadKontruksiSubmissions = async () => {
     try {
       setLoadingSubmissions(true);
-      const q = query(collection(db, "kontruksi-submissions"), orderBy("createdAt", "desc"));
-      const snapshot = await getDocs(q);
-      setSubmissions(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as KontruksiData)));
+      const response = await fetch("/api/admin/kontruksi?resource=submissions", { cache: "no-store" });
+      const payload = (await response.json()) as { items?: KontruksiData[]; error?: string };
+      if (!response.ok) throw new Error(payload.error || "Gagal memuat data kontruksi.");
+      setSubmissions(Array.isArray(payload.items) ? payload.items : []);
     } catch (e) {
       console.error("Failed to load kontruksi submissions:", e);
       setSubmissions([]);
@@ -197,9 +195,10 @@ export default function AdminKontruksiPage() {
   const loadKontruksiValid = async () => {
     try {
       setLoadingValid(true);
-      const q = query(collection(db, "kontruksi-valid"), orderBy("validatedAt", "desc"));
-      const snapshot = await getDocs(q);
-      setValidItems(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as KontruksiData)));
+      const response = await fetch("/api/admin/kontruksi?resource=valid", { cache: "no-store" });
+      const payload = (await response.json()) as { items?: KontruksiData[]; error?: string };
+      if (!response.ok) throw new Error(payload.error || "Gagal memuat data valid kontruksi.");
+      setValidItems(Array.isArray(payload.items) ? payload.items : []);
     } catch (e) {
       console.error("Failed to load kontruksi valid data:", e);
       setValidItems([]);
@@ -211,14 +210,16 @@ export default function AdminKontruksiPage() {
   const handleValidateSubmission = async (item: KontruksiData) => {
     try {
       setValidatingId(item.id);
-      await addDoc(collection(db, "kontruksi-valid"), {
-        ...item,
-        sourceSubmissionId: item.id,
-        validatedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        status: "valid",
+      const response = await fetch("/api/admin/kontruksi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "validate",
+          item,
+        }),
       });
-      await deleteDoc(doc(db, "kontruksi-submissions", item.id));
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "Gagal memvalidasi data kontruksi.");
       await loadKontruksiSubmissions();
       await loadKontruksiValid();
     } catch (e) {
@@ -244,15 +245,19 @@ export default function AdminKontruksiPage() {
     if (!detailItem) return;
     try {
       setRejectingId(detailItem.id);
-      await addDoc(collection(db, "kontruksi-rejected"), {
-        ...detailItem,
-        sourceSubmissionId: detailItem.id,
-        rejectedAt: serverTimestamp(),
-        rejectedById: user?.uid || "",
-        rejectedByName: user?.displayName || user?.email || "Admin",
-        rejectReason: rejectReason || "-",
+      const response = await fetch("/api/admin/kontruksi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reject",
+          item: detailItem,
+          rejectedById: user?.uid || "",
+          rejectedByName: user?.displayName || user?.email || "Admin",
+          rejectReason: rejectReason || "-",
+        }),
       });
-      await deleteDoc(doc(db, "kontruksi-submissions", detailItem.id));
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "Gagal menolak data kontruksi.");
       setShowReject(false);
       setDetailItem(null);
       await loadKontruksiSubmissions();
@@ -298,12 +303,21 @@ export default function AdminKontruksiPage() {
         sheetName,
         uploadedById: user?.uid || "",
         uploadedByName: user?.displayName || user?.email || "Admin",
-        createdAt: serverTimestamp(),
+        createdAt: new Date().toISOString(),
         zones,
       };
-      const docRef = await addDoc(collection(db, "design_uploads"), payload);
+      const response = await fetch("/api/admin/kontruksi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resource: "design-upload",
+          ...payload,
+        }),
+      });
+      const result = (await response.json()) as { id?: string; error?: string };
+      if (!response.ok || !result.id) throw new Error(result.error || "Gagal menyimpan design upload.");
       setUploadStatus(`Upload berhasil (${zones.length} zona).`);
-      setDesignUploads((prev) => [{ id: docRef.id, ...payload }, ...prev]);
+      setDesignUploads((prev) => [{ id: result.id, ...payload }, ...prev]);
     } catch (e) {
       console.error("Upload design failed:", e);
       setUploadStatus("Gagal upload. Periksa format Excel.");
@@ -323,16 +337,23 @@ export default function AdminKontruksiPage() {
     if (!selectedAssignee || !selectedDesign) return;
     const zones = (selectedDesign.zones || []).filter((z: any) => selectedZoneIds.has(z.id));
     try {
-      await addDoc(collection(db, "design_tasks"), {
+      const response = await fetch("/api/admin/kontruksi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+        resource: "design-task",
         assigneeId: selectedAssignee.id,
         assigneeName: selectedAssignee.name || selectedAssignee.displayName || selectedAssignee.username || "",
         designUploadId: selectedDesign.id,
         zones,
         status: "assigned",
-        createdAt: serverTimestamp(),
+        createdAt: new Date().toISOString(),
         createdById: user?.uid || "",
         createdByName: user?.displayName || user?.email || "Admin",
+        }),
       });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "Gagal mengirim tugas.");
       setShowDesignPicker(false);
       setSelectedAssignee(null);
       setSelectedDesign(null);

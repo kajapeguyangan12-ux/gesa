@@ -1,5 +1,6 @@
 const CACHE_PREFIX = "gesa_cache:";
 const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 menit
+const MAX_LOCALSTORAGE_ENTRY_CHARS = 250_000;
 
 interface CacheEntry<T> {
   expiresAt: number;
@@ -50,8 +51,21 @@ export function setCachedData<T>(key: string, value: T, ttlMs: number = DEFAULT_
   if (!isBrowser()) return;
 
   try {
-    window.localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(entry));
+    const serialized = JSON.stringify(entry);
+    if (serialized.length > MAX_LOCALSTORAGE_ENTRY_CHARS) {
+      try {
+        window.localStorage.removeItem(CACHE_PREFIX + key);
+      } catch {}
+      return;
+    }
+    window.localStorage.setItem(CACHE_PREFIX + key, serialized);
   } catch (error) {
+    if (error instanceof DOMException && error.name === "QuotaExceededError") {
+      try {
+        window.localStorage.removeItem(CACHE_PREFIX + key);
+      } catch {}
+      return;
+    }
     console.error("Firestore cache write error:", error);
   }
 }

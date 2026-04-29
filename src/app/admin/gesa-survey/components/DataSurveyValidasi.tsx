@@ -108,6 +108,7 @@ interface Survey {
   editedBy?: string;
   rejectionReason?: string;
   surveyorUid?: string;
+  updatedAt?: TimestampLike;
 }
 
 type TimestampLike =
@@ -117,6 +118,28 @@ type TimestampLike =
   | number
   | null
   | undefined;
+
+async function readApiError(response: Response, fallbackMessage: string) {
+  try {
+    const payload = (await response.json()) as { error?: string };
+    if (typeof payload.error === "string" && payload.error.trim()) {
+      return payload.error.trim();
+    }
+  } catch {
+    // Ignore JSON parse failures and use fallback message.
+  }
+  return fallbackMessage;
+}
+
+async function handleConflictAndReload(response: Response, reload: () => Promise<void>, fallbackMessage: string) {
+  const message = await readApiError(response, fallbackMessage);
+  if (response.status === 409) {
+    await reload();
+    alert(`Data ini baru saja diproses admin lain. Daftar akan dimuat ulang.\n\n${message}`);
+    return true;
+  }
+  throw new Error(message);
+}
 
 export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupaten?: string | null }) {
   const FULL_FETCH_LIMIT = 10000;
@@ -391,11 +414,18 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
               Math.abs(resolvedPraLongitude - normalizedLongitude) > 0.0000001),
           kepemilikanTiang: editFormData.kepemilikanDisplay || editFormData.kepemilikanTiang,
           editedBy: currentUser?.name || currentUser?.email || 'Admin',
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
+          expectedStatus: editFormData.status,
+          expectedUpdatedAt: editFormData.updatedAt ?? null,
+          preserveCurrentStatus: true,
         }),
       });
       if (!response.ok) {
-        throw new Error("Gagal memperbarui survey di Supabase.");
+        if (await handleConflictAndReload(response, () => fetchAllSurveys(true), "Gagal memperbarui survey di Supabase.")) {
+          setShowEditModal(false);
+          setEditFormData(null);
+          return;
+        }
       }
 
       setSurveys((current) =>
@@ -444,11 +474,17 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
             }
           : {}),
         validatedBy: currentUser?.name || currentUser?.email || 'Admin',
-        validatedAt: new Date().toISOString()
+        validatedAt: new Date().toISOString(),
+        expectedStatus: survey.status,
+        expectedUpdatedAt: survey.updatedAt ?? null,
         }),
       });
       if (!response.ok) {
-        throw new Error("Gagal memvalidasi survey di Supabase.");
+        if (await handleConflictAndReload(response, () => fetchAllSurveys(true), "Gagal memvalidasi survey di Supabase.")) {
+          setShowDetailModal(false);
+          setSelectedSurvey(null);
+          return;
+        }
       }
 
       removeSurveyFromList(survey.id);
@@ -474,7 +510,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       const storedUser = localStorage.getItem("gesa_user");
       const currentUser = storedUser ? JSON.parse(storedUser) : null;
 
-      await Promise.all(
+      const results = await Promise.all(
         selectedSurveys.map(async (survey) => {
           const normalizedAdminLatitude = Number(survey.adminLatitude);
           const normalizedAdminLongitude = Number(survey.adminLongitude);
@@ -499,13 +535,24 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
               : {}),
             validatedBy: currentUser?.name || currentUser?.email || "Admin",
             validatedAt: new Date().toISOString(),
+            expectedStatus: survey.status,
+            expectedUpdatedAt: survey.updatedAt ?? null,
             }),
           });
           if (!response.ok) {
-            throw new Error(`Gagal memvalidasi survey ${survey.id}.`);
+            if (
+              await handleConflictAndReload(response, () => fetchAllSurveys(true), `Gagal memvalidasi survey ${survey.id}.`)
+            ) {
+              return { conflict: true };
+            }
           }
+          return { conflict: false };
         })
       );
+
+      if (results.some((result) => result.conflict)) {
+        return;
+      }
 
       setSelectedSurveyIds([]);
       setSurveys((current) => current.filter((survey) => !selectedSurveyIds.includes(survey.id)));
@@ -576,11 +623,17 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         status: "ditolak",
         rejectedBy: currentUser?.name || currentUser?.email || 'Admin',
         rejectedAt: new Date().toISOString(),
-        rejectionReason: alasan
+        rejectionReason: alasan,
+        expectedStatus: survey.status,
+        expectedUpdatedAt: survey.updatedAt ?? null,
         }),
       });
       if (!response.ok) {
-        throw new Error("Gagal menolak survey di Supabase.");
+        if (await handleConflictAndReload(response, () => fetchAllSurveys(true), "Gagal menolak survey di Supabase.")) {
+          setShowDetailModal(false);
+          setSelectedSurvey(null);
+          return;
+        }
       }
 
       removeSurveyFromList(survey.id);

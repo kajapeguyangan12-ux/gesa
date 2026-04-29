@@ -1,12 +1,10 @@
 "use client";
 
-import { useState, useEffect, Suspense, useMemo, useCallback, memo } from "react";
+import { useState, useEffect, Suspense, useMemo, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
-import { storage } from "@/lib/firebase";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
 
@@ -48,12 +46,15 @@ function MeasurementGridContent() {
     lokasi: "Lokasi tidak tersedia",
   });
 
-  const surveyData = {
-    namaLampu: searchParams.get("namaLampu") || "",
-    dayaLampu: searchParams.get("dayaLampu") || "",
-    teganganAwal: searchParams.get("teganganAwal") || "",
-    tinggiTiang: searchParams.get("tinggiTiang") || "",
-  };
+  const surveyData = useMemo(
+    () => ({
+      namaLampu: searchParams.get("namaLampu") || "",
+      dayaLampu: searchParams.get("dayaLampu") || "",
+      teganganAwal: searchParams.get("teganganAwal") || "",
+      tinggiTiang: searchParams.get("tinggiTiang") || "",
+    }),
+    [searchParams]
+  );
 
   // Grid configuration: 35 columns x 45 rows
   const ROWS = 45;
@@ -315,17 +316,30 @@ function MeasurementGridContent() {
   }, [gridData, ROWS, COLS]);
 
   const uploadCellAttachments = useCallback(async (reportId: string) => {
-    if (!storage) return new Map<string, string>();
     const uploads = Array.from(gridData.values())
       .filter((cell) => cell.lampiran instanceof File)
       .map(async (cell) => {
         const file = cell.lampiran as File;
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
         const key = getCellKey(cell.row, cell.col);
-        const path = `reports/${reportId}/cells/${key}-${Date.now()}-${safeName}`;
-        const storageRef = ref(storage, path);
-        await uploadBytes(storageRef, file, { contentType: file.type || "image/webp" });
-        const url = await getDownloadURL(storageRef);
+        const body = new FormData();
+        body.append("file", file);
+        body.append("reportId", reportId);
+        body.append("cellKey", key);
+
+        const response = await fetch("/api/storage/report-attachments", {
+          method: "POST",
+          body,
+        });
+
+        if (!response.ok) {
+          throw new Error("Gagal upload lampiran ke Supabase Storage.");
+        }
+
+        const payload = (await response.json()) as { url?: string };
+        const url = typeof payload.url === "string" ? payload.url : "";
+        if (!url) {
+          throw new Error("Supabase Storage tidak mengembalikan URL lampiran.");
+        }
         return { key, url };
       });
     if (uploads.length === 0) return new Map<string, string>();
@@ -362,6 +376,7 @@ function MeasurementGridContent() {
         alert("Kabupaten belum dipilih. Silakan pilih kabupaten terlebih dahulu.");
         return;
       }
+      const userRole = user.role || "";
       const payload = {
         projectTitle: surveyData.namaLampu || "Pengukuran Cahaya",
         title: surveyData.namaLampu || "Pengukuran Cahaya",
@@ -372,7 +387,7 @@ function MeasurementGridContent() {
         createdById: user.uid || "",
         createdByEmail: user.email || "",
         createdByName: user.displayName || user.email || "Petugas",
-        createdByRole: (user as any).role || "",
+        createdByRole: userRole,
         watt: surveyData.dayaLampu,
         meter: surveyData.tinggiTiang,
         voltage: surveyData.teganganAwal,

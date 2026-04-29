@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 
 const MapsKontruksiValidMap = dynamic(
@@ -65,14 +63,13 @@ export default function MapsKontruksiValid() {
   const fetchPoints = async () => {
     try {
       setLoading(true);
-      const validRef = collection(db, "kontruksi-valid");
-      const validQuery = query(validRef, orderBy("updatedAt", "desc"));
-      const validSnapshot = await getDocs(validQuery);
+      const response = await fetch("/api/admin/kontruksi?resource=valid&limit=1000", { cache: "no-store" });
+      const payload = (await response.json()) as { items?: any[]; error?: string };
+      if (!response.ok) throw new Error(payload.error || "Gagal memuat titik kontruksi valid.");
 
-      const all = validSnapshot.docs.map((doc) => {
-        const data = doc.data();
+      const all = (Array.isArray(payload.items) ? payload.items : []).map((data) => {
         return {
-          id: doc.id,
+          id: data.id,
           title: data.namaTitik || "Titik Kontruksi",
           type: data.type || "existing",
           latitude: data.latitude || 0,

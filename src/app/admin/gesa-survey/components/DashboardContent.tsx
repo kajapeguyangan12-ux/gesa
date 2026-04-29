@@ -28,6 +28,7 @@ interface SurveyReportRow {
   kecamatan?: string;
   jenisLampu?: string;
   jumlahLampu?: number;
+  [key: string]: unknown;
 }
 
 type TimestampLike =
@@ -165,6 +166,164 @@ function formatDateTime(value: TimestampLike) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatExportCell(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return formatDateTime(value);
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (typeof value === "object") {
+    const timestamp = resolveTimestamp(value as TimestampLike);
+    if (timestamp) return formatDateTime(timestamp);
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  return String(value);
+}
+
+function isLikelyHttpUrl(value: unknown) {
+  if (typeof value !== "string") return false;
+  return /^https?:\/\/\S+$/i.test(value.trim());
+}
+
+function isLinkFriendlyColumn(key: string) {
+  return /(foto|photo|image|url|file)/i.test(key);
+}
+
+function applySheetHyperlinks(
+  sheet: XLSX.WorkSheet,
+  rows: SurveyReportRow[],
+  keys: string[],
+) {
+  rows.forEach((row, rowIndex) => {
+    keys.forEach((key, keyIndex) => {
+      const rawValue = row[key];
+      if (!isLikelyHttpUrl(rawValue) || !isLinkFriendlyColumn(key)) return;
+
+      const address = XLSX.utils.encode_cell({ r: rowIndex + 1, c: keyIndex + 1 });
+      const target = typeof rawValue === "string" ? rawValue.trim() : "";
+      const cell = sheet[address];
+
+      if (!cell || !target) return;
+
+      sheet[address] = {
+        ...cell,
+        t: "s",
+        v: /^(foto|photo)/i.test(key) ? "Buka Foto" : "Buka Link",
+        l: {
+          Target: target,
+          Tooltip: target,
+        },
+      };
+    });
+  });
+}
+
+function getRawExportKeys(rows: SurveyReportRow[]) {
+  const priorityKeys = [
+    "id",
+    "taskId",
+    "taskTitle",
+    "title",
+    "type",
+    "status",
+    "surveyorName",
+    "surveyorEmail",
+    "surveyorUid",
+    "kabupaten",
+    "kabupatenName",
+    "kecamatan",
+    "desa",
+    "banjar",
+    "namaJalan",
+    "latitude",
+    "longitude",
+    "adminLatitude",
+    "adminLongitude",
+    "finalLatitude",
+    "finalLongitude",
+    "jenisLampu",
+    "jumlahLampu",
+    "verifiedBy",
+    "verifiedAt",
+    "validatedBy",
+    "validatedAt",
+    "rejectedBy",
+    "rejectedAt",
+    "rejectionReason",
+    "createdAt",
+    "updatedAt",
+  ];
+  const allKeys = new Set<string>();
+
+  rows.forEach((row) => {
+    Object.keys(row).forEach((key) => allKeys.add(key));
+  });
+
+  return [
+    ...priorityKeys.filter((key) => allKeys.has(key)),
+    ...Array.from(allKeys)
+      .filter((key) => !priorityKeys.includes(key))
+      .sort((left, right) => left.localeCompare(right)),
+  ];
+}
+
+function buildRawSurveySheet(rows: SurveyReportRow[]) {
+  const keys = getRawExportKeys(rows);
+  const sheetRows = rows.map((row, index) => [
+    index + 1,
+    ...keys.map((key) => formatExportCell(row[key])),
+  ]);
+  const headers = ["No", ...keys];
+  const sheet = XLSX.utils.aoa_to_sheet([headers, ...sheetRows]);
+  applySheetHyperlinks(sheet, rows, keys);
+
+  sheet["!cols"] = headers.map((header, columnIndex) => ({
+    wch: Math.min(
+      42,
+      Math.max(header.length, ...sheetRows.map((row) => String(row[columnIndex] ?? "").length)) + 2
+    ),
+  }));
+
+  return sheet;
+}
+
+function buildRawExportSummary(rows: SurveyReportRow[]) {
+  const typeLabels: Record<string, string> = {
+    existing: "Survey Existing",
+    propose: "Survey APJ Propose",
+    "pra-existing": "Survey Pra Existing",
+  };
+  const statuses = ["menunggu", "diverifikasi", "tervalidasi", "ditolak"];
+  const types = ["existing", "propose", "pra-existing"];
+  const headers = ["Tipe Survey", "Total", "Menunggu", "Diverifikasi", "Tervalidasi", "Ditolak"];
+
+  const rowsByType = types.map((type) => {
+    const typeRows = rows.filter((row) => row.type === type);
+    return [
+      typeLabels[type] || type,
+      typeRows.length,
+      ...statuses.map((status) => typeRows.filter((row) => row.status?.toLowerCase() === status).length),
+    ];
+  });
+
+  rowsByType.push([
+    "Total Semua Survey",
+    rows.length,
+    ...statuses.map((status) => rows.filter((row) => row.status?.toLowerCase() === status).length),
+  ]);
+
+  const sheet = XLSX.utils.aoa_to_sheet([headers, ...rowsByType]);
+  sheet["!cols"] = headers.map((header, columnIndex) => ({
+    wch: Math.max(header.length, ...rowsByType.map((row) => String(row[columnIndex] ?? "").length)) + 2,
+  }));
+
+  return sheet;
 }
 
 function formatDateInputValue(value: Date) {
@@ -396,13 +555,124 @@ interface DailyVerificationSummaryRow {
   lastVerifiedAt: Date | null;
 }
 
+interface VerifierDailyExportCell {
+  totalVerifikasi: number;
+  firstVerifiedAt: Date | null;
+  lastVerifiedAt: Date | null;
+}
+
+function toDateKey(date: Date) {
+  return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, "0")}-${`${date.getDate()}`.padStart(2, "0")}`;
+}
+
+function enumerateDateRange(start: Date, end: Date) {
+  const dates: Date[] = [];
+  const cursor = new Date(start);
+  cursor.setHours(0, 0, 0, 0);
+  const endDate = new Date(end);
+  endDate.setHours(0, 0, 0, 0);
+
+  while (cursor <= endDate) {
+    dates.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
+}
+
+function buildVerifierDailyExportMatrix(
+  rows: SurveyReportRow[],
+  range?: {
+    start: Date | null;
+    end: Date | null;
+  }
+) {
+  const grouped = new Map<string, Map<string, VerifierDailyExportCell>>();
+  const uniqueDateKeys = new Set<string>();
+
+  rows.forEach((row) => {
+    const verifiedDate = resolveTimestamp(row.verifiedAt);
+    if (!verifiedDate) return;
+
+    const verifierName = row.verifiedBy?.trim() || "Admin";
+    const dateKey = toDateKey(verifiedDate);
+    uniqueDateKeys.add(dateKey);
+
+    const verifierGroup = grouped.get(verifierName) || new Map<string, VerifierDailyExportCell>();
+    const current =
+      verifierGroup.get(dateKey) ||
+      ({
+        totalVerifikasi: 0,
+        firstVerifiedAt: null,
+        lastVerifiedAt: null,
+      } satisfies VerifierDailyExportCell);
+
+    current.totalVerifikasi += 1;
+
+    if (!current.firstVerifiedAt || verifiedDate < current.firstVerifiedAt) {
+      current.firstVerifiedAt = verifiedDate;
+    }
+    if (!current.lastVerifiedAt || verifiedDate > current.lastVerifiedAt) {
+      current.lastVerifiedAt = verifiedDate;
+    }
+
+    verifierGroup.set(dateKey, current);
+    grouped.set(verifierName, verifierGroup);
+  });
+
+  const dateKeys =
+    range?.start && range?.end
+      ? enumerateDateRange(range.start, range.end).map((date) => toDateKey(date))
+      : Array.from(uniqueDateKeys).sort((a, b) => a.localeCompare(b));
+
+  const rowsByVerifier = Array.from(grouped.entries())
+    .map(([verifierName, dateMap]) => {
+      let totalVerifikasi = 0;
+      dateMap.forEach((cell) => {
+        totalVerifikasi += cell.totalVerifikasi;
+      });
+
+      return {
+        verifierName,
+        totalVerifikasi,
+        dateMap,
+      };
+    })
+    .sort((a, b) => b.totalVerifikasi - a.totalVerifikasi || a.verifierName.localeCompare(b.verifierName));
+
+  return {
+    dateKeys,
+    rowsByVerifier,
+  };
+}
+
+function formatFullExportDate(dateKey: string) {
+  const date = new Date(`${dateKey}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return dateKey;
+  return date.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatWitaTime(value: TimestampLike) {
+  const date = resolveTimestamp(value);
+  if (!date) return "0";
+  return date.toLocaleTimeString("id-ID", {
+    timeZone: "Asia/Makassar",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 function buildVerifierSummary(rows: SurveyReportRow[]) {
   const grouped = new Map<string, VerifierSummaryRow>();
 
   rows.forEach((row) => {
-    const status = row.status?.toLowerCase();
     const verifiedDate = resolveTimestamp(row.verifiedAt);
-    if (status !== "diverifikasi" || !verifiedDate) return;
+    if (!verifiedDate) return;
 
     const verifierName = row.verifiedBy?.trim() || "Admin";
     const current =
@@ -424,7 +694,7 @@ function buildVerifierSummary(rows: SurveyReportRow[]) {
     current.totalLampu += row.jumlahLampu ?? 0;
 
     if (row.type === "existing") current.existingCount += 1;
-    if (row.type === "apj-propose") current.proposeCount += 1;
+    if (row.type === "apj-propose" || row.type === "propose") current.proposeCount += 1;
     if (row.type === "pra-existing") current.praExistingCount += 1;
 
     if (!current.firstVerifiedAt || verifiedDate < current.firstVerifiedAt) {
@@ -452,7 +722,7 @@ function buildDailyVerificationSummary(rows: SurveyReportRow[]) {
     const verifiedDate = resolveTimestamp(row.verifiedAt);
     if (!verifiedDate) return;
 
-    const dateKey = `${verifiedDate.getFullYear()}-${`${verifiedDate.getMonth() + 1}`.padStart(2, "0")}-${`${verifiedDate.getDate()}`.padStart(2, "0")}`;
+    const dateKey = toDateKey(verifiedDate);
     const current =
       grouped.get(dateKey) ||
       ({
@@ -477,7 +747,7 @@ function buildDailyVerificationSummary(rows: SurveyReportRow[]) {
     current.totalLampu += row.jumlahLampu ?? 0;
 
     if (row.type === "existing") current.existingCount += 1;
-    if (row.type === "apj-propose") current.proposeCount += 1;
+    if (row.type === "apj-propose" || row.type === "propose") current.proposeCount += 1;
     if (row.type === "pra-existing") current.praExistingCount += 1;
 
     if (!current.firstVerifiedAt || verifiedDate < current.firstVerifiedAt) {
@@ -571,6 +841,7 @@ export default function DashboardContent({
   const [detailLoaded, setDetailLoaded] = useState(false);
   const [summaryRefreshing, setSummaryRefreshing] = useState(false);
   const [taskExporting, setTaskExporting] = useState(false);
+  const [rawSurveyExporting, setRawSurveyExporting] = useState(false);
   const [bundleSource, setBundleSource] = useState<DashboardBundleSource>("supabase");
   const [lastUpdatedAt, setLastUpdatedAt] = useState("");
   const [summaryVersion, setSummaryVersion] = useState(0);
@@ -909,7 +1180,6 @@ export default function DashboardContent({
 
   const verifierDetailRows = useMemo(() => {
     return reportState.allRows
-      .filter((row) => row.status?.toLowerCase() === "diverifikasi")
       .filter((row) => {
         const verifiedDate = resolveTimestamp(row.verifiedAt);
         if (!verifiedDate) return false;
@@ -938,7 +1208,6 @@ export default function DashboardContent({
 
     const rawRows = adminVerificationRows ?? [];
     return rawRows
-      .filter((row) => row.status?.toLowerCase() === "diverifikasi")
       .filter((row) => {
         const verifiedBy = row.verifiedBy?.trim().toLowerCase();
         return Boolean(verifiedBy && adminIdentityKeys.includes(verifiedBy));
@@ -1032,43 +1301,60 @@ export default function DashboardContent({
   const handleExportVerifierExcel = () => {
     if (!verifierDetailRows.length) return;
 
-    const summaryHeaders = [
-      "No",
+    const dailyMatrix = buildVerifierDailyExportMatrix(verifierDetailRows, normalizedDateRange);
+    const dailyTotals = dailyMatrix.dateKeys.map((dateKey) =>
+      verifierDetailRows.reduce<VerifierDailyExportCell>(
+        (accumulator, detailRow) => {
+          const verifiedAt = resolveTimestamp(detailRow.verifiedAt);
+          if (!verifiedAt || toDateKey(verifiedAt) !== dateKey) return accumulator;
+
+          accumulator.totalVerifikasi += 1;
+          if (!accumulator.firstVerifiedAt || verifiedAt < accumulator.firstVerifiedAt) {
+            accumulator.firstVerifiedAt = verifiedAt;
+          }
+          if (!accumulator.lastVerifiedAt || verifiedAt > accumulator.lastVerifiedAt) {
+            accumulator.lastVerifiedAt = verifiedAt;
+          }
+          return accumulator;
+        },
+        {
+          totalVerifikasi: 0,
+          firstVerifiedAt: null,
+          lastVerifiedAt: null,
+        }
+      )
+    );
+    const matrixHeaders = [
       "Nama Admin Verifikasi",
-      "Total Verifikasi",
-      "Jumlah Titik",
-      "Jumlah Lampu",
-      "Existing",
-      "APJ Propose",
-      "Pra Existing",
-      "Verifikasi Pertama",
-      "Verifikasi Terakhir",
+      ...dailyMatrix.dateKeys.flatMap((dateKey) => [
+        `${formatFullExportDate(dateKey)} - Hasil`,
+        `${formatFullExportDate(dateKey)} - Mulai`,
+        `${formatFullExportDate(dateKey)} - Selesai`,
+      ]),
+      "Total",
     ];
 
-    const summaryRows = verifierSummaryRows.map((row, index) => [
-      index + 1,
+    const matrixRows = dailyMatrix.rowsByVerifier.map((row) => [
       row.verifierName,
-      row.totalData,
-      row.totalTitik,
-      row.totalLampu,
-      row.existingCount,
-      row.proposeCount,
-      row.praExistingCount,
-      formatDateTime(row.firstVerifiedAt),
-      formatDateTime(row.lastVerifiedAt),
+      ...dailyMatrix.dateKeys.flatMap((dateKey) => {
+        const cell = row.dateMap.get(dateKey);
+        return [
+          cell?.totalVerifikasi ?? 0,
+          formatWitaTime(cell?.firstVerifiedAt),
+          formatWitaTime(cell?.lastVerifiedAt),
+        ];
+      }),
+      row.totalVerifikasi,
     ]);
 
-    summaryRows.push([
-      "",
-      verifierGrandTotal.verifierName,
+    matrixRows.push([
+      "Total Semua Admin",
+      ...dailyTotals.flatMap((totalForDate) => [
+        totalForDate.totalVerifikasi || 0,
+        formatWitaTime(totalForDate.firstVerifiedAt),
+        formatWitaTime(totalForDate.lastVerifiedAt),
+      ]),
       verifierGrandTotal.totalData,
-      verifierGrandTotal.totalTitik,
-      verifierGrandTotal.totalLampu,
-      verifierGrandTotal.existingCount,
-      verifierGrandTotal.proposeCount,
-      verifierGrandTotal.praExistingCount,
-      formatDateTime(verifierGrandTotal.firstVerifiedAt),
-      formatDateTime(verifierGrandTotal.lastVerifiedAt),
     ]);
 
     const detailHeaders = [
@@ -1100,13 +1386,16 @@ export default function DashboardContent({
     ]);
 
     const workbook = XLSX.utils.book_new();
-    const summarySheet = XLSX.utils.aoa_to_sheet([summaryHeaders, ...summaryRows]);
+    const summarySheet = XLSX.utils.aoa_to_sheet([matrixHeaders, ...matrixRows]);
     const detailSheet = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailRows]);
 
-    summarySheet["!cols"] = summaryHeaders.map((header, columnIndex) => ({
+    summarySheet["!cols"] = matrixHeaders.map((header, columnIndex) => ({
       wch: Math.min(
-        28,
-        Math.max(header.length, ...summaryRows.map((row) => String(row[columnIndex] ?? "").length)) + 2
+        columnIndex === 0 ? 28 : 22,
+        Math.max(
+          header.length,
+          ...matrixRows.map((row) => String(row[columnIndex] ?? "").length)
+        ) + 2
       ),
     }));
 
@@ -1241,6 +1530,64 @@ export default function DashboardContent({
     }
   };
 
+  const handleExportRawSurveyExcel = async () => {
+    if (!isSuperAdmin || rawSurveyExporting) return;
+
+    try {
+      setRawSurveyExporting(true);
+
+      const params = new URLSearchParams({
+        includeDetails: "1",
+      });
+      const response = await fetch(`/api/admin/gesa-survey?${params.toString()}`, {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        let message = "Gagal memuat data mentah survey dari Supabase.";
+        try {
+          const payload = (await response.json()) as { error?: string };
+          if (typeof payload.error === "string" && payload.error.trim()) {
+            message = payload.error.trim();
+          }
+        } catch {
+          // Keep fallback message when response body is not JSON.
+        }
+        throw new Error(message);
+      }
+
+      const payload = (await response.json()) as { allRows?: SurveyReportRow[]; totalRows?: number };
+      const rows = Array.isArray(payload.allRows) ? payload.allRows : [];
+      if (!rows.length) {
+        alert("Belum ada data survey untuk diexport.");
+        return;
+      }
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, buildRawExportSummary(rows), "Ringkasan Status");
+
+      const sheetGroups = [
+        { name: "Semua Data Mentah", rows },
+        { name: "Survey Existing", rows: rows.filter((row) => row.type === "existing") },
+        { name: "Survey APJ Propose", rows: rows.filter((row) => row.type === "propose") },
+        { name: "Survey Pra Existing", rows: rows.filter((row) => row.type === "pra-existing") },
+      ];
+
+      sheetGroups.forEach((group) => {
+        if (!group.rows.length) return;
+        XLSX.utils.book_append_sheet(workbook, buildRawSurveySheet(group.rows), group.name);
+      });
+
+      const dateLabel = formatDateInputValue(new Date());
+      XLSX.writeFile(workbook, `export-mentah-semua-survey-${dateLabel}.xlsx`);
+    } catch (error) {
+      console.error("Failed to export raw survey excel:", error);
+      alert(error instanceof Error ? error.message : "Gagal export Excel data mentah survey.");
+    } finally {
+      setRawSurveyExporting(false);
+    }
+  };
+
   return (
     <>
       <div className="mb-6 bg-gradient-to-r from-green-600 to-green-700 rounded-2xl shadow-lg p-4 lg:p-6">
@@ -1353,6 +1700,16 @@ export default function DashboardContent({
                       className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-white/20 disabled:cursor-not-allowed disabled:bg-white/5"
                     >
                       {taskExporting ? "Exporting..." : "Export Tugas Excel"}
+                    </button>
+                  )}
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => void handleExportRawSurveyExcel()}
+                      disabled={rawSurveyExporting}
+                      className="rounded-xl border border-white/20 bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition-all hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-amber-200/60"
+                    >
+                      {rawSurveyExporting ? "Exporting..." : "Export Mentah Semua"}
                     </button>
                   )}
                   <button
