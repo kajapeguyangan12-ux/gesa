@@ -1,27 +1,18 @@
 import { SurveyData } from "@/types/survey";
+import { formatWitaDate, formatWitaTime } from "@/utils/dateTime";
 
 /**
  * Format date to Indonesian format
  */
 export function formatDate(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
-  const options: Intl.DateTimeFormatOptions = {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  };
-  return d.toLocaleDateString("id-ID", options);
+  return formatWitaDate(date) || "";
 }
 
 /**
  * Format time to HH:MM format
  */
 export function formatTime(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleTimeString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatWitaTime(date) || "";
 }
 
 /**

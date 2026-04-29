@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
+import { formatWitaDateTime } from "@/utils/dateTime";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 
 // Dynamic import for Tracking Map
@@ -104,15 +105,12 @@ export default function TrackingHistory() {
   const formatDate = (timestamp: any) => {
     if (!timestamp) return "N/A";
     try {
-      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-      return date.toLocaleDateString("id-ID", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch (error) {
+      return (
+        formatWitaDateTime(timestamp, {
+          month: "short",
+        }) || "N/A"
+      );
+    } catch {
       return "N/A";
     }
   };

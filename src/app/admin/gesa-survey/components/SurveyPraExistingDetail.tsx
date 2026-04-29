@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import * as XLSX from 'xlsx';
 import { useAuth } from "@/hooks/useAuth";
+import { formatWitaDateTime } from "@/utils/dateTime";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 import { fetchAdminSurveyRows } from "./supabaseSurveyClient";
 
@@ -198,29 +199,11 @@ export default function SurveyPraExistingDetail({
   const formatDate = (timestamp: TimestampLike) => {
     if (!timestamp) return "N/A";
     try {
-      let date: Date;
-
-      if (timestamp instanceof Date) {
-        date = timestamp;
-      } else if (typeof timestamp === "object" && timestamp !== null) {
-        if ("toDate" in timestamp && typeof timestamp.toDate === "function") {
-          date = timestamp.toDate();
-        } else if ("seconds" in timestamp && typeof timestamp.seconds === "number") {
-          date = new Date(timestamp.seconds * 1000);
-        } else {
-          return "N/A";
-        }
-      } else {
-        date = new Date(timestamp);
-      }
-
-      return date.toLocaleString("id-ID", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+      return (
+        formatWitaDateTime(timestamp, {
+          month: "short",
+        }) || "N/A"
+      );
     } catch {
       return "N/A";
     }

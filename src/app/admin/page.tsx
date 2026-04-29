@@ -6,6 +6,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
+import { formatWitaDateTime } from "@/utils/dateTime";
 
 interface SurveyData {
   id: string;
@@ -386,7 +387,7 @@ function AdminPanelContent() {
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">Update Terakhir</div>
               <div className="mt-1 text-base font-bold text-slate-900">
-                {activeTimestamp ? new Date(activeTimestamp).toLocaleString("id-ID") : "Belum ada"}
+                {activeTimestamp ? formatWitaDateTime(activeTimestamp) || "Belum ada" : "Belum ada"}
               </div>
             </div>
           </div>

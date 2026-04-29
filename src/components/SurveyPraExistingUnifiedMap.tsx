@@ -6,6 +6,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import dynamic from "next/dynamic";
 import type { TaskNavigationInfo } from "@/utils/taskNavigation";
+import { formatWitaDateTime } from "@/utils/dateTime";
 
 const KMZTaskOverlay = dynamic(() => import("./KMZTaskOverlay"), { ssr: false });
 const DEFAULT_POSITION: [number, number] = [-8.4095, 115.1889];
@@ -215,14 +216,7 @@ export default function SurveyPraExistingUnifiedMap({
 
   const formatDate = (value: SubmittedSurveyMapData["createdAt"]) => {
     if (!value) return "-";
-    if (typeof value === "object" && value !== null && "toDate" in value && typeof value.toDate === "function") {
-      return value.toDate().toLocaleString("id-ID");
-    }
-    if (typeof value !== "string" && typeof value !== "number" && !(value instanceof Date)) {
-      return "-";
-    }
-    const date = value instanceof Date ? value : new Date(value);
-    return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString("id-ID");
+    return formatWitaDateTime(value) || "-";
   };
 
   const getAccuracyColor = (acc: number): string => {

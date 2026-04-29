@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { formatWitaDateTime } from "@/utils/dateTime";
 
 interface PanelStats {
   totalSurvey: number;
@@ -180,7 +181,7 @@ function PraExistingPanelContent() {
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">Update Terakhir</div>
             <div className="mt-1 text-base font-bold text-slate-900">
-              {lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleString("id-ID") : "Belum ada"}
+              {lastUpdatedAt ? formatWitaDateTime(lastUpdatedAt) || "Belum ada" : "Belum ada"}
             </div>
           </div>
         </div>

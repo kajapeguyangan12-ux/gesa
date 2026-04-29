@@ -10,6 +10,7 @@ import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { storage } from "@/lib/firebase";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
+import { formatWitaTime } from "@/utils/dateTime";
 import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
 import { analyzeTaskNavigation, type ParsedTaskGeometries, type TaskNavigationInfo } from "@/utils/taskNavigation";
 import { CompactRealtimePanel, CompactTaskStatusPanel, StatCard } from "@/components/SurveyTaskPanels";
@@ -193,7 +194,7 @@ function SurveyAPJProposeContent() {
   }, [taskNavigationInfo?.nearestCoordinate]);
   const coordinatesLabel = gpsCoords ? `${gpsCoords.latitude.toFixed(6)}, ${gpsCoords.longitude.toFixed(6)}` : "Koordinat belum tersedia";
   const accuracyLabel = gpsCoords ? `+/-${gpsCoords.accuracy.toFixed(1)}m` : "-";
-  const updatedAtLabel = gpsCoords ? new Date(gpsCoords.timestamp).toLocaleTimeString("id-ID") : "-";
+  const updatedAtLabel = gpsCoords ? formatWitaTime(gpsCoords.timestamp) || "-" : "-";
 
   // Handle pilih ID Titik
   const handlePilihIDTitik = (value: string) => {

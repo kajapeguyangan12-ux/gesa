@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { formatWitaDateTime } from "@/utils/dateTime";
 
 type LeafletDefaultProto = L.Icon.Default & { _getIconUrl?: unknown };
 
@@ -91,14 +92,7 @@ export default function SurveyPraExistingSubmittedMap({ surveyData }: SurveyPraE
 
   const formatDate = (value: SubmittedSurveyMapData["createdAt"]) => {
     if (!value) return "-";
-    if (typeof value === "object" && value !== null && "toDate" in value && typeof value.toDate === "function") {
-      return value.toDate().toLocaleString("id-ID");
-    }
-    if (typeof value !== "string" && typeof value !== "number" && !(value instanceof Date)) {
-      return "-";
-    }
-    const date = value instanceof Date ? value : new Date(value);
-    return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString("id-ID");
+    return formatWitaDateTime(value) || "-";
   };
 
   if (!ready) {
@@ -146,4 +140,3 @@ export default function SurveyPraExistingSubmittedMap({ surveyData }: SurveyPraE
     </div>
   );
 }
-

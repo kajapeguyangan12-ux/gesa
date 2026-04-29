@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
+import { formatWitaDateTime } from "@/utils/dateTime";
 import { fetchAdminSurveyRows, type AdminSurveyRow } from "./supabaseSurveyClient";
+import { getSupabaseBrowserClient } from "@/lib/supabaseBrowser";
+import { resolveSurveyTable } from "@/lib/supabaseHybrid";
 
 function toApiSurveyType(type: string) {
   if (type === "existing" || type === "propose" || type === "pra-existing") return type;
@@ -186,6 +189,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   const latestDataChangeRef = useRef("");
   const surveysRequestSeqRef = useRef(0);
   const suppressedSurveyIdsRef = useRef(new Map<string, number>());
+  const realtimeRefreshTimeoutRef = useRef<number | null>(null);
   const targetStatuses = useMemo(() => new Set(["diverifikasi"]), []);
 
   const mapSupabaseSurvey = (survey: AdminSurveyRow) => survey as Survey;
@@ -368,6 +372,61 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     }, LIVE_REFRESH_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
+  }, [activeKabupaten]);
+
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+
+    const scheduleRefresh = () => {
+      if (!isDocumentVisible()) return;
+      if (realtimeRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(realtimeRefreshTimeoutRef.current);
+      }
+
+      // Delay slightly to coalesce bursts of row events from a single action.
+      realtimeRefreshTimeoutRef.current = window.setTimeout(() => {
+        realtimeRefreshTimeoutRef.current = null;
+        if (latestDataChangeRef.current) {
+          void fetchSurveyDelta(latestDataChangeRef.current).catch((error) => {
+            console.error("Error refreshing validation data from realtime delta:", error);
+            void fetchAllSurveys(true);
+          });
+          return;
+        }
+
+        void fetchAllSurveys(true);
+      }, 600);
+    };
+
+    const tables = [
+      resolveSurveyTable("existing"),
+      resolveSurveyTable("propose"),
+      resolveSurveyTable("pra-existing"),
+    ];
+
+    const channels = tables.map((table) =>
+      supabase
+        .channel(`admin-gesa-survey-validasi:${table}:${activeKabupaten || "all"}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table },
+          () => {
+            scheduleRefresh();
+          }
+        )
+        .subscribe()
+    );
+
+    return () => {
+      if (realtimeRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(realtimeRefreshTimeoutRef.current);
+        realtimeRefreshTimeoutRef.current = null;
+      }
+      channels.forEach((channel) => {
+        void supabase.removeChannel(channel);
+      });
+    };
   }, [activeKabupaten]);
 
   const removeSurveyFromList = (surveyId: string) => {
@@ -704,22 +763,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   const formatDate = (timestamp: TimestampLike) => {
     if (!timestamp) return "N/A";
     try {
-      const date =
-        typeof timestamp === "object" && timestamp !== null && "toDate" in timestamp && typeof timestamp.toDate === "function"
-          ? timestamp.toDate()
-          : timestamp instanceof Date
-            ? timestamp
-            : typeof timestamp === "string" || typeof timestamp === "number"
-              ? new Date(timestamp)
-              : null;
-      if (!date || Number.isNaN(date.getTime())) return "N/A";
-      return date.toLocaleString('id-ID', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
+      return formatWitaDateTime(timestamp) || "N/A";
     } catch {
       return "N/A";
     }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { formatWitaDateTime } from "@/utils/dateTime";
 import SurveyExistingDetail from "./SurveyExistingDetail";
 import SurveyProposeDetail from "./SurveyProposeDetail";
 import SurveyPraExistingDetail from "./SurveyPraExistingDetail";
@@ -153,14 +154,7 @@ export default function DataSurveyTolak({ activeKabupaten }: { activeKabupaten?:
 
   const formatDate = (timestamp: Survey["createdAt"]) => {
     if (!timestamp) return "-";
-    if (typeof timestamp === "object" && timestamp !== null && "toDate" in timestamp && typeof timestamp.toDate === "function") {
-      return timestamp.toDate().toLocaleString("id-ID");
-    }
-    if (typeof timestamp !== "string" && typeof timestamp !== "number" && !(timestamp instanceof Date)) {
-      return "-";
-    }
-    const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
-    return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString("id-ID");
+    return formatWitaDateTime(timestamp) || "-";
   };
 
   // Render detail view jika kategori dipilih

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { PRA_EXISTING_TABANAN_DATA } from "@/app/survey-pra-existing/location-data";
 import type { TaskNavigationInfo } from "@/utils/taskNavigation";
+import { formatWitaDateTime } from "@/utils/dateTime";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 import { fetchAdminSurveyRows, type AdminSurveyRow } from "./supabaseSurveyClient";
 
@@ -1179,23 +1180,8 @@ export default function ValidasiSurvey({
   const formatDate = (timestamp: Survey["createdAt"] | Survey["updatedAt"]) => {
     if (!timestamp) return "N/A";
     try {
-      const date =
-        typeof timestamp === "object" && timestamp !== null && "toDate" in timestamp && typeof timestamp.toDate === "function"
-          ? timestamp.toDate()
-          : timestamp instanceof Date
-          ? timestamp
-          : typeof timestamp === "string" || typeof timestamp === "number"
-          ? new Date(timestamp)
-          : null;
-      if (!date || Number.isNaN(date.getTime())) return "N/A";
-      return date.toLocaleString('id-ID', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch (error) {
+      return formatWitaDateTime(timestamp) || "N/A";
+    } catch {
       return "N/A";
     }
   };

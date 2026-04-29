@@ -1,3 +1,5 @@
+import { formatWitaDateTime } from "@/utils/dateTime";
+
 export function getReadableDataSourceLabel(source?: string | null) {
   switch ((source || "").toLowerCase()) {
     case "supabase":
@@ -11,16 +13,9 @@ export function getReadableDataSourceLabel(source?: string | null) {
 
 export function formatPanelUpdatedAt(value?: Date | string | number | null) {
   if (!value) return "Belum ada";
-
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "Belum ada";
-
-  return date.toLocaleString("id-ID", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  return (
+    formatWitaDateTime(value, {
+      second: "2-digit",
+    }) || "Belum ada"
+  );
 }

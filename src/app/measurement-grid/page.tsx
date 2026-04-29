@@ -7,6 +7,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
+import { formatWitaDate, formatWitaTime } from "@/utils/dateTime";
 
 interface CellData {
   row: number;
@@ -41,8 +42,8 @@ function MeasurementGridContent() {
     nilaiLux: "",
     tipeApi: "normal",
     lampiran: null,
-    tanggal: new Date().toLocaleDateString("id-ID"),
-    waktu: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+    tanggal: formatWitaDate(new Date()) || "",
+    waktu: formatWitaTime(new Date()) || "",
     lokasi: "Lokasi tidak tersedia",
   });
 
@@ -159,8 +160,8 @@ function MeasurementGridContent() {
       nilaiLux: existingData?.nilaiLux || "",
       tipeApi: existingData?.tipeApi || "normal",
       lampiran: existingData?.lampiran || null,
-      tanggal: new Date().toLocaleDateString("id-ID"),
-      waktu: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+      tanggal: formatWitaDate(new Date()) || "",
+      waktu: formatWitaTime(new Date()) || "",
     }));
   }, [gridData]);
 
@@ -392,8 +393,8 @@ function MeasurementGridContent() {
         meter: surveyData.tinggiTiang,
         voltage: surveyData.teganganAwal,
         gridData: gridPayload,
-        date: now.toLocaleDateString("id-ID"),
-        time: now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }).replace(":", "."),
+        date: formatWitaDate(now) || "",
+        time: (formatWitaTime(now) || "").replace(":", "."),
         status: "pending",
         source: "survey-cahaya",
         kabupaten,

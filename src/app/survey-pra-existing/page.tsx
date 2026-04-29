@@ -25,6 +25,7 @@ import type { TaskNavigationInfo } from "@/utils/taskNavigation";
 import { analyzeTaskNavigation, type ParsedTaskGeometries } from "@/utils/taskNavigation";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
+import { formatWitaDateTime, formatWitaTime } from "@/utils/dateTime";
 import {
   DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS,
   PRA_EXISTING_OFFLINE_SETTINGS_KEY,
@@ -950,7 +951,9 @@ function SurveyPraExistingContent() {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
   }, [gpsCoords, taskNavigationInfo]);
   const gpsStatusLabel = !isGPSActive ? "GPS belum aktif" : gpsCoords ? `Akurasi +/-${gpsCoords.accuracy.toFixed(1)} m` : "Mencari posisi GPS";
-  const currentGeoStamp = gpsCoords ? `Lat ${gpsCoords.latitude.toFixed(6)} | Lng ${gpsCoords.longitude.toFixed(6)} | ${new Date(gpsCoords.timestamp).toLocaleString("id-ID")}` : "Geostamp akan muncul setelah GPS terbaca";
+  const currentGeoStamp = gpsCoords
+    ? `Lat ${gpsCoords.latitude.toFixed(6)} | Lng ${gpsCoords.longitude.toFixed(6)} | ${formatWitaDateTime(gpsCoords.timestamp)}`
+    : "Geostamp akan muncul setelah GPS terbaca";
   const isFormLocked = checkingTaskAccess || !isTaskEditable;
   const syncStatusLabel = isSyncingQueue ? "Menyinkronkan..." : pendingSyncCount > 0 ? `${pendingSyncCount} antrean` : "Sinkron";
   const basemapStatusLabel = !isOfflineAllowed ? "Offline dimatikan" : offlineBasemapReady ? "Peta offline siap" : "Peta offline belum siap";
@@ -1344,7 +1347,7 @@ function SurveyPraExistingContent() {
                       hasGPS={Boolean(gpsCoords)}
                       coordinatesLabel={gpsCoords ? `${gpsCoords.latitude.toFixed(6)}, ${gpsCoords.longitude.toFixed(6)}` : "Koordinat belum tersedia"}
                       accuracyLabel={gpsCoords ? `+/-${gpsCoords.accuracy.toFixed(1)}m` : "-"}
-                      updatedAtLabel={gpsCoords ? new Date(gpsCoords.timestamp).toLocaleTimeString("id-ID") : "-"}
+                      updatedAtLabel={gpsCoords ? formatWitaTime(gpsCoords.timestamp) || "-" : "-"}
                     />
                   </div>
                 </div>
@@ -1366,7 +1369,7 @@ function SurveyPraExistingContent() {
                     hasGPS={Boolean(gpsCoords)}
                     coordinatesLabel={gpsCoords ? `${gpsCoords.latitude.toFixed(6)}, ${gpsCoords.longitude.toFixed(6)}` : "Koordinat belum tersedia"}
                     accuracyLabel={gpsCoords ? `+/-${gpsCoords.accuracy.toFixed(1)}m` : "-"}
-                    updatedAtLabel={gpsCoords ? new Date(gpsCoords.timestamp).toLocaleTimeString("id-ID") : "-"}
+                    updatedAtLabel={gpsCoords ? formatWitaTime(gpsCoords.timestamp) || "-" : "-"}
                   />
                 </div>
               ) : null}
@@ -1533,7 +1536,7 @@ async function createGeoStampedImage(file: File, gps: GPSCoordinates): Promise<F
   const lines = [
     `Koordinat : ${gps.latitude.toFixed(6)}, ${gps.longitude.toFixed(6)}`,
     `Akurasi    : +/-${gps.accuracy.toFixed(1)} m`,
-    `Waktu      : ${new Date(gps.timestamp).toLocaleString("id-ID")}`,
+    `Waktu      : ${formatWitaDateTime(gps.timestamp)}`,
   ];
 
   ctx.save();
@@ -1633,12 +1636,8 @@ function formatSubmissionDate(value: { toDate?: () => Date } | Date | string | n
 
   if (!date || Number.isNaN(date.getTime())) return "-";
 
-  return date.toLocaleString("id-ID", {
-    day: "2-digit",
+  return formatWitaDateTime(date, {
     month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 

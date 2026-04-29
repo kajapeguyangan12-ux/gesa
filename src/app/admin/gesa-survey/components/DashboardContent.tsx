@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
 import { useAuth } from "@/hooks/useAuth";
+import { formatWitaDateTime } from "@/utils/dateTime";
 
 interface DashboardContentProps {
   setActiveMenu: (menu: string) => void;
@@ -1719,7 +1720,7 @@ export default function DashboardContent({
                   <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-300">Update Terakhir</div>
                     <div className="mt-1 text-base font-bold text-white">
-                      {activeTimestamp ? new Date(activeTimestamp).toLocaleString("id-ID") : "Belum ada"}
+                      {activeTimestamp ? formatWitaDateTime(activeTimestamp) || "Belum ada" : "Belum ada"}
                     </div>
                   </div>
                 </div>
