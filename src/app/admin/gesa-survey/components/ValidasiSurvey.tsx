@@ -202,7 +202,7 @@ async function handleConflictAndReload(response: Response, reload: () => Promise
   throw new Error(message);
 }
 
-const LIVE_REFRESH_INTERVAL_MS = 30000;
+const LIVE_REFRESH_INTERVAL_MS = 5000;
 const TAB_DATA_FETCH_LIMIT = 10000;
 
 function isDocumentVisible() {
@@ -358,7 +358,7 @@ export default function ValidasiSurvey({
     setShowDetailModal((current) => (selectedSurvey?.id === targetSurvey.id ? false : current));
   };
 
-  const fetchStatistics = async (forceRefresh = false) => {
+  const fetchStatistics = async (forceRefresh = false, syncFingerprint = true) => {
     try {
       if (forceRefresh) {
         setStatsLoading(true);
@@ -368,15 +368,16 @@ export default function ValidasiSurvey({
         activeKabupaten,
         adminId: null,
         statuses: ["menunggu"],
-        includeDetails: false,
-        compact: true,
+        summaryOnly: true,
       });
 
       setStats(payload.counts);
       setStatsLoaded(true);
       setDataSource(payload.source);
-      latestSurveyFingerprintRef.current = buildSurveyFingerprint(payload.counts, payload.lastDataChangeAt);
-      latestSurveyChangeRef.current = payload.lastDataChangeAt || payload.generatedAt || latestSurveyChangeRef.current;
+      if (syncFingerprint) {
+        latestSurveyFingerprintRef.current = buildSurveyFingerprint(payload.counts, payload.lastDataChangeAt);
+        latestSurveyChangeRef.current = payload.lastDataChangeAt || payload.generatedAt || latestSurveyChangeRef.current;
+      }
       setLastUpdatedAt(
         payload.lastDataChangeAt
           ? new Date(payload.lastDataChangeAt)
@@ -506,7 +507,7 @@ export default function ValidasiSurvey({
     const intervalId = window.setInterval(() => {
       if (!isDocumentVisible()) return;
       void (async () => {
-        const payload = await fetchStatistics(false);
+        const payload = await fetchStatistics(false, false);
         if (!payload) return;
 
         const nextFingerprint = buildSurveyFingerprint(payload.counts, payload.lastDataChangeAt);
@@ -521,6 +522,23 @@ export default function ValidasiSurvey({
     }, LIVE_REFRESH_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
+  }, [isActive, activeKabupaten, activeTab]);
+
+  useEffect(() => {
+    if (!isActive) return;
+
+    const refreshOnForeground = () => {
+      if (!isDocumentVisible()) return;
+      void Promise.all([fetchStatistics(true), fetchSurveys(true, false)]);
+    };
+
+    window.addEventListener("focus", refreshOnForeground);
+    document.addEventListener("visibilitychange", refreshOnForeground);
+
+    return () => {
+      window.removeEventListener("focus", refreshOnForeground);
+      document.removeEventListener("visibilitychange", refreshOnForeground);
+    };
   }, [isActive, activeKabupaten, activeTab]);
 
   const currentTabSurveys = useMemo(

@@ -99,6 +99,7 @@ interface FetchAdminSurveyRowsOptions {
   type?: AdminSurveyType;
   includeDetails?: boolean;
   compact?: boolean;
+  summaryOnly?: boolean;
   offset?: number;
   limit?: number;
   changedSince?: string | null;
@@ -168,6 +169,7 @@ export function normalizeAdminSurveyRow(raw: AdminSurveyRow): AdminSurveyRow {
 export async function fetchAdminSurveyRows(options: FetchAdminSurveyRowsOptions) {
   const params = new URLSearchParams({ includeDetails: options.includeDetails === false ? "0" : "1" });
   if (options.compact) params.set("compact", "1");
+  if (options.summaryOnly) params.set("summaryOnly", "1");
   if (options.activeKabupaten) params.set("kabupaten", options.activeKabupaten);
   if (options.adminId) params.set("adminId", options.adminId);
   if (options.statuses?.length) params.set("status", options.statuses.join(","));

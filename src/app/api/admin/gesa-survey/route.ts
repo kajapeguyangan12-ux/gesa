@@ -307,6 +307,10 @@ function mapSupabaseSurveyRow(type: SurveyType, row: Record<string, unknown>): S
   };
 }
 
+function maxTimestamp(...values: unknown[]): number {
+  return values.reduce<number>((latest, value) => Math.max(latest, toTimestamp(value)), 0);
+}
+
 function mapCompactSupabaseSurveyRow(type: SurveyType, row: CompactSurveyRow): SurveyRow {
   const normalizedType = type === "apj-propose" ? "propose" : type;
 
@@ -440,6 +444,7 @@ export async function GET(request: NextRequest) {
   try {
     const includeDetails = request.nextUrl.searchParams.get("includeDetails") === "1";
     const compact = request.nextUrl.searchParams.get("compact") === "1";
+    const summaryOnly = request.nextUrl.searchParams.get("summaryOnly") === "1";
     const dashboardDetail = request.nextUrl.searchParams.get("dashboardDetail") === "1";
     const activeKabupaten = request.nextUrl.searchParams.get("kabupaten")?.trim() || null;
     const adminId = request.nextUrl.searchParams.get("adminId")?.trim() || null;
@@ -475,6 +480,11 @@ export async function GET(request: NextRequest) {
       compact && !includeDetails
         ? "id, fb_doc_id, task_id, title, status, surveyor_name, surveyor_email, surveyor_uid, kabupaten, created_at, verified_at, updated_at"
         : "id, fb_doc_id, task_id, title, status, surveyor_name, surveyor_email, surveyor_uid, kabupaten, created_at, verified_at, updated_at, raw_payload";
+
+    const applyKabupatenFilter = <T extends { ilike: (column: string, value: string) => T }>(query: T) => {
+      if (!activeKabupaten) return query;
+      return query.ilike("kabupaten", `%${activeKabupaten}%`);
+    };
 
     const fetchAllTableRows = async (table: string, statusFilters: Set<string>, taskIds: string[] | null) => {
       const rows: Record<string, unknown>[] = [];
@@ -561,6 +571,69 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const tablesToLoad: Array<{ table: string; type: SurveyType }> = [];
+    if (!requestedType || requestedType === "propose") {
+      tablesToLoad.push({ table: "survey_apj_propose", type: "apj-propose" });
+    }
+    if (!requestedType || requestedType === "existing") {
+      tablesToLoad.push({ table: "survey_existing", type: "existing" });
+    }
+    if (!requestedType || requestedType === "pra-existing") {
+      tablesToLoad.push({ table: "survey_pra_existing", type: "pra-existing" });
+    }
+
+    if (summaryOnly && !useDelta) {
+      const buildSummaryOnlyForTable = async (table: string): Promise<{ totalData: number; lastChangedAt: number }> => {
+        let countQuery = supabase.from(table).select("updated_at", { count: "exact" });
+        countQuery = applyStatusFilter(countQuery, statusFilters);
+        countQuery = applyKabupatenFilter(countQuery);
+        if (allowedTaskIdsArray && allowedTaskIdsArray.length > 0) {
+          countQuery = countQuery.in("task_id", allowedTaskIdsArray);
+        }
+        countQuery = countQuery.order("updated_at", { ascending: false }).limit(1);
+
+        const { data, count, error } = await countQuery;
+        if (error) throw new Error(error.message);
+
+        const latestRow = Array.isArray(data) && data.length > 0 ? (data[0] as { updated_at?: string | null; created_at?: string | null }) : null;
+        return {
+          totalData: typeof count === "number" ? count : 0,
+          lastChangedAt: maxTimestamp(latestRow?.updated_at, latestRow?.created_at),
+        };
+      };
+
+      const summaryResults = await Promise.all(
+        tablesToLoad.map(async ({ table, type }) => ({
+          type,
+          summary: await buildSummaryOnlyForTable(table),
+        }))
+      );
+
+      const proposeSummary =
+        summaryResults.find((item) => item.type === "apj-propose")?.summary || { ...emptySummary, lastChangedAt: 0 };
+      const existingSummary =
+        summaryResults.find((item) => item.type === "existing")?.summary || { ...emptySummary, lastChangedAt: 0 };
+      const praExistingSummary =
+        summaryResults.find((item) => item.type === "pra-existing")?.summary || { ...emptySummary, lastChangedAt: 0 };
+
+      const lastDataChangeAt =
+        Math.max(proposeSummary.lastChangedAt, existingSummary.lastChangedAt, praExistingSummary.lastChangedAt) || Date.now();
+
+      return NextResponse.json({
+        source: "supabase",
+        generatedAt: new Date().toISOString(),
+        lastDataChangeAt: new Date(lastDataChangeAt).toISOString(),
+        isDelta: false,
+        totalUniqueSurveyors: 0,
+        propose: { ...emptySummary, totalData: proposeSummary.totalData, totalTitik: proposeSummary.totalData },
+        existing: { ...emptySummary, totalData: existingSummary.totalData, totalTitik: existingSummary.totalData },
+        praExisting: { ...emptySummary, totalData: praExistingSummary.totalData, totalTitik: praExistingSummary.totalData },
+        praExistingByKecamatan: [],
+        totalRows: proposeSummary.totalData + existingSummary.totalData + praExistingSummary.totalData,
+        allRows: [],
+      });
+    }
+
     const loadTable = async (table: string, type: SurveyType) => {
       const data = await fetchAllTableRows(table, statusFilters, allowedTaskIdsArray);
       let mappedRows = compact && !includeDetails
@@ -576,17 +649,6 @@ export async function GET(request: NextRequest) {
       if (!allowedTaskIds) return mappedRows;
       return mappedRows.filter((row) => row.taskId && allowedTaskIds.has(row.taskId));
     };
-
-    const tablesToLoad: Array<{ table: string; type: SurveyType }> = [];
-    if (!requestedType || requestedType === "propose") {
-      tablesToLoad.push({ table: "survey_apj_propose", type: "apj-propose" });
-    }
-    if (!requestedType || requestedType === "existing") {
-      tablesToLoad.push({ table: "survey_existing", type: "existing" });
-    }
-    if (!requestedType || requestedType === "pra-existing") {
-      tablesToLoad.push({ table: "survey_pra_existing", type: "pra-existing" });
-    }
 
     const loadedResults = await Promise.all(tablesToLoad.map(({ table, type }) => loadTable(table, type)));
     const proposeRows = requestedType && requestedType !== "propose" ? [] : loadedResults[tablesToLoad.findIndex((item) => item.type === "apj-propose")] || [];
