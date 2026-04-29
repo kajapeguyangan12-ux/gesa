@@ -321,6 +321,10 @@ export default function ValidasiSurvey({
   const surveysRequestSeqRef = useRef(0);
   const statsRequestSeqRef = useRef(0);
   const suppressedSurveyIdsRef = useRef(new Map<string, number>());
+  const inFlightStatsRef = useRef(false);
+  const inFlightSurveysRef = useRef(false);
+  const inFlightDeltaRef = useRef(false);
+  const emptyStateRecoveryRef = useRef<string | null>(null);
   const getCurrentUser = () => {
     const storedUser = localStorage.getItem("gesa_user");
     return storedUser ? JSON.parse(storedUser) : null;
@@ -420,8 +424,13 @@ export default function ValidasiSurvey({
   };
 
   const fetchStatistics = async (forceRefresh = false, syncFingerprint = true) => {
+    if (inFlightStatsRef.current) {
+      return null;
+    }
+
     const requestSeq = ++statsRequestSeqRef.current;
     try {
+      inFlightStatsRef.current = true;
       if (forceRefresh) {
         setStatsLoading(true);
       }
@@ -456,6 +465,7 @@ export default function ValidasiSurvey({
       setLastUpdatedAt(null);
       return null;
     } finally {
+      inFlightStatsRef.current = false;
       if (forceRefresh) {
         setStatsLoading(false);
       }
@@ -477,8 +487,13 @@ export default function ValidasiSurvey({
   };
 
   const fetchSurveys = async (forceRefresh = false, resetPage = true, backgroundRefresh = false) => {
+    if (inFlightSurveysRef.current) {
+      return;
+    }
+
     const requestSeq = ++surveysRequestSeqRef.current;
     try {
+      inFlightSurveysRef.current = true;
       if (forceRefresh) {
         setRefreshing(true);
       } else if (!backgroundRefresh && surveys.length === 0) {
@@ -514,6 +529,7 @@ export default function ValidasiSurvey({
       setDataSource("Belum ada");
       setLastUpdatedAt(null);
     } finally {
+      inFlightSurveysRef.current = false;
       if (!backgroundRefresh) {
         setLoading(false);
       }
@@ -528,35 +544,44 @@ export default function ValidasiSurvey({
     nextGeneratedAt?: string,
     nextSource?: string
   ) => {
-    const requestSeq = ++surveysRequestSeqRef.current;
-    const payload = await fetchAdminSurveyRows({
-      activeKabupaten,
-      adminId: null,
-      type: activeTab,
-      limit: TAB_DATA_FETCH_LIMIT,
-      changedSince,
-    });
-
-    if (requestSeq !== surveysRequestSeqRef.current) {
+    if (inFlightDeltaRef.current || inFlightSurveysRef.current) {
       return;
     }
 
-    const deltaRows = filterSuppressedSurveys(payload.rows.map(mapSupabaseSurvey));
-    setSurveys((current) => mergeSurveyDelta(current, deltaRows));
-    const resolvedCounts = nextCounts ?? payload.counts;
-    const resolvedLastDataChangeAt = nextLastDataChangeAt || payload.lastDataChangeAt;
-    const resolvedGeneratedAt = nextGeneratedAt || payload.generatedAt;
-    const resolvedSource = nextSource || payload.source;
-    latestSurveyFingerprintRef.current = buildSurveyFingerprint(resolvedCounts, resolvedLastDataChangeAt);
-    latestSurveyChangeRef.current = resolvedLastDataChangeAt || resolvedGeneratedAt || latestSurveyChangeRef.current;
-    setStats((current) => (haveSameStats(current, resolvedCounts) ? current : resolvedCounts));
-    setStatsLoaded(true);
-    setDataSource(resolvedSource);
-    const nextUpdatedAtIso = resolvedLastDataChangeAt || resolvedGeneratedAt || new Date().toISOString();
-    setLastUpdatedAt((current) => {
-      const currentIso = current instanceof Date && !Number.isNaN(current.getTime()) ? current.toISOString() : "";
-      return currentIso === nextUpdatedAtIso ? current : new Date(nextUpdatedAtIso);
-    });
+    const requestSeq = ++surveysRequestSeqRef.current;
+    try {
+      inFlightDeltaRef.current = true;
+      const payload = await fetchAdminSurveyRows({
+        activeKabupaten,
+        adminId: null,
+        type: activeTab,
+        limit: TAB_DATA_FETCH_LIMIT,
+        changedSince,
+      });
+
+      if (requestSeq !== surveysRequestSeqRef.current) {
+        return;
+      }
+
+      const deltaRows = filterSuppressedSurveys(payload.rows.map(mapSupabaseSurvey));
+      setSurveys((current) => mergeSurveyDelta(current, deltaRows));
+      const resolvedCounts = nextCounts ?? payload.counts;
+      const resolvedLastDataChangeAt = nextLastDataChangeAt || payload.lastDataChangeAt;
+      const resolvedGeneratedAt = nextGeneratedAt || payload.generatedAt;
+      const resolvedSource = nextSource || payload.source;
+      latestSurveyFingerprintRef.current = buildSurveyFingerprint(resolvedCounts, resolvedLastDataChangeAt);
+      latestSurveyChangeRef.current = resolvedLastDataChangeAt || resolvedGeneratedAt || latestSurveyChangeRef.current;
+      setStats((current) => (haveSameStats(current, resolvedCounts) ? current : resolvedCounts));
+      setStatsLoaded(true);
+      setDataSource(resolvedSource);
+      const nextUpdatedAtIso = resolvedLastDataChangeAt || resolvedGeneratedAt || new Date().toISOString();
+      setLastUpdatedAt((current) => {
+        const currentIso = current instanceof Date && !Number.isNaN(current.getTime()) ? current.toISOString() : "";
+        return currentIso === nextUpdatedAtIso ? current : new Date(nextUpdatedAtIso);
+      });
+    } finally {
+      inFlightDeltaRef.current = false;
+    }
   };
 
   const clearCurrentTabCaches = () => undefined;
@@ -682,6 +707,59 @@ export default function ValidasiSurvey({
     const timestampB = getTimestampValue(b.createdAt);
     return filterSort === "Terlama" ? timestampA - timestampB : timestampB - timestampA;
   });
+
+  useEffect(() => {
+    const isPraExistingDefaultFilters =
+      activeTab === "pra-existing" &&
+      filterStatus === "Menunggu" &&
+      filterSurveyor === "Semua Petugas" &&
+      filterKecamatan === "Semua Kecamatan" &&
+      filterDesa === "Semua Desa" &&
+      filterSort === "Terbaru";
+    const isExistingDefaultFilters =
+      activeTab === "existing" &&
+      filterStatus === "Menunggu" &&
+      filterExistingSurveyor === "Semua Petugas" &&
+      filterExistingJudul === "Semua Judul" &&
+      filterJenisExisting === "Semua Jenis" &&
+      filterSort === "Terbaru";
+    const isProposeDefaultFilters =
+      activeTab === "propose" &&
+      filterStatus === "Menunggu" &&
+      filterProposeSurveyor === "Semua Petugas" &&
+      filterProposeJudul === "Semua Judul" &&
+      filterSort === "Terbaru";
+    const isDefaultView = isPraExistingDefaultFilters || isExistingDefaultFilters || isProposeDefaultFilters;
+    const currentRecoveryKey = `${activeKabupaten || "all"}|${activeTab}|${stats.total}|${surveys.length}`;
+
+    if (stats.total > 0 && surveys.length === 0 && filteredSurveys.length === 0 && isDefaultView && !loading && !refreshing) {
+      if (emptyStateRecoveryRef.current !== currentRecoveryKey) {
+        emptyStateRecoveryRef.current = currentRecoveryKey;
+        void fetchSurveys(true, false);
+      }
+      return;
+    }
+
+    emptyStateRecoveryRef.current = null;
+  }, [
+    activeKabupaten,
+    activeTab,
+    filterDesa,
+    filterExistingJudul,
+    filterExistingSurveyor,
+    filterJenisExisting,
+    filterKecamatan,
+    filterProposeJudul,
+    filterProposeSurveyor,
+    filterSort,
+    filterStatus,
+    filterSurveyor,
+    filteredSurveys.length,
+    loading,
+    refreshing,
+    stats.total,
+    surveys.length,
+  ]);
 
   const displayedStats = useMemo(() => {
     if (!statsLoaded) {
