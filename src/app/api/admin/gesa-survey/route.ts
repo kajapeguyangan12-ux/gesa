@@ -354,6 +354,10 @@ function resolveVerificationTimestamp(
   actorName: string
 ) {
   const normalizedStatus = status.trim().toLowerCase();
+  if (normalizedStatus === "diverifikasi" && row.updated_at) {
+    return row.updated_at;
+  }
+
   const directVerifiedAt = row.verified_at ?? rawPayload.verifiedAt ?? null;
   if (directVerifiedAt) return directVerifiedAt;
 

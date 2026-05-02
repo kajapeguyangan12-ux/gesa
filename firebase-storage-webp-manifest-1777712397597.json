@@ -1,0 +1,58 @@
+[
+  {
+    "sourcePath": "survey-existing/admin_tiang_apm_1767852690058.webp",
+    "destinationPath": "survey-existing/admin_tiang_apm_1767852690058.webp",
+    "sourceContentType": "image/webp",
+    "sourceSize": 15724,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-existing/admin_titik_actual_1767852690058.webp",
+    "destinationPath": "survey-existing/admin_titik_actual_1767852690058.webp",
+    "sourceContentType": "image/webp",
+    "sourceSize": 15724,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-existing/petugasexisting_tiang_arm_1773642272730.webp",
+    "destinationPath": "survey-existing/petugasexisting_tiang_arm_1773642272730.webp",
+    "sourceContentType": "image/webp",
+    "sourceSize": 111442,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-existing/petugasexisting_titik_actual_1773642272730.webp",
+    "destinationPath": "survey-existing/petugasexisting_titik_actual_1773642272730.webp",
+    "sourceContentType": "image/webp",
+    "sourceSize": 111442,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-existing/zona_tiang_apm_1768206719425.webp",
+    "destinationPath": "survey-existing/zona_tiang_apm_1768206719425.webp",
+    "sourceContentType": "image/webp",
+    "sourceSize": 83054,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-existing/zona_tiang_apm_1768207237219.webp",
+    "destinationPath": "survey-existing/zona_tiang_apm_1768207237219.webp",
+    "sourceContentType": "image/webp",
+    "sourceSize": 15724,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-existing/zona_titik_actual_1768206719425.webp",
+    "destinationPath": "survey-existing/zona_titik_actual_1768206719425.webp",
+    "sourceContentType": "image/webp",
+    "sourceSize": 20314,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-existing/zona_titik_actual_1768207237219.webp",
+    "destinationPath": "survey-existing/zona_titik_actual_1768207237219.webp",
+    "sourceContentType": "image/webp",
+    "sourceSize": 15724,
+    "status": "skipped-already-webp"
+  }
+]

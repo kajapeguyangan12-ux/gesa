@@ -1,0 +1,23 @@
+{
+  "dryRun": false,
+  "keepOriginal": false,
+  "quality": 85,
+  "concurrency": 8,
+  "firebaseBucket": "gesa-4a6a2.firebasestorage.app",
+  "prefixes": [
+    "survey-pra-existing/"
+  ],
+  "totalMatched": 1250,
+  "offset": 1000,
+  "limit": 250,
+  "selectedCount": 250,
+  "runStartedAt": "2026-05-02T11:10:29.795Z",
+  "convertedCount": 190,
+  "skippedCount": 60,
+  "failedCount": 0,
+  "bytesBefore": 497206810,
+  "bytesAfter": 237479984,
+  "estimatedSavedBytes": 259726826,
+  "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-webp-manifest-1777720580506.json",
+  "completedAt": "2026-05-02T11:16:20.508Z"
+}

@@ -289,7 +289,7 @@ function SurveyPraExistingContent() {
           });
 
           const file = new File([item.photoBlob], item.photoName, {
-            type: item.photoType || "image/jpeg",
+            type: item.photoType || "image/webp",
           });
           await uploadSurveyPayloadToServer({
             payload: item.payload,
@@ -1571,11 +1571,11 @@ async function createGeoStampedImage(file: File, gps: GPSCoordinates): Promise<F
   });
   ctx.restore();
 
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.85));
   if (!blob) return file;
 
-  const stampedName = file.name.replace(/\.(jpg|jpeg|png|webp)$/i, "") + "-geostamp.jpg";
-  return new File([blob], stampedName, { type: "image/jpeg" });
+  const stampedName = file.name.replace(/\.(jpg|jpeg|png|webp)$/i, "") + "-geostamp.webp";
+  return new File([blob], stampedName, { type: "image/webp" });
 }
 
 function drawRoundedRect(

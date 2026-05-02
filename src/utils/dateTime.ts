@@ -36,12 +36,24 @@ export function toDateValue(value: DateInput) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function getDisplayTimeZone() {
+  if (typeof Intl === "undefined" || typeof Intl.DateTimeFormat !== "function") {
+    return undefined;
+  }
+
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function formatWitaDateTime(value: DateInput, options?: Intl.DateTimeFormatOptions) {
   const date = toDateValue(value);
   if (!date) return "";
 
   return date.toLocaleString("id-ID", {
-    timeZone: WITA_TIME_ZONE,
+    timeZone: getDisplayTimeZone(),
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -56,7 +68,7 @@ export function formatWitaDate(value: DateInput, options?: Intl.DateTimeFormatOp
   if (!date) return "";
 
   return date.toLocaleDateString("id-ID", {
-    timeZone: WITA_TIME_ZONE,
+    timeZone: getDisplayTimeZone(),
     day: "2-digit",
     month: "long",
     year: "numeric",
@@ -69,7 +81,7 @@ export function formatWitaTime(value: DateInput, options?: Intl.DateTimeFormatOp
   if (!date) return "";
 
   return date.toLocaleTimeString("id-ID", {
-    timeZone: WITA_TIME_ZONE,
+    timeZone: getDisplayTimeZone(),
     hour: "2-digit",
     minute: "2-digit",
     ...options,
@@ -77,17 +89,5 @@ export function formatWitaTime(value: DateInput, options?: Intl.DateTimeFormatOp
 }
 
 export function getCurrentWitaDate() {
-  const now = new Date();
-  const witaNow = new Intl.DateTimeFormat("sv-SE", {
-    timeZone: WITA_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(now);
-
-  return new Date(witaNow.replace(" ", "T"));
+  return new Date();
 }

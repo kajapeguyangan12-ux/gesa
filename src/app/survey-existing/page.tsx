@@ -6,14 +6,13 @@ import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { ref, uploadString, getDownloadURL } from "firebase/storage";
-import { storage } from "@/lib/firebase";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { formatWitaTime } from "@/utils/dateTime";
 import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
 import { analyzeTaskNavigation, type ParsedTaskGeometries, type TaskNavigationInfo } from "@/utils/taskNavigation";
 import { CompactRealtimePanel, CompactTaskStatusPanel, StatCard } from "@/components/SurveyTaskPanels";
+import { uploadSurveyAttachmentFromDataUrl } from "@/utils/surveyAttachmentUpload";
 
 interface GPSCoordinates {
   latitude: number;
@@ -1051,25 +1050,27 @@ function SurveyExistingContent() {
       const timestamp = Date.now();
       const userName = user?.displayName || user?.email?.split('@')[0] || 'user';
       
-      console.log("Uploading to Firebase Storage...");
-      
-      // Upload Foto Tiang ARM to Firebase Storage
+      console.log("Uploading to Supabase Storage...");
+
       setSubmitProgress("Mengupload foto Tiang ARM...");
-      const tiangARMRef = ref(storage, `survey-existing/${userName}_tiang_arm_${timestamp}.webp`);
-      await uploadString(tiangARMRef, fotoTiangARMWebP, 'data_url');
-      const tiangARMUrl = await getDownloadURL(tiangARMRef);
-      
+      const tiangARMUrl = await uploadSurveyAttachmentFromDataUrl(
+        fotoTiangARMWebP,
+        "survey-existing",
+        `${userName}_tiang_arm_${timestamp}.webp`
+      );
+
       console.log("Tiang ARM uploaded:", tiangARMUrl);
 
-      // Upload Foto Titik Actual to Firebase Storage
       setSubmitProgress("Mengupload foto Titik Actual...");
-      const titikActualRef = ref(storage, `survey-existing/${userName}_titik_actual_${timestamp}.webp`);
-      await uploadString(titikActualRef, fotoTitikActualWebP, 'data_url');
-      const titikActualUrl = await getDownloadURL(titikActualRef);
-      
+      const titikActualUrl = await uploadSurveyAttachmentFromDataUrl(
+        fotoTitikActualWebP,
+        "survey-existing",
+        `${userName}_titik_actual_${timestamp}.webp`
+      );
+
       console.log("Titik Actual uploaded:", titikActualUrl);
 
-      // Save to Firestore
+      // Save to Supabase
       setSubmitProgress("Menyimpan data ke database...");
       const surveyData = {
         // Jenis Existing (NEW)

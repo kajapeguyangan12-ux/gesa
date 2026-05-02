@@ -6,14 +6,13 @@ import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { ref, uploadString, getDownloadURL } from "firebase/storage";
-import { storage } from "@/lib/firebase";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { formatWitaTime } from "@/utils/dateTime";
 import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
 import { analyzeTaskNavigation, type ParsedTaskGeometries, type TaskNavigationInfo } from "@/utils/taskNavigation";
 import { CompactRealtimePanel, CompactTaskStatusPanel, StatCard } from "@/components/SurveyTaskPanels";
+import { uploadSurveyAttachmentFromDataUrl } from "@/utils/surveyAttachmentUpload";
 
 interface GPSCoordinates {
   latitude: number;
@@ -905,20 +904,22 @@ function SurveyAPJProposeContent() {
       const timestamp = Date.now();
       const userName = user?.displayName || user?.email?.split('@')[0] || 'user';
       
-      // Upload Foto Titik Actual to Firebase Storage
-      const titikActualRef = ref(storage, `survey-apj-propose/${userName}_titik_actual_${timestamp}.webp`);
-      await uploadString(titikActualRef, fotoTitikActualWebP, 'data_url');
-      const titikActualUrl = await getDownloadURL(titikActualRef);
+      const titikActualUrl = await uploadSurveyAttachmentFromDataUrl(
+        fotoTitikActualWebP,
+        "survey-apj-propose",
+        `${userName}_titik_actual_${timestamp}.webp`
+      );
 
-      // Upload Foto Kemerataan if exists
       let kemeratanUrl = null;
       if (fotoKemeratanWebP) {
-        const kemeratanRef = ref(storage, `survey-apj-propose/${userName}_kemerataan_${timestamp}.webp`);
-        await uploadString(kemeratanRef, fotoKemeratanWebP, 'data_url');
-        kemeratanUrl = await getDownloadURL(kemeratanRef);
+        kemeratanUrl = await uploadSurveyAttachmentFromDataUrl(
+          fotoKemeratanWebP,
+          "survey-apj-propose",
+          `${userName}_kemerataan_${timestamp}.webp`
+        );
       }
 
-      // Save to Firestore
+      // Save to Supabase
       const kabupaten = taskKabupaten || getActiveKabupatenFromStorage(user?.uid || "");
       if (!kabupaten) {
         alert("Kabupaten belum dipilih. Silakan pilih kabupaten terlebih dahulu.");

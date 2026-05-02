@@ -702,7 +702,6 @@ function formatWitaTime(value: TimestampLike) {
   const date = resolveTimestamp(value);
   if (!date) return "0";
   return date.toLocaleTimeString("id-ID", {
-    timeZone: "Asia/Makassar",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -1004,7 +1003,7 @@ export default function DashboardContent({
               const shouldNotifyDetail = background && latestSummaryFingerprintRef.current !== "" && nextFingerprint !== latestSummaryFingerprintRef.current;
               latestSummaryFingerprintRef.current = nextFingerprint;
               setBundleSource("supabase");
-              setLastUpdatedAt(payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString());
+              setLastUpdatedAt(payload.generatedAt || payload.lastDataChangeAt || new Date().toISOString());
               setReportState((current) => ({
                 ...current,
                 totalUniqueSurveyors:
@@ -1101,7 +1100,7 @@ export default function DashboardContent({
 
         latestSummaryFingerprintRef.current = buildSummaryFingerprint(payload);
         setBundleSource("supabase");
-        setLastUpdatedAt(payload.lastDataChangeAt || payload.generatedAt || new Date().toISOString());
+        setLastUpdatedAt(payload.generatedAt || payload.lastDataChangeAt || new Date().toISOString());
         const mappedState = mapBundleToReportState(payload);
         setReportState(mappedState);
 

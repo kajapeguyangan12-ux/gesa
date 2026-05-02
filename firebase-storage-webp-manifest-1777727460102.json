@@ -1,0 +1,2478 @@
+[
+  {
+    "sourcePath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777021553613-17770215378778525196507591865706-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777021553613-17770215378778525196507591865706-geostamp.jpg",
+    "sourceContentType": "image/webp",
+    "sourceSize": 1443696,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777021655035-17770216375015148103385477592347-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777021655035-17770216375015148103385477592347-geostamp.jpg",
+    "sourceContentType": "image/webp",
+    "sourceSize": 812028,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777021750481-17770217304942661153849647598998-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777021750481-17770217304942661153849647598998-geostamp.jpg",
+    "sourceContentType": "image/webp",
+    "sourceSize": 2449094,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777021854508-17770218272282392123743234336040-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777021854508-17770218272282392123743234336040-geostamp.jpg",
+    "sourceContentType": "image/webp",
+    "sourceSize": 1493860,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777021958245-17770219395177622231805349207644-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777021958245-17770219395177622231805349207644-geostamp.jpg",
+    "sourceContentType": "image/webp",
+    "sourceSize": 1890404,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777022059764-17770220401224939071254808252359-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777022059764-17770220401224939071254808252359-geostamp.jpg",
+    "sourceContentType": "image/webp",
+    "sourceSize": 1002624,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777022183563-1777022149273305901034829058070-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777022183563-1777022149273305901034829058070-geostamp.jpg",
+    "sourceContentType": "image/webp",
+    "sourceSize": 1275486,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777022276069-17770222490741148098301788902896-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JQRIUojSPuZF7JaCnnQLxhJWCdR2-1777022276069-17770222490741148098301788902896-geostamp.jpg",
+    "sourceContentType": "image/webp",
+    "sourceSize": 1026100,
+    "status": "skipped-already-webp"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776738379911-17767383513397473204907648225525-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776738379911-17767383513397473204907648225525-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1957551,
+    "outputSize": 809600,
+    "savedBytes": 1147951,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776738675627-17767386530282393996816402827780-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776738675627-17767386530282393996816402827780-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4860159,
+    "outputSize": 3126630,
+    "savedBytes": 1733529,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776738854781-17767388321891792738026801192852-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776738854781-17767388321891792738026801192852-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1610267,
+    "outputSize": 540142,
+    "savedBytes": 1070125,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776739063918-17767390445327663492802069722895-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776739063918-17767390445327663492802069722895-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2236905,
+    "outputSize": 1017546,
+    "savedBytes": 1219359,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776739230407-17767392168564746960854675205157-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776739230407-17767392168564746960854675205157-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2098039,
+    "outputSize": 972862,
+    "savedBytes": 1125177,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776739359403-17767393397319053828772519992808-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776739359403-17767393397319053828772519992808-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1912309,
+    "outputSize": 792336,
+    "savedBytes": 1119973,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776739550017-17767395277554152760468104484038-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776739550017-17767395277554152760468104484038-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3668731,
+    "outputSize": 2152606,
+    "savedBytes": 1516125,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776739643200-17767396246592200803072830431938-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776739643200-17767396246592200803072830431938-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3626487,
+    "outputSize": 2046758,
+    "savedBytes": 1579729,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776739765696-17767397471641361555191638862423-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776739765696-17767397471641361555191638862423-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 5090419,
+    "outputSize": 3375270,
+    "savedBytes": 1715149,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776739922278-17767398988973916080511788186628-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776739922278-17767398988973916080511788186628-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2965363,
+    "outputSize": 1597032,
+    "savedBytes": 1368331,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776740024437-17767400025152212924815554297432-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776740024437-17767400025152212924815554297432-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3009405,
+    "outputSize": 1588890,
+    "savedBytes": 1420515,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776740113356-17767400867864875471003341826883-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776740113356-17767400867864875471003341826883-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1736114,
+    "outputSize": 654298,
+    "savedBytes": 1081816,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776740562995-17767405353997565347938461569528-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776740562995-17767405353997565347938461569528-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1956504,
+    "outputSize": 820534,
+    "savedBytes": 1135970,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776740652590-17767406330434669078419093945713-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776740652590-17767406330434669078419093945713-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2003920,
+    "outputSize": 741708,
+    "savedBytes": 1262212,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776740753606-17767407322603040079007715404386-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776740753606-17767407322603040079007715404386-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3432404,
+    "outputSize": 1947160,
+    "savedBytes": 1485244,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776740909064-17767408684674610272964737052451-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776740909064-17767408684674610272964737052451-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3481999,
+    "outputSize": 1995864,
+    "savedBytes": 1486135,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776741067880-17767410528936587150284013801973-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776741067880-17767410528936587150284013801973-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1960796,
+    "outputSize": 840428,
+    "savedBytes": 1120368,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776741167340-1776741147988797894644885399194-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776741167340-1776741147988797894644885399194-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2347175,
+    "outputSize": 1017646,
+    "savedBytes": 1329529,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776741366989-1776741354231486755179973054342-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776741366989-1776741354231486755179973054342-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2982215,
+    "outputSize": 1594712,
+    "savedBytes": 1387503,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776741493429-17767414454874869145967004888117-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776741493429-17767414454874869145967004888117-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3960574,
+    "outputSize": 2340428,
+    "savedBytes": 1620146,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776764406029-1776764372558754961059326236106-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776764406029-1776764372558754961059326236106-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2775421,
+    "outputSize": 1420180,
+    "savedBytes": 1355241,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776764538108-17767645072292858652732775715683-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776764538108-17767645072292858652732775715683-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3139056,
+    "outputSize": 1749218,
+    "savedBytes": 1389838,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776764646232-17767646266355236298457269122103-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776764646232-17767646266355236298457269122103-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3922019,
+    "outputSize": 2373812,
+    "savedBytes": 1548207,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776764768404-17767647413597307373527345018712-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776764768404-17767647413597307373527345018712-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 5629462,
+    "outputSize": 3749012,
+    "savedBytes": 1880450,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776764899145-17767648758017745816077342056772-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776764899145-17767648758017745816077342056772-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4026834,
+    "outputSize": 2437540,
+    "savedBytes": 1589294,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776765051158-1776765030719532421288000614210-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776765051158-1776765030719532421288000614210-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3322153,
+    "outputSize": 1912222,
+    "savedBytes": 1409931,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776765650594-17767656294105949539980329794049-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776765650594-17767656294105949539980329794049-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4853044,
+    "outputSize": 3118154,
+    "savedBytes": 1734890,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776814812958-17768147834968391915309847997146-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/JrPozkV1ScZIA0cGBwwR8KtRqzz1-1776814812958-17768147834968391915309847997146-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4672715,
+    "outputSize": 3063334,
+    "savedBytes": 1609381,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K2K7FedQN3edTHQLN0tYcOUHwRo2-1775873979182-17758739672858882393061700118374-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K2K7FedQN3edTHQLN0tYcOUHwRo2-1775873979182-17758739672858882393061700118374-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2122771,
+    "outputSize": 963530,
+    "savedBytes": 1159241,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K2K7FedQN3edTHQLN0tYcOUHwRo2-1775874058764-17758740458473113846763394724065-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K2K7FedQN3edTHQLN0tYcOUHwRo2-1775874058764-17758740458473113846763394724065-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2026266,
+    "outputSize": 954380,
+    "savedBytes": 1071886,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K2K7FedQN3edTHQLN0tYcOUHwRo2-1775874133539-17758741129708686483070119421173-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K2K7FedQN3edTHQLN0tYcOUHwRo2-1775874133539-17758741129708686483070119421173-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3770858,
+    "outputSize": 2305600,
+    "savedBytes": 1465258,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776995809979-17769957548742747451524869090257-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776995809979-17769957548742747451524869090257-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2970587,
+    "outputSize": 1498896,
+    "savedBytes": 1471691,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776995819160-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776995819160-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3980241,
+    "outputSize": 1678064,
+    "savedBytes": 2302177,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776995886978-17769958400756197248339252617325-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776995886978-17769958400756197248339252617325-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2853417,
+    "outputSize": 1453098,
+    "savedBytes": 1400319,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776995954288-17769959018354751255440722247714-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776995954288-17769959018354751255440722247714-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3209330,
+    "outputSize": 2064568,
+    "savedBytes": 1144762,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776995956396-17769958988734169345047872180259-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776995956396-17769958988734169345047872180259-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3960287,
+    "outputSize": 2407000,
+    "savedBytes": 1553287,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776995993375-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776995993375-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 8249595,
+    "outputSize": 4487780,
+    "savedBytes": 3761815,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996030552-17769960182791870601081366610891-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996030552-17769960182791870601081366610891-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3424692,
+    "outputSize": 2189172,
+    "savedBytes": 1235520,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996109309-17769960888445191332900817285427-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996109309-17769960888445191332900817285427-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3414384,
+    "outputSize": 2236790,
+    "savedBytes": 1177594,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996154328-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996154328-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 5977652,
+    "outputSize": 2987894,
+    "savedBytes": 2989758,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996166443-17769960992277268934031341781333-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996166443-17769960992277268934031341781333-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2827065,
+    "outputSize": 1439728,
+    "savedBytes": 1387337,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996175367-17769961629405548189111585541612-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996175367-17769961629405548189111585541612-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2355973,
+    "outputSize": 1208788,
+    "savedBytes": 1147185,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996215041-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996215041-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4159305,
+    "outputSize": 1843018,
+    "savedBytes": 2316287,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996245129-17769962262975759338782386279698-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996245129-17769962262975759338782386279698-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2221830,
+    "outputSize": 1122056,
+    "savedBytes": 1099774,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996281039-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996281039-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4839593,
+    "outputSize": 2199902,
+    "savedBytes": 2639691,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996291122-17769962152017047323598136251429-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996291122-17769962152017047323598136251429-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2623415,
+    "outputSize": 1179052,
+    "savedBytes": 1444363,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996304608-17769962935506590295424784429098-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996304608-17769962935506590295424784429098-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2004474,
+    "outputSize": 873782,
+    "savedBytes": 1130692,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996325228-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996325228-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1322678,
+    "outputSize": 349182,
+    "savedBytes": 973496,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996334188-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996334188-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3762279,
+    "outputSize": 1607204,
+    "savedBytes": 2155075,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996357257-17769963074148716320851865582520-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996357257-17769963074148716320851865582520-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2954894,
+    "outputSize": 1559022,
+    "savedBytes": 1395872,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996358207-17769963410424692758858266959735-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996358207-17769963410424692758858266959735-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2388106,
+    "outputSize": 1281056,
+    "savedBytes": 1107050,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996405160-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996405160-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3148948,
+    "outputSize": 1343392,
+    "savedBytes": 1805556,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996434544-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996434544-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3986839,
+    "outputSize": 1585940,
+    "savedBytes": 2400899,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996440564-17769963754722540005109554101434-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996440564-17769963754722540005109554101434-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3224835,
+    "outputSize": 1743004,
+    "savedBytes": 1481831,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996447618-17769964167044339529232689454502-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996447618-17769964167044339529232689454502-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2275765,
+    "outputSize": 1158252,
+    "savedBytes": 1117513,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996484020-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996484020-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3280274,
+    "outputSize": 1275572,
+    "savedBytes": 2004702,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996513021-17769964631836875955379797760482-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996513021-17769964631836875955379797760482-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3424803,
+    "outputSize": 1890292,
+    "savedBytes": 1534511,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996513155-17769965014425653433171637095468-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996513155-17769965014425653433171637095468-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1770373,
+    "outputSize": 731496,
+    "savedBytes": 1038877,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996541467-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996541467-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3560950,
+    "outputSize": 1520912,
+    "savedBytes": 2040038,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996557477-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996557477-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3980306,
+    "outputSize": 1743410,
+    "savedBytes": 2236896,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996571590-17769965498946328558248931603197-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996571590-17769965498946328558248931603197-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2623051,
+    "outputSize": 1482934,
+    "savedBytes": 1140117,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996599319-17769965405515568504430494624811-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996599319-17769965405515568504430494624811-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3469682,
+    "outputSize": 1974634,
+    "savedBytes": 1495048,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996624888-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996624888-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4433320,
+    "outputSize": 2010322,
+    "savedBytes": 2422998,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996655065-17769966095175896156950294752007-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996655065-17769966095175896156950294752007-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3351357,
+    "outputSize": 1925454,
+    "savedBytes": 1425903,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996656101-17769966308706386082160423813213-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996656101-17769966308706386082160423813213-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1808294,
+    "outputSize": 716878,
+    "savedBytes": 1091416,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996706208-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996706208-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4249961,
+    "outputSize": 1910634,
+    "savedBytes": 2339327,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996708365-17769966693543731108973306124968-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996708365-17769966693543731108973306124968-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3641159,
+    "outputSize": 2058140,
+    "savedBytes": 1583019,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996732806-1776996719784410465926211651127-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996732806-1776996719784410465926211651127-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2351380,
+    "outputSize": 1157412,
+    "savedBytes": 1193968,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996743849-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996743849-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2411785,
+    "outputSize": 868654,
+    "savedBytes": 1543131,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996774375-17769967223655985667672569019712-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996774375-17769967223655985667672569019712-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2232170,
+    "outputSize": 958590,
+    "savedBytes": 1273580,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996778994-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996778994-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4844726,
+    "outputSize": 2270608,
+    "savedBytes": 2574118,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996811020-17769967906947523360193703194275-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996811020-17769967906947523360193703194275-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2009457,
+    "outputSize": 853042,
+    "savedBytes": 1156415,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996843050-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996843050-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3556286,
+    "outputSize": 1528196,
+    "savedBytes": 2028090,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996847598-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996847598-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4340339,
+    "outputSize": 1932258,
+    "savedBytes": 2408081,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996883018-17769968378646682846172372647887-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996883018-17769968378646682846172372647887-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2739787,
+    "outputSize": 1354396,
+    "savedBytes": 1385391,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996899890-17769968876356396422962627464010-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996899890-17769968876356396422962627464010-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2159206,
+    "outputSize": 999056,
+    "savedBytes": 1160150,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996907182-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996907182-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3694744,
+    "outputSize": 1517884,
+    "savedBytes": 2176860,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996933647-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996933647-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3251694,
+    "outputSize": 1297964,
+    "savedBytes": 1953730,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996942601-17769969177689064659885507664966-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996942601-17769969177689064659885507664966-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3637276,
+    "outputSize": 2196170,
+    "savedBytes": 1441106,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996976773-17769969676166122061289979142202-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996976773-17769969676166122061289979142202-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2283938,
+    "outputSize": 1099024,
+    "savedBytes": 1184914,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996981304-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776996981304-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3431718,
+    "outputSize": 1444966,
+    "savedBytes": 1986752,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997010409-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997010409-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3387299,
+    "outputSize": 1348766,
+    "savedBytes": 2038533,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997031816-17769969793738233210477822073260-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997031816-17769969793738233210477822073260-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3067750,
+    "outputSize": 1605384,
+    "savedBytes": 1462366,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997033589-17769970212203725003844937357952-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997033589-17769970212203725003844937357952-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1756852,
+    "outputSize": 651562,
+    "savedBytes": 1105290,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997037040-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997037040-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3645699,
+    "outputSize": 1573846,
+    "savedBytes": 2071853,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997076312-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997076312-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4371442,
+    "outputSize": 1892060,
+    "savedBytes": 2479382,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997107114-17769970912222497910898773106918-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997107114-17769970912222497910898773106918-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2011980,
+    "outputSize": 822342,
+    "savedBytes": 1189638,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997116684-17769970748515058093017384288487-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997116684-17769970748515058093017384288487-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3648044,
+    "outputSize": 2139164,
+    "savedBytes": 1508880,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997147376-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997147376-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3894427,
+    "outputSize": 1626570,
+    "savedBytes": 2267857,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997156701-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997156701-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3916187,
+    "outputSize": 1737876,
+    "savedBytes": 2178311,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997190308-17769971436556883399124789807398-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997190308-17769971436556883399124789807398-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3229265,
+    "outputSize": 1704032,
+    "savedBytes": 1525233,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997208062-1776997191680886170802479184182-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997208062-1776997191680886170802479184182-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2438340,
+    "outputSize": 1206118,
+    "savedBytes": 1232222,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997242944-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997242944-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2997087,
+    "outputSize": 1131000,
+    "savedBytes": 1866087,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997259899-1776997234820159932375251713330-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997259899-1776997234820159932375251713330-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2886607,
+    "outputSize": 1489400,
+    "savedBytes": 1397207,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997265137-17769972551085808363251990946792-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997265137-17769972551085808363251990946792-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2244587,
+    "outputSize": 1058000,
+    "savedBytes": 1186587,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997306802-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997306802-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3157548,
+    "outputSize": 1234228,
+    "savedBytes": 1923320,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997343505-17769972957071394715937067766339-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997343505-17769972957071394715937067766339-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3287969,
+    "outputSize": 1800542,
+    "savedBytes": 1487427,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997360304-17769973525536448064622795628048-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997360304-17769973525536448064622795628048-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2218737,
+    "outputSize": 1038560,
+    "savedBytes": 1180177,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997362574-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997362574-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2136577,
+    "outputSize": 695910,
+    "savedBytes": 1440667,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997432216-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997432216-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4637242,
+    "outputSize": 2092616,
+    "savedBytes": 2544626,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997438456-17769973950547904674777060128465-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997438456-17769973950547904674777060128465-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2849488,
+    "outputSize": 1390796,
+    "savedBytes": 1458692,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997471508-17769974371798537261834487391126-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997471508-17769974371798537261834487391126-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2577473,
+    "outputSize": 1410202,
+    "savedBytes": 1167271,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997495138-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997495138-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4095263,
+    "outputSize": 1830478,
+    "savedBytes": 2264785,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997528204-17769975169254923880372961674957-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997528204-17769975169254923880372961674957-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1969202,
+    "outputSize": 786686,
+    "savedBytes": 1182516,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997578229-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997578229-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3644692,
+    "outputSize": 1485018,
+    "savedBytes": 2159674,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997615054-17769975736088708321230765852818-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997615054-17769975736088708321230765852818-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4533479,
+    "outputSize": 2990094,
+    "savedBytes": 1543385,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997629331-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997629331-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 7781851,
+    "outputSize": 4121546,
+    "savedBytes": 3660305,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997631419-17769976126723260850940614043905-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997631419-17769976126723260850940614043905-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2359596,
+    "outputSize": 1136012,
+    "savedBytes": 1223584,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997671611-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997671611-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4545799,
+    "outputSize": 1995390,
+    "savedBytes": 2550409,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997682589-17769976424694590205336509088033-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997682589-17769976424694590205336509088033-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 5256403,
+    "outputSize": 3596840,
+    "savedBytes": 1659563,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997694952-17769976799711036365900016754475-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997694952-17769976799711036365900016754475-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1610990,
+    "outputSize": 606366,
+    "savedBytes": 1004624,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997710108-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997710108-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3394253,
+    "outputSize": 1440076,
+    "savedBytes": 1954177,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997738340-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997738340-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3563949,
+    "outputSize": 1408816,
+    "savedBytes": 2155133,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997740930-1776997730046146623593195116660-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997740930-1776997730046146623593195116660-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2218636,
+    "outputSize": 962158,
+    "savedBytes": 1256478,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997771844-17769977504642187687673386958958-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997771844-17769977504642187687673386958958-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2622354,
+    "outputSize": 1467154,
+    "savedBytes": 1155200,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997783703-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997783703-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2673925,
+    "outputSize": 1000728,
+    "savedBytes": 1673197,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997823796-17769977667688500786014289495543-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997823796-17769977667688500786014289495543-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2345817,
+    "outputSize": 1036190,
+    "savedBytes": 1309627,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997829256-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997829256-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4620562,
+    "outputSize": 2090692,
+    "savedBytes": 2529870,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997854648-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997854648-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3279720,
+    "outputSize": 1324656,
+    "savedBytes": 1955064,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997862619-17769978527987688196698562735196-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997862619-17769978527987688196698562735196-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2330256,
+    "outputSize": 1104296,
+    "savedBytes": 1225960,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997896783-1776997871085603353694060395755-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997896783-1776997871085603353694060395755-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3579511,
+    "outputSize": 2048938,
+    "savedBytes": 1530573,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997910548-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997910548-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4258788,
+    "outputSize": 1910570,
+    "savedBytes": 2348218,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997934967-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997934967-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3575387,
+    "outputSize": 1525258,
+    "savedBytes": 2050129,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997940263-17769979247495999785906306722995-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997940263-17769979247495999785906306722995-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1673536,
+    "outputSize": 561482,
+    "savedBytes": 1112054,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997960362-1776997938026427339574290900897-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997960362-1776997938026427339574290900897-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2260313,
+    "outputSize": 996528,
+    "savedBytes": 1263785,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997983990-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997983990-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3284988,
+    "outputSize": 1308324,
+    "savedBytes": 1976664,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998009261-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998009261-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4099207,
+    "outputSize": 1837590,
+    "savedBytes": 2261617,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998009942-17769979947295928122117455446230-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998009942-17769979947295928122117455446230-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1718579,
+    "outputSize": 627144,
+    "savedBytes": 1091435,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998035877-17769979969326466504641734985691-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998035877-17769979969326466504641734985691-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2555529,
+    "outputSize": 1164848,
+    "savedBytes": 1390681,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998070204-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998070204-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 5006651,
+    "outputSize": 2321688,
+    "savedBytes": 2684963,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998075765-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998075765-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3913457,
+    "outputSize": 1728726,
+    "savedBytes": 2184731,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998089268-1776998079755999592898800230608-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998089268-1776998079755999592898800230608-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1802847,
+    "outputSize": 719078,
+    "savedBytes": 1083769,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998126528-17769980829088397312952798866096-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998126528-17769980829088397312952798866096-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3395356,
+    "outputSize": 1841896,
+    "savedBytes": 1553460,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998165631-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998165631-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4004595,
+    "outputSize": 1830486,
+    "savedBytes": 2174109,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998204465-17769981748637260659929751171950-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998204465-17769981748637260659929751171950-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2964025,
+    "outputSize": 1540594,
+    "savedBytes": 1423431,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998278346-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998278346-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2226363,
+    "outputSize": 714440,
+    "savedBytes": 1511923,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998298042-17769982686805024664265356694831-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998298042-17769982686805024664265356694831-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2214114,
+    "outputSize": 971498,
+    "savedBytes": 1242616,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998366017-17769983348453049764727183340394-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998366017-17769983348453049764727183340394-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3450129,
+    "outputSize": 1909600,
+    "savedBytes": 1540529,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998380155-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998380155-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3407032,
+    "outputSize": 1323660,
+    "savedBytes": 2083372,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998444336-1776998408410376998042545871148-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998444336-1776998408410376998042545871148-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2958981,
+    "outputSize": 1484478,
+    "savedBytes": 1474503,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998452736-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998452736-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2980995,
+    "outputSize": 1129430,
+    "savedBytes": 1851565,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998504151-17769984781332108282128490907244-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998504151-17769984781332108282128490907244-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2652644,
+    "outputSize": 1223364,
+    "savedBytes": 1429280,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998531785-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998531785-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4143221,
+    "outputSize": 1797140,
+    "savedBytes": 2346081,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998593105-17769985508398782523383743059782-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998593105-17769985508398782523383743059782-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2305292,
+    "outputSize": 1014052,
+    "savedBytes": 1291240,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998659443-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998659443-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1967069,
+    "outputSize": 583528,
+    "savedBytes": 1383541,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998660022-17769986116185529924417887018946-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998660022-17769986116185529924417887018946-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2961993,
+    "outputSize": 1557062,
+    "savedBytes": 1404931,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998732010-17769986765633908261963016196124-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998732010-17769986765633908261963016196124-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3545799,
+    "outputSize": 1977874,
+    "savedBytes": 1567925,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998749346-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998749346-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2933334,
+    "outputSize": 1033232,
+    "savedBytes": 1900102,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998795047-17769987694322573029428492323038-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998795047-17769987694322573029428492323038-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3340437,
+    "outputSize": 1844558,
+    "savedBytes": 1495879,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998827567-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998827567-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3183026,
+    "outputSize": 1178136,
+    "savedBytes": 2004890,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998947738-17769989074951096565698572177528-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998947738-17769989074951096565698572177528-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3351314,
+    "outputSize": 1835934,
+    "savedBytes": 1515380,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999015216-17769989906464737741728442231406-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999015216-17769989906464737741728442231406-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3433524,
+    "outputSize": 1972490,
+    "savedBytes": 1461034,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999075024-17769990477947141098453283805545-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999075024-17769990477947141098453283805545-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3170943,
+    "outputSize": 1743500,
+    "savedBytes": 1427443,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999140820-17769991110076723873083141815583-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999140820-17769991110076723873083141815583-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2739908,
+    "outputSize": 1358652,
+    "savedBytes": 1381256,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999201474-17769991756763632987644922270064-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999201474-17769991756763632987644922270064-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3652859,
+    "outputSize": 2184738,
+    "savedBytes": 1468121,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999261875-17769992386292666989218566733305-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999261875-17769992386292666989218566733305-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4084839,
+    "outputSize": 2415998,
+    "savedBytes": 1668841,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999333210-1776999279551816456931512659883-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999333210-1776999279551816456931512659883-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3477196,
+    "outputSize": 1974324,
+    "savedBytes": 1502872,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999404939-17769993912194864107620902948002-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999404939-17769993912194864107620902948002-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3077101,
+    "outputSize": 1589580,
+    "savedBytes": 1487521,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999469308-17769994203092918216521807043891-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999469308-17769994203092918216521807043891-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3405665,
+    "outputSize": 1911456,
+    "savedBytes": 1494209,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999564244-17769995268481770387529023473362-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776999564244-17769995268481770387529023473362-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2742540,
+    "outputSize": 1292824,
+    "savedBytes": 1449716,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776214825833-17762147685226340311128415067865-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776214825833-17762147685226340311128415067865-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1551694,
+    "outputSize": 804638,
+    "savedBytes": 747056,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776214982158-1776214949641653524191951998937-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776214982158-1776214949641653524191951998937-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1098087,
+    "outputSize": 467414,
+    "savedBytes": 630673,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776215185076-1776215129380742040943195348116-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776215185076-1776215129380742040943195348116-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1402339,
+    "outputSize": 741902,
+    "savedBytes": 660437,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776215335017-17762152851112638842269320122527-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776215335017-17762152851112638842269320122527-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1602948,
+    "outputSize": 871300,
+    "savedBytes": 731648,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776215486222-17762154346944883319807965253151-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776215486222-17762154346944883319807965253151-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2599621,
+    "outputSize": 1662912,
+    "savedBytes": 936709,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776215642123-1776215592399985383499388280369-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776215642123-1776215592399985383499388280369-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1884015,
+    "outputSize": 1093780,
+    "savedBytes": 790235,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776215795983-1776215742410244511321727917340-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776215795983-1776215742410244511321727917340-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2230424,
+    "outputSize": 1368946,
+    "savedBytes": 861478,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776216076297-1776216030895899168116148349535-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776216076297-1776216030895899168116148349535-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3003777,
+    "outputSize": 2034002,
+    "savedBytes": 969775,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776216336611-1776216297009220337593726942437-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776216336611-1776216297009220337593726942437-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1208366,
+    "outputSize": 564284,
+    "savedBytes": 644082,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776216468147-17762164293734939003936377881893-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776216468147-17762164293734939003936377881893-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1187274,
+    "outputSize": 524782,
+    "savedBytes": 662492,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776216586259-17762165529622235751180817079957-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776216586259-17762165529622235751180817079957-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1345302,
+    "outputSize": 684148,
+    "savedBytes": 661154,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776216705045-17762166655083943902706216043433-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776216705045-17762166655083943902706216043433-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2015075,
+    "outputSize": 1175174,
+    "savedBytes": 839901,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776216810632-17762167832984364780746379329066-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776216810632-17762167832984364780746379329066-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1815432,
+    "outputSize": 1004532,
+    "savedBytes": 810900,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776216909735-17762168733078699892535213365052-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776216909735-17762168733078699892535213365052-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1790518,
+    "outputSize": 1027656,
+    "savedBytes": 762862,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776217017106-17762169818734807467611044404203-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776217017106-17762169818734807467611044404203-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1881601,
+    "outputSize": 1089750,
+    "savedBytes": 791851,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776217120661-17762170897876143645972510438748-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776217120661-17762170897876143645972510438748-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2567862,
+    "outputSize": 1615494,
+    "savedBytes": 952368,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776217461990-17762174318357083216607893969815-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776217461990-17762174318357083216607893969815-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2558086,
+    "outputSize": 1657274,
+    "savedBytes": 900812,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776217659872-177621761110079042407589506627-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776217659872-177621761110079042407589506627-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1591234,
+    "outputSize": 834342,
+    "savedBytes": 756892,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776217798519-17762177458593149365790613131851-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/K7zA5tVesJRTg8YAtPJq4gUFxHR2-1776217798519-17762177458593149365790613131851-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1449437,
+    "outputSize": 740158,
+    "savedBytes": 709279,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776134517042-1776134504668-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776134517042-1776134504668-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2667640,
+    "outputSize": 1206050,
+    "savedBytes": 1461590,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776134630509-1776134610543-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776134630509-1776134610543-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2444973,
+    "outputSize": 969420,
+    "savedBytes": 1475553,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776134716157-1776134698285-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776134716157-1776134698285-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2589462,
+    "outputSize": 1091594,
+    "savedBytes": 1497868,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776134787692-1776134774317-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776134787692-1776134774317-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3124770,
+    "outputSize": 1536750,
+    "savedBytes": 1588020,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776134888773-1776134858899-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776134888773-1776134858899-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2293841,
+    "outputSize": 841826,
+    "savedBytes": 1452015,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776134998205-1776134973184-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776134998205-1776134973184-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2289484,
+    "outputSize": 845358,
+    "savedBytes": 1444126,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776135084041-1776135059320-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776135084041-1776135059320-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2430817,
+    "outputSize": 949988,
+    "savedBytes": 1480829,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776135218055-1776135183888-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776135218055-1776135183888-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2339657,
+    "outputSize": 901246,
+    "savedBytes": 1438411,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776135315731-1776135292490-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776135315731-1776135292490-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2984241,
+    "outputSize": 1447182,
+    "savedBytes": 1537059,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776135463875-1776135440009-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776135463875-1776135440009-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1879077,
+    "outputSize": 544528,
+    "savedBytes": 1334549,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776135550926-1776135529435-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776135550926-1776135529435-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3737308,
+    "outputSize": 2071026,
+    "savedBytes": 1666282,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776135699850-1776135635135-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KJuVxCN8Nzaq7IDCJu3X6ZFo80v2-1776135699850-1776135635135-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3517227,
+    "outputSize": 1863272,
+    "savedBytes": 1653955,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776761426329-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776761426329-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 4004890,
+    "outputSize": 1380820,
+    "savedBytes": 2624070,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776761595229-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776761595229-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3376807,
+    "outputSize": 1103644,
+    "savedBytes": 2273163,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776761686868-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776761686868-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3441956,
+    "outputSize": 1350184,
+    "savedBytes": 2091772,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776761728674-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776761728674-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3420527,
+    "outputSize": 1131868,
+    "savedBytes": 2288659,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776761812640-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776761812640-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3313508,
+    "outputSize": 1061422,
+    "savedBytes": 2252086,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776761881543-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776761881543-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2777793,
+    "outputSize": 806668,
+    "savedBytes": 1971125,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776761999081-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776761999081-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3396298,
+    "outputSize": 1114834,
+    "savedBytes": 2281464,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762101777-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762101777-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3326547,
+    "outputSize": 1082624,
+    "savedBytes": 2243923,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762162519-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762162519-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3607023,
+    "outputSize": 1227498,
+    "savedBytes": 2379525,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762224489-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762224489-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3945621,
+    "outputSize": 1543858,
+    "savedBytes": 2401763,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762279725-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762279725-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3401011,
+    "outputSize": 1107796,
+    "savedBytes": 2293215,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762343231-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762343231-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3552078,
+    "outputSize": 1241380,
+    "savedBytes": 2310698,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762467267-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762467267-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2938058,
+    "outputSize": 835398,
+    "savedBytes": 2102660,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762564383-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762564383-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3211470,
+    "outputSize": 1053588,
+    "savedBytes": 2157882,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762623760-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762623760-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2967254,
+    "outputSize": 885996,
+    "savedBytes": 2081258,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762688051-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762688051-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3970829,
+    "outputSize": 1343908,
+    "savedBytes": 2626921,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762742059-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762742059-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2993675,
+    "outputSize": 1002002,
+    "savedBytes": 1991673,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762798265-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762798265-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2834452,
+    "outputSize": 795110,
+    "savedBytes": 2039342,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762850396-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762850396-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3141584,
+    "outputSize": 914468,
+    "savedBytes": 2227116,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762906355-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762906355-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3474816,
+    "outputSize": 1243486,
+    "savedBytes": 2231330,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762966917-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776762966917-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3521586,
+    "outputSize": 1257272,
+    "savedBytes": 2264314,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776763017474-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776763017474-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3333784,
+    "outputSize": 1123352,
+    "savedBytes": 2210432,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776763080906-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776763080906-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3929784,
+    "outputSize": 1551196,
+    "savedBytes": 2378588,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776763135718-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776763135718-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3823695,
+    "outputSize": 1518150,
+    "savedBytes": 2305545,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776763999099-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776763999099-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3517256,
+    "outputSize": 1287922,
+    "savedBytes": 2229334,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776764071604-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776764071604-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3229273,
+    "outputSize": 1010852,
+    "savedBytes": 2218421,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776764177077-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776764177077-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3482567,
+    "outputSize": 1402632,
+    "savedBytes": 2079935,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776764252011-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776764252011-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3653154,
+    "outputSize": 1231108,
+    "savedBytes": 2422046,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776764391933-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776764391933-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 5338506,
+    "outputSize": 2636522,
+    "savedBytes": 2701984,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776764496281-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776764496281-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2782284,
+    "outputSize": 840654,
+    "savedBytes": 1941630,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776764791077-image-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KMaQEDtGNuguZxgDDJYXHiaTwcJ2-1776764791077-image-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3816977,
+    "outputSize": 1403856,
+    "savedBytes": 2413121,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KmOT5EVQj2T9hxwd9tpqkWcEN9q1-1776647597121-17766475687827562838546921753187-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KmOT5EVQj2T9hxwd9tpqkWcEN9q1-1776647597121-17766475687827562838546921753187-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3369608,
+    "outputSize": 1792202,
+    "savedBytes": 1577406,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KmOT5EVQj2T9hxwd9tpqkWcEN9q1-1776659427420-17766593945093884756873410290598-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KmOT5EVQj2T9hxwd9tpqkWcEN9q1-1776659427420-17766593945093884756873410290598-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3021375,
+    "outputSize": 1405712,
+    "savedBytes": 1615663,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/KmOT5EVQj2T9hxwd9tpqkWcEN9q1-1776659580884-17766595638485898248511602323440-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/KmOT5EVQj2T9hxwd9tpqkWcEN9q1-1776659580884-17766595638485898248511602323440-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 3544501,
+    "outputSize": 1924034,
+    "savedBytes": 1620467,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775811315014-17758112987383749750046848573382-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775811315014-17758112987383749750046848573382-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1802046,
+    "outputSize": 730926,
+    "savedBytes": 1071120,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775811429634-17758114139014527946866763821210-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775811429634-17758114139014527946866763821210-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2453246,
+    "outputSize": 1286600,
+    "savedBytes": 1166646,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775811597295-1775811577019861808673912280497-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775811597295-1775811577019861808673912280497-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2262551,
+    "outputSize": 1130386,
+    "savedBytes": 1132165,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775811795182-17758117630448770657819474387270-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775811795182-17758117630448770657819474387270-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2493507,
+    "outputSize": 1329612,
+    "savedBytes": 1163895,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775812061557-17758120367228108135480079138971-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775812061557-17758120367228108135480079138971-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1892762,
+    "outputSize": 869126,
+    "savedBytes": 1023636,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775812328716-17758123152115839136593802571174-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775812328716-17758123152115839136593802571174-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2609341,
+    "outputSize": 1432862,
+    "savedBytes": 1176479,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775812426000-177581241259992494052338770793-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775812426000-177581241259992494052338770793-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2073297,
+    "outputSize": 1068260,
+    "savedBytes": 1005037,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775812537428-1775812522053608238175674960868-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775812537428-1775812522053608238175674960868-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1432251,
+    "outputSize": 479232,
+    "savedBytes": 953019,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775812631138-17758126205029096004638121038440-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775812631138-17758126205029096004638121038440-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2295782,
+    "outputSize": 1213422,
+    "savedBytes": 1082360,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775812796562-1775812780280698180473933069712-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775812796562-1775812780280698180473933069712-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1531109,
+    "outputSize": 491368,
+    "savedBytes": 1039741,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775815419745-17758153960957713871556027634767-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775815419745-17758153960957713871556027634767-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1490376,
+    "outputSize": 640580,
+    "savedBytes": 849796,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775815519921-17758155045325666780746943595862-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775815519921-17758155045325666780746943595862-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 2632186,
+    "outputSize": 1459464,
+    "savedBytes": 1172722,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775815605972-17758155900926066656236206427304-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L3hXj1oRFFQDz3SPxcCu9QsUQL22-1775815605972-17758155900926066656236206427304-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 1070436,
+    "outputSize": 365292,
+    "savedBytes": 705144,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L5sGCe3b1Ha7VUWguwCz6herBFq2-1776762327064-1776762203165-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L5sGCe3b1Ha7VUWguwCz6herBFq2-1776762327064-1776762203165-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 833291,
+    "outputSize": 529352,
+    "savedBytes": 303939,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L5sGCe3b1Ha7VUWguwCz6herBFq2-1776762645457-1776762576060-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L5sGCe3b1Ha7VUWguwCz6herBFq2-1776762645457-1776762576060-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 594429,
+    "outputSize": 335394,
+    "savedBytes": 259035,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L5sGCe3b1Ha7VUWguwCz6herBFq2-1776763075953-1776763050260-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L5sGCe3b1Ha7VUWguwCz6herBFq2-1776763075953-1776763050260-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 762503,
+    "outputSize": 469686,
+    "savedBytes": 292817,
+    "status": "converted-in-place"
+  },
+  {
+    "sourcePath": "survey-pra-existing/L5sGCe3b1Ha7VUWguwCz6herBFq2-1776763514246-1776763461144-geostamp.jpg",
+    "destinationPath": "survey-pra-existing/L5sGCe3b1Ha7VUWguwCz6herBFq2-1776763514246-1776763461144-geostamp.jpg",
+    "sourceContentType": "image/jpeg",
+    "destinationContentType": "image/webp",
+    "sourceSize": 658465,
+    "outputSize": 364884,
+    "savedBytes": 293581,
+    "status": "converted-in-place"
+  }
+]
