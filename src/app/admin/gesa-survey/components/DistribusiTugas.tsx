@@ -1,10 +1,7 @@
 "use client";
 
 import { useState, useEffect, type FormEvent } from "react";
-import { serverTimestamp } from "firebase/firestore";
-import { storage } from "@/lib/firebase";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import dynamic from "next/dynamic";
 import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
 import { analyzeTaskNavigation, type LatLngPoint, type ParsedTaskGeometries } from "@/utils/taskNavigation";
@@ -15,6 +12,7 @@ import {
   updatePraExistingOfflineSettings,
   type PraExistingOfflineSettings,
 } from "@/utils/praExistingOfflineSettings";
+import { uploadSurveyAttachment } from "@/utils/surveyAttachmentUpload";
 
 // Dynamic import for KMZ Map Preview (SSR disabled for Leaflet)
 const DynamicKMZMapPreview = dynamic(
@@ -359,11 +357,7 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
   const uploadFileToStorage = async (file: File, folder: string): Promise<string> => {
     const timestamp = Date.now();
     const fileName = `${timestamp}_${file.name}`;
-    const storageRef = ref(storage, `${folder}/${fileName}`);
-    
-    await uploadBytes(storageRef, file);
-    const downloadURL = await getDownloadURL(storageRef);
-    return downloadURL;
+    return uploadSurveyAttachment(file, folder, fileName);
   };
 
   const getTaskCreatedAtMs = (value: Task["createdAt"]) => {
@@ -687,7 +681,7 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
         kmzFileUrl2: kmzFileUrl2 || null,
         excelFileUrl: excelFileUrl || null,
         offlineEnabled: taskType === "pra-existing" ? taskOfflineEnabled : false,
-        createdAt: serverTimestamp(),
+        createdAt: new Date().toISOString(),
         startedAt: null,
         completedAt: null,
         // Admin yang membuat tugas

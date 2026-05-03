@@ -1,0 +1,22 @@
+{
+  "kind": "firebase-storage-to-supabase-progress",
+  "updatedAt": "2026-05-03T13:52:00.643Z",
+  "dryRun": true,
+  "includeExisting": false,
+  "prefixes": [
+    "reports/",
+    "survey-apj-propose/",
+    "survey-existing/",
+    "survey-pra-existing/"
+  ],
+  "bucket": "",
+  "batchSize": 200,
+  "nextOffset": 0,
+  "completedBatches": 0,
+  "history": [],
+  "totals": {
+    "uploadedCount": 0,
+    "skippedCount": 0,
+    "failedCount": 0
+  }
+}

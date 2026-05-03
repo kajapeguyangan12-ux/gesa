@@ -1,0 +1,119 @@
+{
+  "kind": "supabase-storage-webp-progress",
+  "updatedAt": "2026-05-02T16:31:59.557Z",
+  "dryRun": false,
+  "keepOriginal": false,
+  "prefixes": [
+    "survey-apj-propose/",
+    "survey-existing/",
+    "survey-pra-existing/"
+  ],
+  "bucket": "",
+  "batchSize": 250,
+  "quality": 85,
+  "concurrency": 8,
+  "nextOffset": 1590,
+  "completedBatches": 7,
+  "history": [
+    {
+      "offset": 0,
+      "selectedCount": 250,
+      "convertedCount": 240,
+      "skippedCount": 10,
+      "failedCount": 0,
+      "bytesBefore": 619987024,
+      "bytesAfter": 308125190,
+      "estimatedSavedBytes": 311861834,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-manifest-1777737514358.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-summary-1777737199225-0.json",
+      "completedAt": "2026-05-02T15:58:34.359Z"
+    },
+    {
+      "offset": 250,
+      "selectedCount": 250,
+      "convertedCount": 250,
+      "skippedCount": 0,
+      "failedCount": 0,
+      "bytesBefore": 734129705,
+      "bytesAfter": 380102984,
+      "estimatedSavedBytes": 354026721,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-manifest-1777737884074.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-summary-1777737514376-250.json",
+      "completedAt": "2026-05-02T16:04:44.076Z"
+    },
+    {
+      "offset": 500,
+      "selectedCount": 250,
+      "convertedCount": 250,
+      "skippedCount": 0,
+      "failedCount": 0,
+      "bytesBefore": 629056677,
+      "bytesAfter": 315066008,
+      "estimatedSavedBytes": 313990669,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-manifest-1777738211585.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-summary-1777737884102-500.json",
+      "completedAt": "2026-05-02T16:10:11.587Z"
+    },
+    {
+      "offset": 750,
+      "selectedCount": 250,
+      "convertedCount": 250,
+      "skippedCount": 0,
+      "failedCount": 0,
+      "bytesBefore": 642636084,
+      "bytesAfter": 316911572,
+      "estimatedSavedBytes": 325724512,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-manifest-1777738604331.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-summary-1777738211623-750.json",
+      "completedAt": "2026-05-02T16:16:44.333Z"
+    },
+    {
+      "offset": 1000,
+      "selectedCount": 250,
+      "convertedCount": 250,
+      "skippedCount": 0,
+      "failedCount": 0,
+      "bytesBefore": 649721591,
+      "bytesAfter": 309569312,
+      "estimatedSavedBytes": 340152279,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-manifest-1777738950606.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-summary-1777738604356-1000.json",
+      "completedAt": "2026-05-02T16:22:30.607Z"
+    },
+    {
+      "offset": 1250,
+      "selectedCount": 250,
+      "convertedCount": 250,
+      "skippedCount": 0,
+      "failedCount": 0,
+      "bytesBefore": 738866887,
+      "bytesAfter": 355422436,
+      "estimatedSavedBytes": 383444451,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-manifest-1777739370225.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-summary-1777738950621-1250.json",
+      "completedAt": "2026-05-02T16:29:30.227Z"
+    },
+    {
+      "offset": 1500,
+      "selectedCount": 90,
+      "convertedCount": 90,
+      "skippedCount": 0,
+      "failedCount": 0,
+      "bytesBefore": 304467050,
+      "bytesAfter": 173634778,
+      "estimatedSavedBytes": 130832272,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-manifest-1777739519529.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-summary-1777739370248-1500.json",
+      "completedAt": "2026-05-02T16:31:59.531Z"
+    }
+  ],
+  "totals": {
+    "convertedCount": 1580,
+    "skippedCount": 10,
+    "failedCount": 0,
+    "bytesBefore": 4318865018,
+    "bytesAfter": 2158832280,
+    "estimatedSavedBytes": 2160032738
+  },
+  "lastSummaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-summary-1777739370248-1500.json"
+}

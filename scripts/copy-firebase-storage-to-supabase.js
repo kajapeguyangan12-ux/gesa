@@ -70,6 +70,7 @@ function parseArgs(argv) {
   const bucketArg = argv.find((entry) => entry.startsWith("--bucket="));
   const limitArg = argv.find((entry) => entry.startsWith("--limit="));
   const offsetArg = argv.find((entry) => entry.startsWith("--offset="));
+  const summaryFileArg = argv.find((entry) => entry.startsWith("--summary-file="));
 
   const prefixes = prefixesArg
     ? prefixesArg
@@ -90,6 +91,7 @@ function parseArgs(argv) {
     bucket,
     offset: Number.isFinite(offset) && offset > 0 ? offset : 0,
     limit: Number.isFinite(limit) && limit > 0 ? limit : null,
+    summaryFile: summaryFileArg ? summaryFileArg.slice("--summary-file=".length).trim() : "",
   };
 }
 
@@ -98,14 +100,44 @@ function publicUrlFor(supabaseUrl, bucket, objectPath) {
   return `${supabaseUrl.replace(/\/$/, "")}/storage/v1/object/public/${encodeURIComponent(bucket)}/${encodedSegments}`;
 }
 
-async function listFilesForPrefixes(bucket, prefixes) {
+async function listFilesForPrefixes(bucket, prefixes, options = {}) {
+  const targetCount =
+    typeof options.targetCount === "number" && Number.isFinite(options.targetCount) && options.targetCount > 0
+      ? options.targetCount
+      : null;
   const allFiles = [];
   for (const prefix of prefixes) {
     console.log(`Listing Firebase Storage prefix: ${prefix}`);
-    const [files] = await bucket.getFiles({ prefix });
-    for (const file of files) {
-      if (!file.name || file.name.endsWith("/")) continue;
-      allFiles.push(file);
+    let pageToken = undefined;
+
+    while (true) {
+      const [files, nextQuery] = await bucket.getFiles({
+        autoPaginate: false,
+        maxResults: 250,
+        pageToken,
+        prefix,
+      });
+
+      for (const file of files) {
+        if (!file.name || file.name.endsWith("/")) continue;
+        allFiles.push(file);
+        if (targetCount && allFiles.length >= targetCount) {
+          break;
+        }
+      }
+
+      if (targetCount && allFiles.length >= targetCount) {
+        break;
+      }
+
+      pageToken = nextQuery?.pageToken;
+      if (!pageToken) {
+        break;
+      }
+    }
+
+    if (targetCount && allFiles.length >= targetCount) {
+      break;
     }
   }
 
@@ -114,6 +146,42 @@ async function listFilesForPrefixes(bucket, prefixes) {
     byName.set(file.name, file);
   }
   return Array.from(byName.values()).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+async function listSupabaseObjectsForPrefixes(client, bucket, prefixes) {
+  const objectPaths = new Set();
+
+  for (const prefix of prefixes) {
+    console.log(`Listing Supabase Storage prefix: ${prefix}`);
+    let offset = 0;
+
+    while (true) {
+      const { data, error } = await client.storage.from(bucket).list(prefix, {
+        limit: 1000,
+        offset,
+        sortBy: { column: "name", order: "asc" },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const items = Array.isArray(data) ? data : [];
+      for (const item of items) {
+        if (!item?.name) continue;
+        const objectPath = prefix.endsWith("/") ? `${prefix}${item.name}` : `${prefix}/${item.name}`;
+        objectPaths.add(objectPath);
+      }
+
+      if (items.length < 1000) {
+        break;
+      }
+
+      offset += items.length;
+    }
+  }
+
+  return objectPaths;
 }
 
 async function main() {
@@ -136,7 +204,12 @@ async function main() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const files = await listFilesForPrefixes(firebaseBucket, options.prefixes);
+  const files = await listFilesForPrefixes(firebaseBucket, options.prefixes, {
+    targetCount: options.limit ? options.offset + options.limit : null,
+  });
+  const existingSupabaseObjects = options.includeExisting
+    ? new Set()
+    : await listSupabaseObjectsForPrefixes(supabase, options.bucket, options.prefixes);
   const selectedFiles = options.limit
     ? files.slice(options.offset, options.offset + options.limit)
     : files.slice(options.offset);
@@ -158,6 +231,26 @@ async function main() {
   );
 
   if (selectedFiles.length === 0) {
+    if (options.summaryFile) {
+      fs.writeFileSync(
+        path.resolve(process.cwd(), options.summaryFile),
+        JSON.stringify(
+          {
+            dryRun: options.dryRun,
+            uploadedCount: 0,
+            skippedCount: 0,
+            failedCount: 0,
+            offset: options.offset,
+            selectedCount: 0,
+            totalMatched: files.length,
+            manifestPath: "",
+            completedAt: new Date().toISOString(),
+          },
+          null,
+          2
+        )
+      );
+    }
     await admin.app().delete();
     return;
   }
@@ -173,6 +266,20 @@ async function main() {
     const metadata = file.metadata || {};
     const contentType = metadata.contentType || "application/octet-stream";
     const size = Number.parseInt(metadata.size || "0", 10) || 0;
+
+    if (!options.includeExisting && existingSupabaseObjects.has(destinationPath)) {
+      skippedCount += 1;
+      manifest.push({
+        sourcePath: file.name,
+        destinationBucket: options.bucket,
+        destinationPath,
+        publicUrl,
+        contentType,
+        size,
+        status: "skipped-existing",
+      });
+      continue;
+    }
 
     if (options.dryRun) {
       manifest.push({
@@ -248,20 +355,24 @@ async function main() {
   );
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
+  const summary = {
+    dryRun: options.dryRun,
+    uploadedCount,
+    skippedCount,
+    failedCount,
+    offset: options.offset,
+    selectedCount: selectedFiles.length,
+    totalMatched: files.length,
+    manifestPath,
+    completedAt: new Date().toISOString(),
+  };
+
+  if (options.summaryFile) {
+    fs.writeFileSync(path.resolve(process.cwd(), options.summaryFile), JSON.stringify(summary, null, 2));
+  }
+
   console.log(
-    JSON.stringify(
-      {
-        dryRun: options.dryRun,
-        uploadedCount,
-        skippedCount,
-        failedCount,
-        offset: options.offset,
-        selectedCount: selectedFiles.length,
-        manifestPath,
-      },
-      null,
-      2
-    )
+    JSON.stringify(summary, null, 2)
   );
 
   await admin.app().delete();

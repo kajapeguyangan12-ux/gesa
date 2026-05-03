@@ -10,12 +10,11 @@ async function dataUrlToFile(dataUrl: string, filename: string) {
   });
 }
 
-export async function uploadSurveyAttachmentFromDataUrl(
-  dataUrl: string,
+async function uploadSurveyAttachmentFile(
+  file: File,
   folder: string,
   filename: string
 ) {
-  const file = await dataUrlToFile(dataUrl, filename);
   const body = new FormData();
   body.append("file", file);
   body.append("folder", folder);
@@ -37,4 +36,21 @@ export async function uploadSurveyAttachmentFromDataUrl(
   }
 
   return url;
+}
+
+export async function uploadSurveyAttachmentFromDataUrl(
+  dataUrl: string,
+  folder: string,
+  filename: string
+) {
+  const file = await dataUrlToFile(dataUrl, filename);
+  return uploadSurveyAttachmentFile(file, folder, filename);
+}
+
+export async function uploadSurveyAttachment(
+  file: File,
+  folder: string,
+  filename?: string
+) {
+  return uploadSurveyAttachmentFile(file, folder, filename || file.name || "attachment.bin");
 }

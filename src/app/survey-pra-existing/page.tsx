@@ -4,10 +4,8 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useSta
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
-import { storage } from "@/lib/firebase";
 import { setupPolling } from "@/utils/firestoreCache";
 import { loadParsedTaskGeometries } from "@/utils/kmzTaskParser";
 import { prepareOfflineBasemapForTask } from "@/utils/offlineBasemap";
@@ -33,6 +31,7 @@ import {
   isPraExistingTaskOfflineEnabled,
   type PraExistingOfflineSettings,
 } from "@/utils/praExistingOfflineSettings";
+import { uploadSurveyAttachment } from "@/utils/surveyAttachmentUpload";
 import { PRA_EXISTING_TABANAN_DATA } from "./location-data";
 
 type DynamicMapProps = {
@@ -249,9 +248,11 @@ function SurveyPraExistingContent() {
       }
 
       const fileName = `${user.uid}-${createdAtLocal}-${photoFile.name}`;
-      const fotoRef = ref(storage, `survey-pra-existing/${fileName}`);
-      await uploadBytes(fotoRef, photoFile);
-      const fotoAktualUrl = await getDownloadURL(fotoRef);
+      const fotoAktualUrl = await uploadSurveyAttachment(
+        photoFile,
+        "survey-pra-existing",
+        fileName
+      );
 
       const response = await fetch("/api/surveys/pra-existing", {
         method: "POST",

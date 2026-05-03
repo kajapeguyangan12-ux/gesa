@@ -1,0 +1,25 @@
+{
+  "dryRun": false,
+  "keepOriginal": false,
+  "bucket": "report-attachments",
+  "prefixes": [
+    "survey-apj-propose/",
+    "survey-existing/",
+    "survey-pra-existing/"
+  ],
+  "quality": 85,
+  "concurrency": 8,
+  "totalMatched": 500,
+  "offset": 250,
+  "limit": 250,
+  "selectedCount": 250,
+  "runStartedAt": "2026-05-02T15:58:36.013Z",
+  "convertedCount": 250,
+  "skippedCount": 0,
+  "failedCount": 0,
+  "bytesBefore": 734129705,
+  "bytesAfter": 380102984,
+  "estimatedSavedBytes": 354026721,
+  "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-webp-manifest-1777737884074.json",
+  "completedAt": "2026-05-02T16:04:44.076Z"
+}
