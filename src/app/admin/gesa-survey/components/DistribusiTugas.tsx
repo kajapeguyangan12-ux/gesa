@@ -698,7 +698,8 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
         body: JSON.stringify(taskData),
       });
       if (!response.ok) {
-        throw new Error("Gagal membuat tugas di Supabase.");
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error || "Gagal membuat tugas di Supabase.");
       }
 
       alert("Tugas berhasil dibuat dan dikirim ke surveyor!");
@@ -720,7 +721,7 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
       setShowPraExistingModal(false);
     } catch (error) {
       console.error("Error creating task:", error);
-      alert("Gagal membuat tugas. Silakan coba lagi.");
+      alert(error instanceof Error ? error.message : "Gagal membuat tugas. Silakan coba lagi.");
     } finally {
       setSubmitting(false);
     }

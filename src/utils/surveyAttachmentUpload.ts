@@ -26,7 +26,8 @@ async function uploadSurveyAttachmentFile(
   });
 
   if (!response.ok) {
-    throw new Error("Gagal upload lampiran survey ke Supabase Storage.");
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(payload.error || "Gagal upload lampiran survey ke Supabase Storage.");
   }
 
   const payload = (await response.json()) as { url?: string };

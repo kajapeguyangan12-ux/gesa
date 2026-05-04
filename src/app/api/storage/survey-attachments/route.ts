@@ -1,10 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
 
-const DEFAULT_BUCKET = process.env.SUPABASE_REPORT_ATTACHMENTS_BUCKET || "report-attachments";
+const DEFAULT_BUCKET =
+  process.env.SUPABASE_TASK_ATTACHMENTS_BUCKET ||
+  process.env.SUPABASE_REPORT_ATTACHMENTS_BUCKET ||
+  "task-attachments";
 
 function sanitizePathPart(value: string) {
   return value.replace(/[^a-zA-Z0-9._/-]/g, "_");
+}
+
+async function ensureBucketExists(bucketName: string) {
+  const supabase = getSupabaseAdminClient();
+  const { data: existingBucket, error: getBucketError } = await supabase.storage.getBucket(bucketName);
+
+  if (!getBucketError && existingBucket) {
+    return supabase;
+  }
+
+  const bucketMissing =
+    getBucketError &&
+    /not found|does not exist|404/i.test(getBucketError.message);
+
+  if (getBucketError && !bucketMissing) {
+    throw new Error(`Gagal memeriksa bucket storage '${bucketName}': ${getBucketError.message}`);
+  }
+
+  const { error: createBucketError } = await supabase.storage.createBucket(bucketName, {
+    public: true,
+    fileSizeLimit: "50MB",
+  });
+
+  if (createBucketError && !/already exists|duplicate/i.test(createBucketError.message)) {
+    throw new Error(`Gagal membuat bucket storage '${bucketName}': ${createBucketError.message}`);
+  }
+
+  return supabase;
 }
 
 export async function POST(request: NextRequest) {
@@ -26,7 +57,7 @@ export async function POST(request: NextRequest) {
     const objectPath = `${safeFolder}/${Date.now()}-${safeFileName}`;
 
     const bytes = Buffer.from(await file.arrayBuffer());
-    const supabase = getSupabaseAdminClient();
+    const supabase = await ensureBucketExists(DEFAULT_BUCKET);
     const { error: uploadError } = await supabase.storage
       .from(DEFAULT_BUCKET)
       .upload(objectPath, bytes, {

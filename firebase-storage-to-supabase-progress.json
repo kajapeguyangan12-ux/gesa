@@ -1,6 +1,6 @@
 {
   "kind": "firebase-storage-to-supabase-progress",
-  "updatedAt": "2026-05-03T15:41:45.323Z",
+  "updatedAt": "2026-05-03T19:27:51.073Z",
   "dryRun": false,
   "includeExisting": false,
   "prefixes": [
@@ -11,8 +11,8 @@
   ],
   "bucket": "",
   "batchSize": 500,
-  "nextOffset": 2500,
-  "completedBatches": 5,
+  "nextOffset": 3500,
+  "completedBatches": 7,
   "history": [
     {
       "offset": 0,
@@ -63,13 +63,33 @@
       "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777822905298.json",
       "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777822513101-2000.json",
       "completedAt": "2026-05-03T15:41:45.300Z"
+    },
+    {
+      "offset": 2500,
+      "selectedCount": 500,
+      "uploadedCount": 500,
+      "skippedCount": 0,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777825410925.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777822905324-2500.json",
+      "completedAt": "2026-05-03T16:23:30.928Z"
+    },
+    {
+      "offset": 3000,
+      "selectedCount": 500,
+      "uploadedCount": 52,
+      "skippedCount": 448,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777836471043.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777836254583-3000.json",
+      "completedAt": "2026-05-03T19:27:51.045Z"
     }
   ],
   "totals": {
-    "uploadedCount": 134,
-    "skippedCount": 2364,
+    "uploadedCount": 686,
+    "skippedCount": 2812,
     "failedCount": 2
   },
-  "totalMatched": 2500,
-  "lastSummaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777822513101-2000.json"
+  "totalMatched": 3500,
+  "lastSummaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777836254583-3000.json"
 }
