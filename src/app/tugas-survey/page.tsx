@@ -4,8 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 
 // Dynamic import for KMZ Map Preview

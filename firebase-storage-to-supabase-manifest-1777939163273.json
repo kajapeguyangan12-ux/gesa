@@ -1,0 +1,12 @@
+[
+  {
+    "sourcePath": "admin-bundles/gesa-survey/tabanan.json",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "admin-bundles/gesa-survey/tabanan.json",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/admin-bundles/gesa-survey/tabanan.json",
+    "contentType": "application/json; charset=utf-8",
+    "size": 2263882,
+    "status": "failed",
+    "error": "mime type application/json; charset=utf-8 is not supported"
+  }
+]

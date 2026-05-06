@@ -1,0 +1,11 @@
+{
+  "dryRun": true,
+  "uploadedCount": 0,
+  "skippedCount": 0,
+  "failedCount": 0,
+  "offset": 0,
+  "selectedCount": 0,
+  "totalMatched": 0,
+  "manifestPath": "",
+  "completedAt": "2026-05-06T03:38:52.467Z"
+}

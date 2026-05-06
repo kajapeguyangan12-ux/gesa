@@ -5,18 +5,40 @@ import {
   resolveSurveyTable,
   type HybridSurveyType,
 } from "@/lib/supabaseHybrid";
+import { cleanupSupabaseStorageObjects } from "@/lib/supabaseStorageCleanup";
 
-interface ExistingSurveyRecord {
+interface SurveyExistingRow {
+  fb_doc_id: string | null;
+  title: string | null;
+  task_id: string | null;
+  surveyor_uid: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  status: string | null;
+  updated_at: string | null;
+  raw_payload: Record<string, unknown> | null;
+}
+
+interface SurveyDuplicateRow {
   fb_doc_id?: string | null;
-  title?: string | null;
-  task_id?: string | null;
-  surveyor_uid?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  status?: string | null;
-  updated_at?: string | null;
   raw_payload?: Record<string, unknown> | null;
 }
+
+interface SurveyCleanupRow {
+  kmz_file_url: string | null;
+  foto_tiang_arm: string | null;
+  foto_titik_actual: string | null;
+  foto_kemerataan: string | null;
+  foto_aktual: string | null;
+  raw_payload: Record<string, unknown> | null;
+}
+
+type SurveyUpdateRow = ReturnType<typeof buildSurveyUpdateRow>;
+
+type SurveyUpdateQuery = {
+  eq: (column: string, value: string) => SurveyUpdateQuery;
+  select: (columns: string) => Promise<{ data: Array<{ fb_doc_id: string | null }> | null; error: { message: string } | null }>;
+};
 
 function normalizeStatus(value: unknown) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -41,14 +63,15 @@ export async function PATCH(
     const expectedStatus = normalizeStatus(patch.expectedStatus);
     const expectedUpdatedAt = normalizeTimestampValue(patch.expectedUpdatedAt);
     const preserveCurrentStatus = patch.preserveCurrentStatus === true;
-    const supabase = getSupabaseAdminClient() as any;
-    const { data: existing, error: readError } = (await supabase
+    const supabase = getSupabaseAdminClient();
+    const { data, error: readError } = await supabase
       .from(table)
       .select("fb_doc_id, title, task_id, surveyor_uid, latitude, longitude, status, updated_at, raw_payload")
       .eq("fb_doc_id", id)
-      .maybeSingle()) as { data: ExistingSurveyRecord | null; error: { message: string } | null };
+      .maybeSingle();
 
     if (readError) throw new Error(readError.message);
+    const existing = data as SurveyExistingRow | null;
     if (!existing) {
       return NextResponse.json({ error: "Survey tidak ditemukan." }, { status: 404 });
     }
@@ -79,12 +102,15 @@ export async function PATCH(
       sanitizedPatch.status = existing.status || currentStatus || "menunggu";
     }
 
-    const row = buildSurveyUpdateRow(
+    const row: SurveyUpdateRow = buildSurveyUpdateRow(
       surveyType,
       (existing.raw_payload as Record<string, unknown> | null) || {},
       sanitizedPatch
     );
-    let updateQuery = supabase.from(table).update(row).eq("fb_doc_id", id);
+    const surveyTable = supabase.from(table) as unknown as {
+      update: (values: SurveyUpdateRow) => SurveyUpdateQuery;
+    };
+    let updateQuery: SurveyUpdateQuery = surveyTable.update(row).eq("fb_doc_id", id);
     if (typeof existing.status === "string" && existing.status.trim()) {
       updateQuery = updateQuery.eq("status", existing.status);
     }
@@ -124,19 +150,20 @@ export async function PATCH(
         throw new Error(duplicateReadError.message);
       }
 
-      const duplicateIds = ((duplicates || []) as Array<{ fb_doc_id?: string | null; raw_payload?: Record<string, unknown> | null }>)
-        .map((item) => (typeof item.fb_doc_id === "string" ? item.fb_doc_id : ""))
-        .filter((duplicateId) => duplicateId && duplicateId !== id);
-
-      for (const duplicate of (duplicates || []) as Array<{ fb_doc_id?: string | null; raw_payload?: Record<string, unknown> | null }>) {
+      for (const duplicate of (duplicates || []) as SurveyDuplicateRow[]) {
         const duplicateId = typeof duplicate.fb_doc_id === "string" ? duplicate.fb_doc_id : "";
         if (!duplicateId || duplicateId === id) continue;
-        const duplicateRow = buildSurveyUpdateRow(
+        const duplicateRow: SurveyUpdateRow = buildSurveyUpdateRow(
           surveyType,
           (duplicate.raw_payload as Record<string, unknown> | null) || {},
           sanitizedPatch
         );
-        const { error: duplicateUpdateError } = await supabase.from(table).update(duplicateRow).eq("fb_doc_id", duplicateId);
+        const duplicateTable = supabase.from(table) as unknown as {
+          update: (values: SurveyUpdateRow) => {
+            eq: (column: string, value: string) => Promise<{ error: { message: string } | null }>;
+          };
+        };
+        const { error: duplicateUpdateError } = await duplicateTable.update(duplicateRow).eq("fb_doc_id", duplicateId);
         if (duplicateUpdateError) {
           throw new Error(duplicateUpdateError.message);
         }
@@ -161,6 +188,27 @@ export async function DELETE(
     const surveyType = type as HybridSurveyType;
     const table = resolveSurveyTable(surveyType);
     const supabase = getSupabaseAdminClient();
+    const { data, error: readError } = await supabase
+      .from(table)
+      .select("kmz_file_url, foto_tiang_arm, foto_titik_actual, foto_kemerataan, foto_aktual, raw_payload")
+      .eq("fb_doc_id", id)
+      .maybeSingle();
+
+    if (readError) throw new Error(readError.message);
+    const existing = data as SurveyCleanupRow | null;
+    if (!existing) {
+      return NextResponse.json({ error: "Survey tidak ditemukan." }, { status: 404 });
+    }
+
+    await cleanupSupabaseStorageObjects(
+      existing.kmz_file_url,
+      existing.foto_tiang_arm,
+      existing.foto_titik_actual,
+      existing.foto_kemerataan,
+      existing.foto_aktual,
+      existing.raw_payload
+    );
+
     const { error } = await supabase.from(table).delete().eq("fb_doc_id", id);
     if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true });

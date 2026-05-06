@@ -7,6 +7,7 @@ import { PRA_EXISTING_TABANAN_DATA } from "@/app/survey-pra-existing/location-da
 import type { TaskNavigationInfo } from "@/utils/taskNavigation";
 import { formatWitaDateTime } from "@/utils/dateTime";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
+import { openStorageAssetUrl, toStorageAssetUrl } from "@/utils/storageAssetUrl";
 import { fetchAdminSurveyRows, type AdminSurveyRow } from "./supabaseSurveyClient";
 
 function toApiSurveyType(type: string) {
@@ -1621,7 +1622,7 @@ export default function ValidasiSurvey({
                     <div className="w-20 h-20 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
                       {(survey.fotoTiangAPM || survey.fotoTitikActual || survey.photoUrl || survey.fotoAktual) ? (
                         <img 
-                          src={survey.fotoTiangAPM || survey.fotoTitikActual || survey.photoUrl || survey.fotoAktual} 
+                          src={toStorageAssetUrl(survey.fotoTiangAPM || survey.fotoTitikActual || survey.photoUrl || survey.fotoAktual)} 
                           alt={survey.title} 
                           className="w-full h-full object-cover rounded-lg"
                           onError={(e) => {
@@ -1994,10 +1995,10 @@ export default function ValidasiSurvey({
                       <div className="space-y-2">
                         <p className="text-xs lg:text-sm font-semibold text-gray-700">Foto Tiang APM</p>
                         <img 
-                          src={selectedSurvey.fotoTiangAPM} 
+                          src={toStorageAssetUrl(selectedSurvey.fotoTiangAPM)} 
                           alt="Tiang APM" 
                           className="w-full h-48 lg:h-64 object-cover rounded-lg border-2 border-white shadow-lg hover:scale-105 transition-transform cursor-pointer"
-                          onClick={() => window.open(selectedSurvey.fotoTiangAPM, '_blank')}
+                          onClick={() => openStorageAssetUrl(selectedSurvey.fotoTiangAPM)}
                         />
                       </div>
                     )}
@@ -2005,10 +2006,10 @@ export default function ValidasiSurvey({
                       <div className="space-y-2">
                         <p className="text-xs lg:text-sm font-semibold text-gray-700">Foto Titik Actual</p>
                         <img 
-                          src={selectedSurvey.fotoTitikActual} 
+                          src={toStorageAssetUrl(selectedSurvey.fotoTitikActual)} 
                           alt="Titik Actual" 
                           className="w-full h-48 lg:h-64 object-cover rounded-lg border-2 border-white shadow-lg hover:scale-105 transition-transform cursor-pointer"
-                          onClick={() => window.open(selectedSurvey.fotoTitikActual, '_blank')}
+                          onClick={() => openStorageAssetUrl(selectedSurvey.fotoTitikActual)}
                         />
                       </div>
                     )}
@@ -2016,10 +2017,10 @@ export default function ValidasiSurvey({
                       <div className="space-y-2">
                         <p className="text-xs lg:text-sm font-semibold text-gray-700">Foto Kemerataan</p>
                         <img 
-                          src={selectedSurvey.fotoKemerataan} 
+                          src={toStorageAssetUrl(selectedSurvey.fotoKemerataan)} 
                           alt="Kemerataan" 
                           className="w-full h-48 lg:h-64 object-cover rounded-lg border-2 border-white shadow-lg hover:scale-105 transition-transform cursor-pointer"
-                          onClick={() => window.open(selectedSurvey.fotoKemerataan, '_blank')}
+                          onClick={() => openStorageAssetUrl(selectedSurvey.fotoKemerataan)}
                         />
                       </div>
                     )}
@@ -2027,10 +2028,10 @@ export default function ValidasiSurvey({
                       <div className="space-y-2">
                         <p className="text-xs lg:text-sm font-semibold text-gray-700">Foto Aktual</p>
                         <img 
-                          src={selectedSurvey.fotoAktual} 
+                          src={toStorageAssetUrl(selectedSurvey.fotoAktual)} 
                           alt="Foto Aktual" 
                           className="w-full h-48 lg:h-64 object-cover rounded-lg border-2 border-white shadow-lg hover:scale-105 transition-transform cursor-pointer"
-                          onClick={() => window.open(selectedSurvey.fotoAktual, '_blank')}
+                          onClick={() => openStorageAssetUrl(selectedSurvey.fotoAktual)}
                         />
                       </div>
                     )}
@@ -2038,10 +2039,10 @@ export default function ValidasiSurvey({
                       <div className="space-y-2">
                         <p className="text-xs lg:text-sm font-semibold text-gray-700">Foto Survey</p>
                         <img 
-                          src={selectedSurvey.photoUrl} 
+                          src={toStorageAssetUrl(selectedSurvey.photoUrl)} 
                           alt="Survey" 
                           className="w-full h-48 lg:h-64 object-cover rounded-lg border-2 border-white shadow-lg hover:scale-105 transition-transform cursor-pointer"
-                          onClick={() => window.open(selectedSurvey.photoUrl, '_blank')}
+                          onClick={() => openStorageAssetUrl(selectedSurvey.photoUrl)}
                         />
                       </div>
                     )}
@@ -2944,7 +2945,7 @@ export default function ValidasiSurvey({
                       <div>
                         <p className="text-sm font-semibold text-gray-700 mb-2">Foto Tiang APM</p>
                         <img 
-                          src={editFormData.fotoTiangAPM} 
+                          src={toStorageAssetUrl(editFormData.fotoTiangAPM)} 
                           alt="Tiang APM" 
                           className="w-full h-48 object-cover rounded-lg border-2 border-gray-200"
                         />
@@ -2954,7 +2955,7 @@ export default function ValidasiSurvey({
                       <div>
                         <p className="text-sm font-semibold text-gray-700 mb-2">Foto Titik Actual</p>
                         <img 
-                          src={editFormData.fotoTitikActual} 
+                          src={toStorageAssetUrl(editFormData.fotoTitikActual)} 
                           alt="Titik Actual" 
                           className="w-full h-48 object-cover rounded-lg border-2 border-gray-200"
                         />
@@ -2964,7 +2965,7 @@ export default function ValidasiSurvey({
                       <div>
                         <p className="text-sm font-semibold text-gray-700 mb-2">Foto Aktual Pra Existing</p>
                         <img 
-                          src={editFormData.fotoAktual} 
+                          src={toStorageAssetUrl(editFormData.fotoAktual)} 
                           alt="Foto Aktual Pra Existing" 
                           className="w-full h-48 object-cover rounded-lg border-2 border-gray-200"
                         />

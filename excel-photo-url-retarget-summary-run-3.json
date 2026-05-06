@@ -1,0 +1,17 @@
+{
+  "dryRun": false,
+  "includeExisting": false,
+  "inputFile": "c:\\Users\\ASUS\\Downloads\\Moradon_Jalan_Melati,_Denpasar_11-Juli-2025 (3).xlsx",
+  "outputFile": "c:\\Users\\ASUS\\Downloads\\Moradon_Jalan_Melati,_Denpasar_11-Juli-2025 (3)-supabase.xlsx",
+  "sheetName": "foto_links",
+  "bucket": "report-attachments",
+  "prefix": "petugas-photos/",
+  "totalPhotoRows": 622,
+  "uniqueSourceUrls": 622,
+  "copiedCount": 104,
+  "skippedExistingCount": 518,
+  "failedCount": 0,
+  "rewrittenRowCount": 622,
+  "completedAt": "2026-05-06T05:05:01.600Z",
+  "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\excel-photo-url-retarget-manifest-run-3.json"
+}

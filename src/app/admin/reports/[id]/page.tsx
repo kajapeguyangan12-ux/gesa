@@ -3,8 +3,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { openStorageAssetUrl, toStorageAssetUrl } from "@/utils/storageAssetUrl";
 
 type ReportData = any;
+type GridCellMeta = {
+  value: number;
+  attachmentUrl: string;
+  note: string;
+  type: string;
+};
+type AttachmentEntry = {
+  row: number;
+  col: number;
+  url: string;
+  note: string;
+  type: string;
+};
 
 function ReportViewContent() {
   const router = useRouter();
@@ -13,6 +27,13 @@ function ReportViewContent() {
 
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<ReportData | null>(null);
+  const [exportingZip, setExportingZip] = useState(false);
+  const [exportingDocs, setExportingDocs] = useState(false);
+  const [selectedCell, setSelectedCell] = useState<{
+    row: number;
+    col: number;
+    meta: GridCellMeta;
+  } | null>(null);
 
   useEffect(() => {
     const fetchReport = async () => {
@@ -78,6 +99,45 @@ function ReportViewContent() {
     return rounded.toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   };
 
+  const sanitizeFileName = (value: string) =>
+    value
+      .trim()
+      .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+      .replace(/\s+/g, "_")
+      .slice(0, 120) || "laporan";
+
+  const getCellMeta = (cell: any): GridCellMeta => {
+    const rawValue =
+      cell?.value ??
+      cell?.lux ??
+      cell?.LUX ??
+      cell?.val ??
+      cell?.v ??
+      cell?.reading ??
+      cell?.illuminance ??
+      cell?.measurement ??
+      cell?.nilai;
+    const numericValue = typeof rawValue === "number" ? rawValue : parseFloat(String(rawValue ?? "").replace(/[^0-9.+-eE]/g, ""));
+    const attachmentUrl =
+      cell?.attachmentUrl ||
+      cell?.lampiran ||
+      cell?.photoUrl ||
+      cell?.image ||
+      cell?.foto ||
+      cell?.imageUrl ||
+      cell?.url ||
+      "";
+    const note = cell?.note || cell?.deskripsi || cell?.description || cell?.keterangan || "";
+    const type = cell?.type || cell?.tipe || cell?.tipeApi || cell?.cellType || "normal";
+
+    return {
+      value: isNaN(numericValue) ? 0 : numericValue,
+      attachmentUrl: toStorageAssetUrl(String(attachmentUrl || "").trim()),
+      note: String(note || "").trim(),
+      type: String(type || "normal"),
+    };
+  };
+
   const parseGridData = (data: any): number[][] => {
     if (!data) return [];
     let gd = data.gridData ?? data.grid ?? data.dataGrid;
@@ -98,14 +158,7 @@ function ReportViewContent() {
                 return isNaN(n) ? 0 : n;
               }
               if (typeof cell === "object" && cell) {
-                const candidates = ["lux", "LUX", "value", "valor", "reading", "illuminance", "v", "val", "measurement", "nilai"];
-                for (const k of candidates) {
-                  if (k in cell) {
-                    const v = (cell as any)[k];
-                    const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[^0-9.+-eE]/g, ""));
-                    return isNaN(n) ? 0 : n;
-                  }
-                }
+                return getCellMeta(cell).value;
               }
               return 0;
             })
@@ -126,18 +179,7 @@ function ReportViewContent() {
         const c = typeof cell.col === "number" ? cell.col : parseInt(String(cell.col ?? ""), 10);
         if (!isFinite(r) || !isFinite(c)) continue;
         if (r < 0 || c < 0 || r >= rowsCount || c >= colsCount) continue;
-        const rawValue =
-          cell?.value ??
-          cell?.lux ??
-          cell?.LUX ??
-          cell?.val ??
-          cell?.v ??
-          cell?.reading ??
-          cell?.illuminance ??
-          cell?.measurement ??
-          cell?.nilai;
-        const n = typeof rawValue === "number" ? rawValue : parseFloat(String(rawValue ?? "").replace(/[^0-9.+-eE]/g, ""));
-        grid[r][c] = isNaN(n) ? 0 : n;
+        grid[r][c] = getCellMeta(cell).value;
       }
       return grid;
     }
@@ -145,7 +187,117 @@ function ReportViewContent() {
     return [];
   };
 
+  const parseGridMetaData = (data: any): GridCellMeta[][] => {
+    if (!data) return [];
+    let gd = data.gridData ?? data.grid ?? data.dataGrid;
+    if (typeof gd === "string") {
+      try {
+        gd = JSON.parse(gd);
+      } catch {
+        return [];
+      }
+    }
+
+    const createDefaultMeta = (): GridCellMeta => ({
+      value: 0,
+      attachmentUrl: "",
+      note: "",
+      type: "normal",
+    });
+
+    if (Array.isArray(gd)) {
+      return gd.map((row: any) =>
+        Array.isArray(row)
+          ? row.map((cell: any) => {
+              if (typeof cell === "number") return createDefaultMeta();
+              if (typeof cell === "string") {
+                const n = parseFloat(cell.replace(/[^0-9.+-eE]/g, ""));
+                return { ...createDefaultMeta(), value: isNaN(n) ? 0 : n };
+              }
+              if (typeof cell === "object" && cell) {
+                return getCellMeta(cell);
+              }
+              return createDefaultMeta();
+            })
+          : []
+      );
+    }
+
+    if (gd && typeof gd === "object") {
+      const rowsCount = Math.max(0, parseInt(String(gd.rows ?? 0), 10) || 0);
+      const colsCount = Math.max(0, parseInt(String(gd.cols ?? 0), 10) || 0);
+      if (rowsCount === 0 || colsCount === 0) return [];
+      const grid: GridCellMeta[][] = Array.from({ length: rowsCount }, () =>
+        Array.from({ length: colsCount }, () => createDefaultMeta())
+      );
+      const cells = Array.isArray(gd.cells) ? gd.cells : [];
+      for (const cell of cells) {
+        if (!cell) continue;
+        const r = typeof cell.row === "number" ? cell.row : parseInt(String(cell.row ?? ""), 10);
+        const c = typeof cell.col === "number" ? cell.col : parseInt(String(cell.col ?? ""), 10);
+        if (!isFinite(r) || !isFinite(c)) continue;
+        if (r < 0 || c < 0 || r >= rowsCount || c >= colsCount) continue;
+        grid[r][c] = getCellMeta(cell);
+      }
+      return grid;
+    }
+
+    return [];
+  };
+
+  const extractAttachmentEntries = (data: any): AttachmentEntry[] => {
+    if (!data) return [];
+    let gd = data.gridData ?? data.grid ?? data.dataGrid;
+    if (typeof gd === "string") {
+      try {
+        gd = JSON.parse(gd);
+      } catch {
+        return [];
+      }
+    }
+
+    const attachments: AttachmentEntry[] = [];
+
+    if (Array.isArray(gd)) {
+      gd.forEach((row: any, rowIndex: number) => {
+        if (!Array.isArray(row)) return;
+        row.forEach((cell: any, colIndex: number) => {
+          if (!cell || typeof cell !== "object") return;
+          const meta = getCellMeta(cell);
+          if (!meta.attachmentUrl) return;
+          attachments.push({
+            row: rowIndex,
+            col: colIndex,
+            url: meta.attachmentUrl,
+            note: meta.note,
+            type: meta.type,
+          });
+        });
+      });
+    } else if (gd && typeof gd === "object" && Array.isArray(gd.cells)) {
+      gd.cells.forEach((cell: any) => {
+        if (!cell || typeof cell !== "object") return;
+        const r = typeof cell.row === "number" ? cell.row : parseInt(String(cell.row ?? ""), 10);
+        const c = typeof cell.col === "number" ? cell.col : parseInt(String(cell.col ?? ""), 10);
+        if (!isFinite(r) || !isFinite(c) || r < 0 || c < 0) return;
+        const meta = getCellMeta(cell);
+        if (!meta.attachmentUrl) return;
+        attachments.push({
+          row: r,
+          col: c,
+          url: meta.attachmentUrl,
+          note: meta.note,
+          type: meta.type,
+        });
+      });
+    }
+
+    return attachments;
+  };
+
   const gridData = useMemo(() => parseGridData(report), [report]);
+  const gridMetaData = useMemo(() => parseGridMetaData(report), [report]);
+  const attachmentEntries = useMemo(() => extractAttachmentEntries(report), [report]);
   const rows = gridData.length;
   const cols = gridData[0]?.length || 0;
 
@@ -255,6 +407,126 @@ function ReportViewContent() {
       report?.lamp_voltage ??
       lamp?.voltage
   );
+
+  const exportBaseName = useMemo(() => {
+    const titlePart = sanitizeFileName(title);
+    const locationPart = sanitizeFileName(location);
+    const datePart = sanitizeFileName(dateDisplay.replace(/\s+/g, "-"));
+    return [titlePart, locationPart, datePart].filter(Boolean).join("_");
+  }, [dateDisplay, location, title]);
+
+  const downloadBlob = (blob: Blob, fileName: string) => {
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(href);
+  };
+
+  const buildAttachmentRows = () =>
+    attachmentEntries.map((entry) => ({
+      row: entry.row + 1,
+      col: entry.col + 1,
+      type: entry.type,
+      note: entry.note,
+      photoUrl: entry.url,
+    }));
+
+  const exportReportExcel = async () => {
+    if (!report) return;
+    setExportingZip(true);
+    try {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.utils.book_new();
+
+      const summaryRows = [
+        { field: "Judul", value: title },
+        { field: "Lokasi", value: location },
+        { field: "Petugas", value: officer },
+        { field: "Tanggal", value: dateDisplay },
+        { field: "Tinggi Tiang", value: meter },
+        { field: "Daya", value: watt },
+        { field: "Tegangan", value: voltage },
+        { field: "L-Min", value: stats.min.toFixed(2) },
+        { field: "L-Max", value: stats.max.toFixed(2) },
+        { field: "L-Avg", value: stats.avg.toFixed(2) },
+        { field: "Jumlah Foto", value: attachmentEntries.length },
+      ];
+
+      const gridRows = gridData.map((row, rowIndex) => {
+        const output: Record<string, string | number> = { row: rowIndex + 1 };
+        row.forEach((cell, colIndex) => {
+          output[`col_${colIndex + 1}`] = typeof cell === "number" ? cell : 0;
+        });
+        return output;
+      });
+
+      const attachmentRows = buildAttachmentRows();
+
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), "ringkasan");
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(gridRows), "grid");
+      XLSX.utils.book_append_sheet(
+        workbook,
+        XLSX.utils.json_to_sheet(attachmentRows.length > 0 ? attachmentRows : [{ row: "", col: "", type: "", note: "", photoUrl: "" }]),
+        "foto_links"
+      );
+
+      const buffer = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+      downloadBlob(
+        new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+        `${exportBaseName}.xlsx`
+      );
+    } catch (error) {
+      console.error("Failed to export report Excel:", error);
+      alert(
+        error instanceof Error
+          ? `Export gagal: ${error.message}`
+          : "Export gagal. Silakan coba lagi."
+      );
+    } finally {
+      setExportingZip(false);
+    }
+  };
+
+  const exportDocumentationCsv = () => {
+    if (!report) return;
+    setExportingDocs(true);
+    try {
+      const rows = buildAttachmentRows();
+      const header = ["row", "col", "type", "note", "photoUrl"];
+      const escapeCsv = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+      const csv = [
+        header.join(","),
+        ...rows.map((row) => header.map((key) => escapeCsv(row[key as keyof typeof row])).join(",")),
+      ].join("\n");
+
+      downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), `${exportBaseName}_foto_links.csv`);
+    } catch (error) {
+      console.error("Failed to export documentation CSV:", error);
+      alert(
+        error instanceof Error
+          ? `Export dokumentasi gagal: ${error.message}`
+          : "Export dokumentasi gagal. Silakan coba lagi."
+      );
+    } finally {
+      setExportingDocs(false);
+    }
+  };
+
+  const openCellDetail = (row: number, col: number) => {
+    const meta = gridMetaData[row]?.[col] || {
+      value: gridData[row]?.[col] || 0,
+      attachmentUrl: "",
+      note: "",
+      type: "normal",
+    };
+    setSelectedCell({ row, col, meta });
+  };
 
   if (loading) {
     return (
@@ -419,17 +691,25 @@ function ReportViewContent() {
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden p-4">
               <h3 className="text-base font-bold text-gray-900 mb-3">Aksi</h3>
               <div className="space-y-2">
-                <button className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-all">
+                <button
+                  onClick={() => void exportReportExcel()}
+                  disabled={exportingZip || exportingDocs}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-xl font-semibold transition-all"
+                >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m7-7H5" />
                   </svg>
-                  Export Laporan Ini (ZIP)
+                  {exportingZip ? "Mengekspor Excel..." : "Export Laporan Ini (Excel)"}
                 </button>
-                <button className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition-all">
+                <button
+                  onClick={() => void exportDocumentationCsv()}
+                  disabled={exportingZip || exportingDocs}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl font-semibold transition-all"
+                >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m7-7H5" />
                   </svg>
-                  Dokumentasi
+                  {exportingDocs ? "Mengekspor CSV..." : "Dokumentasi (CSV Link Foto)"}
                 </button>
                 <button className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold transition-all">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -470,13 +750,15 @@ function ReportViewContent() {
                       {row.map((cell, colIndex) => {
                         const numValue = typeof cell === "number" ? cell : 0;
                         return (
-                          <div
+                          <button
+                            type="button"
                             key={`${rowIndex}-${colIndex}`}
-                            className={`h-14 px-2 flex items-center justify-center border-2 border-gray-200 rounded-lg text-sm font-bold transition-all ${getCellColor(numValue)}`}
+                            onClick={() => openCellDetail(rowIndex, colIndex)}
+                            className={`h-14 px-2 flex items-center justify-center border-2 border-gray-200 rounded-lg text-sm font-bold transition-all hover:scale-[1.02] hover:border-blue-300 cursor-pointer ${getCellColor(numValue)}`}
                             title={`Row ${rowIndex + 1}, Col ${colIndex + 1}: ${formatLuxNumber(numValue)}`}
                           >
                             {formatLuxNumber(numValue)}
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
@@ -491,6 +773,76 @@ function ReportViewContent() {
           </div>
         </div>
       </main>
+
+      {selectedCell ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-gray-200 px-6 py-5">
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900">Detail Sel</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Posisi: Jarak Tiang {selectedCell.row + 1} meter, Lebar Jalan {selectedCell.col + 1} meter
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedCell(null)}
+                className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+              >
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-5 px-6 py-5">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Nilai Lux</p>
+                  <p className="mt-2 text-2xl font-bold text-gray-900">{formatLuxNumber(selectedCell.meta.value)}</p>
+                </div>
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Tipe</p>
+                  <p className="mt-2 text-lg font-bold text-gray-900">{selectedCell.meta.type || "normal"}</p>
+                </div>
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Koordinat Grid</p>
+                  <p className="mt-2 text-lg font-bold text-gray-900">
+                    R{selectedCell.row + 1} C{selectedCell.col + 1}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-900">Deskripsi</label>
+                <div className="min-h-24 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                  {selectedCell.meta.note || "Tidak ada catatan untuk sel ini."}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-900">Lampiran (URL)</label>
+                <div className="break-all rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                  {selectedCell.meta.attachmentUrl || "Tidak ada lampiran."}
+                </div>
+                {selectedCell.meta.attachmentUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => openStorageAssetUrl(selectedCell.meta.attachmentUrl)}
+                    className="mt-3 block w-full overflow-hidden rounded-2xl border border-gray-200 bg-gray-50"
+                  >
+                    <img
+                      src={toStorageAssetUrl(selectedCell.meta.attachmentUrl)}
+                      alt={`Lampiran row ${selectedCell.row + 1} col ${selectedCell.col + 1}`}
+                      className="h-72 w-full object-contain"
+                    />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

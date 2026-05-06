@@ -1,0 +1,413 @@
+{
+  "kind": "supabase-storage-url-retarget-progress",
+  "updatedAt": "2026-05-04T09:02:15.283Z",
+  "dryRun": false,
+  "tables": [
+    "reports",
+    "survey-existing",
+    "survey-apj-propose",
+    "survey-pra-existing"
+  ],
+  "batchSize": 1000,
+  "nextOffset": 10000,
+  "completedBatches": 10,
+  "history": [
+    {
+      "offset": 0,
+      "selectedCount": 1034,
+      "updatedCount": 1001,
+      "unchangedCount": 33,
+      "failedCount": 0,
+      "byTable": {
+        "reports": {
+          "selectedCount": 30,
+          "updatedCount": 1,
+          "unchangedCount": 29,
+          "failedCount": 0,
+          "urlChanges": 2
+        },
+        "survey-existing": {
+          "selectedCount": 3,
+          "updatedCount": 3,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 9
+        },
+        "survey-apj-propose": {
+          "selectedCount": 1,
+          "updatedCount": 1,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 4
+        },
+        "survey-pra-existing": {
+          "selectedCount": 1000,
+          "updatedCount": 996,
+          "unchangedCount": 4,
+          "failedCount": 0,
+          "urlChanges": 3321
+        }
+      },
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-url-retarget-summary-1777883414505-0.json",
+      "completedAt": "2026-05-04T08:30:14.626Z"
+    },
+    {
+      "offset": 1000,
+      "selectedCount": 1000,
+      "updatedCount": 1000,
+      "unchangedCount": 0,
+      "failedCount": 0,
+      "byTable": {
+        "reports": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-existing": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-apj-propose": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-pra-existing": {
+          "selectedCount": 1000,
+          "updatedCount": 1000,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 3360
+        }
+      },
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-url-retarget-summary-1777883602572-1000.json",
+      "completedAt": "2026-05-04T08:33:22.690Z"
+    },
+    {
+      "offset": 2000,
+      "selectedCount": 1000,
+      "updatedCount": 1000,
+      "unchangedCount": 0,
+      "failedCount": 0,
+      "byTable": {
+        "reports": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-existing": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-apj-propose": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-pra-existing": {
+          "selectedCount": 1000,
+          "updatedCount": 1000,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 3166
+        }
+      },
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-url-retarget-summary-1777883786586-2000.json",
+      "completedAt": "2026-05-04T08:36:26.710Z"
+    },
+    {
+      "offset": 3000,
+      "selectedCount": 1000,
+      "updatedCount": 1000,
+      "unchangedCount": 0,
+      "failedCount": 0,
+      "byTable": {
+        "reports": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-existing": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-apj-propose": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-pra-existing": {
+          "selectedCount": 1000,
+          "updatedCount": 1000,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 3330
+        }
+      },
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-url-retarget-summary-1777883966820-3000.json",
+      "completedAt": "2026-05-04T08:39:26.937Z"
+    },
+    {
+      "offset": 4000,
+      "selectedCount": 1000,
+      "updatedCount": 1000,
+      "unchangedCount": 0,
+      "failedCount": 0,
+      "byTable": {
+        "reports": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-existing": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-apj-propose": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-pra-existing": {
+          "selectedCount": 1000,
+          "updatedCount": 1000,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 3489
+        }
+      },
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-url-retarget-summary-1777884150722-4000.json",
+      "completedAt": "2026-05-04T08:42:30.855Z"
+    },
+    {
+      "offset": 5000,
+      "selectedCount": 1000,
+      "updatedCount": 1000,
+      "unchangedCount": 0,
+      "failedCount": 0,
+      "byTable": {
+        "reports": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-existing": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-apj-propose": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-pra-existing": {
+          "selectedCount": 1000,
+          "updatedCount": 1000,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 3393
+        }
+      },
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-url-retarget-summary-1777884336257-5000.json",
+      "completedAt": "2026-05-04T08:45:36.364Z"
+    },
+    {
+      "offset": 6000,
+      "selectedCount": 1000,
+      "updatedCount": 1000,
+      "unchangedCount": 0,
+      "failedCount": 0,
+      "byTable": {
+        "reports": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-existing": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-apj-propose": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-pra-existing": {
+          "selectedCount": 1000,
+          "updatedCount": 1000,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 3462
+        }
+      },
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-url-retarget-summary-1777884519294-6000.json",
+      "completedAt": "2026-05-04T08:48:39.405Z"
+    },
+    {
+      "offset": 7000,
+      "selectedCount": 1000,
+      "updatedCount": 1000,
+      "unchangedCount": 0,
+      "failedCount": 0,
+      "byTable": {
+        "reports": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-existing": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-apj-propose": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-pra-existing": {
+          "selectedCount": 1000,
+          "updatedCount": 1000,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 3442
+        }
+      },
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-url-retarget-summary-1777884704294-7000.json",
+      "completedAt": "2026-05-04T08:51:44.407Z"
+    },
+    {
+      "offset": 8000,
+      "selectedCount": 1000,
+      "updatedCount": 1000,
+      "unchangedCount": 0,
+      "failedCount": 0,
+      "byTable": {
+        "reports": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-existing": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-apj-propose": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-pra-existing": {
+          "selectedCount": 1000,
+          "updatedCount": 1000,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 3300
+        }
+      },
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-url-retarget-summary-1777884891794-8000.json",
+      "completedAt": "2026-05-04T08:54:51.907Z"
+    },
+    {
+      "offset": 9000,
+      "selectedCount": 1000,
+      "updatedCount": 1000,
+      "unchangedCount": 0,
+      "failedCount": 0,
+      "byTable": {
+        "reports": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-existing": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-apj-propose": {
+          "selectedCount": 0,
+          "updatedCount": 0,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 0
+        },
+        "survey-pra-existing": {
+          "selectedCount": 1000,
+          "updatedCount": 1000,
+          "unchangedCount": 0,
+          "failedCount": 0,
+          "urlChanges": 3444
+        }
+      },
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-url-retarget-summary-1777885078533-9000.json",
+      "completedAt": "2026-05-04T08:57:58.646Z"
+    }
+  ],
+  "totals": {
+    "selectedCount": 10034,
+    "updatedCount": 10001,
+    "unchangedCount": 33,
+    "failedCount": 0
+  },
+  "lastSummaryFile": "C:\\Kerja\\gesa\\gesa-main\\supabase-storage-url-retarget-summary-1777885078533-9000.json"
+}

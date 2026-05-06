@@ -1,0 +1,11 @@
+{
+  "dryRun": false,
+  "uploadedCount": 0,
+  "skippedCount": 1000,
+  "failedCount": 0,
+  "offset": 8000,
+  "selectedCount": 1000,
+  "totalMatched": 9000,
+  "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777906099496.json",
+  "completedAt": "2026-05-04T14:48:19.500Z"
+}

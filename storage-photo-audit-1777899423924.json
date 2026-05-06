@@ -1,0 +1,106 @@
+{
+  "firebaseBucket": "gesa-4a6a2.firebasestorage.app",
+  "supabaseBuckets": [
+    "task-attachments",
+    "report-attachments"
+  ],
+  "firebase": {
+    "totalFiles": 13059,
+    "totalPhotos": 12291,
+    "byFolder": {
+      "reports": 2,
+      "survey-apj-propose": 2,
+      "survey-existing": 8,
+      "survey-pra-existing": 12279
+    }
+  },
+  "supabaseTask": {
+    "totalFiles": 795,
+    "totalPhotos": 27,
+    "byFolder": {
+      "survey-pra-existing": 27
+    }
+  },
+  "supabaseReport": {
+    "totalFiles": 7503,
+    "totalPhotos": 7502,
+    "byFolder": {
+      "reports": 2,
+      "survey-apj-propose": 2,
+      "survey-existing": 8,
+      "survey-pra-existing": 7490
+    }
+  },
+  "supabaseCombined": {
+    "totalFiles": 8298,
+    "totalPhotos": 7529,
+    "byFolder": {
+      "reports": 2,
+      "survey-apj-propose": 2,
+      "survey-existing": 8,
+      "survey-pra-existing": 7517
+    }
+  },
+  "comparison": {
+    "firebasePhotoTotal": 12291,
+    "supabasePhotoTotal": 7529,
+    "matchedPhotoPaths": 7501,
+    "missingInSupabaseCount": 4790,
+    "extraInSupabaseCount": 28,
+    "missingByFolder": {
+      "survey-pra-existing": 4790
+    },
+    "sampleMissing": [
+      "survey-pra-existing/PmNB4PbcNwVlIGzRGhnwygybIHB3-1776800302484-image-geostamp.jpg",
+      "survey-pra-existing/PmNB4PbcNwVlIGzRGhnwygybIHB3-1776800617623-image-geostamp.jpg",
+      "survey-pra-existing/PmNB4PbcNwVlIGzRGhnwygybIHB3-1776800805078-image-geostamp.jpg",
+      "survey-pra-existing/PmNB4PbcNwVlIGzRGhnwygybIHB3-1776800968633-image-geostamp.jpg",
+      "survey-pra-existing/PmNB4PbcNwVlIGzRGhnwygybIHB3-1776801098887-image-geostamp.jpg",
+      "survey-pra-existing/PmNB4PbcNwVlIGzRGhnwygybIHB3-1776801235099-image-geostamp.jpg",
+      "survey-pra-existing/PmNB4PbcNwVlIGzRGhnwygybIHB3-1776801418860-image-geostamp.jpg",
+      "survey-pra-existing/PmNB4PbcNwVlIGzRGhnwygybIHB3-1776801549217-image-geostamp.jpg",
+      "survey-pra-existing/PmNB4PbcNwVlIGzRGhnwygybIHB3-1776801690458-image-geostamp.jpg",
+      "survey-pra-existing/PmNB4PbcNwVlIGzRGhnwygybIHB3-1776801855205-image-geostamp.jpg",
+      "survey-pra-existing/PmNB4PbcNwVlIGzRGhnwygybIHB3-1776801975145-image-geostamp.jpg",
+      "survey-pra-existing/PydrUxA27sWDotNaiHEdvgr0msh2-1776817973890-1776817951181585560927442459933-geostamp.jpg",
+      "survey-pra-existing/PydrUxA27sWDotNaiHEdvgr0msh2-1776818077099-1776818062195104299781622302683-geostamp.jpg",
+      "survey-pra-existing/PydrUxA27sWDotNaiHEdvgr0msh2-1776818229994-17768182108546355534558723741375-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776651533572-1776651506894.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776651590401-1776651573039.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776651699856-1776651662872.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776651746169-17766516731793770693275944254925-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776651802373-1776651764913.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776651871931-17766518037857458096351075379277-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776651891412-1776651859386.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776651981817-1776651963282.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776652070215-1776652047710.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776652094062-17766519837376428031982553765434-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776652197304-1776652170107.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776652246655-17766521523774100261098212441605-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776652371092-17766522725434601917484369496476-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776652469168-1776652454735.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776652554905-1776652537383.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776652585090-17766525010132034750552264654431-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776652730811-1776652685715.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776652822978-17766527461173079748670088740679-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776652875448-1776652841393.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776652961114-1776652940070.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776652969779-1776652871916716883390279191503-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776653064554-1776653000000.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776653139822-1776653065405599139748192705469-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776653141191-1776653127740.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776653222052-1776653155974.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776653344114-1776653320780.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776653434883-17766533472734207567917745707073-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776653493092-1776653450993.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776653582902-17766534824557899434899655777480-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776653683300-1776653631057.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776653818617-1776653796600.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776653823879-17766537955344622626620676381137-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776653889753-1776653870173.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776653935923-17766538632564341635060398122184-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776654015375-1776653991941.-geostamp.jpg",
+      "survey-pra-existing/aDIcZT9Ba8UfOkEmTMFYSF7ME1r2-1776654105957-17766540095211300190695257102086-geostamp.jpg"
+    ]
+  }
+}

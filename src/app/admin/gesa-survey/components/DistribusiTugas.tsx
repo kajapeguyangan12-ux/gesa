@@ -68,6 +68,13 @@ interface Task {
   createdAt: { toDate?: () => Date } | Date | string | number | null;
 }
 
+interface TaskSummary {
+  total: number;
+  pending: number;
+  inProgress: number;
+  completed: number;
+}
+
 type TaskProgressKind = "propose" | "existing" | "pra-existing";
 
 interface TaskProgressSection {
@@ -112,6 +119,7 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
   const TASKS_CACHE_PREFIX = "distribusi_tugas_tasks";
   const TASK_PROGRESS_CACHE_PREFIX = "distribusi_tugas_progress";
   const PETUGAS_CACHE_KEY = "distribusi_tugas_petugas_list_supabase_v1";
+  const TASKS_PAGE_SIZE = 100;
   const [showTaskDropdown, setShowTaskDropdown] = useState(false);
   const [showProposeModal, setShowProposeModal] = useState(false);
   const [showExistingModal, setShowExistingModal] = useState(false);
@@ -131,6 +139,14 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
   
   // Task list states
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskSummary, setTaskSummary] = useState<TaskSummary>({
+    total: 0,
+    pending: 0,
+    inProgress: 0,
+    completed: 0,
+  });
+  const [taskListTotalCount, setTaskListTotalCount] = useState(0);
+  const [taskOffset, setTaskOffset] = useState(0);
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [offlineSettings, setOfflineSettings] = useState<PraExistingOfflineSettings>(DEFAULT_PRA_EXISTING_OFFLINE_SETTINGS);
   const [loadingOfflineSettings] = useState(false);
@@ -156,13 +172,15 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
     if (!isActive) return;
     if (isSuperAdmin && !hasRequestedTaskLoad) {
       setTasks([]);
+      setTaskSummary({ total: 0, pending: 0, inProgress: 0, completed: 0 });
+      setTaskListTotalCount(0);
       setLoadingTasks(false);
       return;
     }
     void fetchTasks();
     // fetchTasks bergantung pada query aktif dan mode super admin; effect ini memang dipicu ulang saat keduanya berubah.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, activeSearchQuery, isSuperAdmin, hasRequestedTaskLoad]);
+  }, [isActive, activeSearchQuery, isSuperAdmin, hasRequestedTaskLoad, selectedTaskFilter]);
 
   // Auto-load KMZ files when detail modal opens
   useEffect(() => {
@@ -175,7 +193,7 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showDetailModal, selectedTaskDetail, isActive]);
 
-  const fetchTasks = async (forceRefresh = false, overrideSearch?: string) => {
+  const fetchTasks = async (forceRefresh = false, overrideSearch?: string, overrideOffset?: number) => {
     try {
       setLoadingTasks(true);
       
@@ -185,6 +203,7 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
       const adminId = currentAdmin?.uid || null;
       const effectiveSearch = typeof overrideSearch === "string" ? overrideSearch.trim() : activeSearchQuery.trim();
       const includeAll = isSuperAdmin;
+      const effectiveOffset = typeof overrideOffset === "number" ? Math.max(0, overrideOffset) : taskOffset;
       
       const cacheKey = `${TASKS_CACHE_PREFIX}_${includeAll ? "super_admin_all" : adminId || "all"}_${effectiveSearch || "all"}`;
       if (forceRefresh) {
@@ -195,6 +214,9 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
       if (adminId && !includeAll) params.set("adminId", adminId);
       if (includeAll) params.set("includeAll", "true");
       if (effectiveSearch) params.set("q", effectiveSearch);
+      if (selectedTaskFilter !== "all") params.set("status", selectedTaskFilter);
+      params.set("offset", String(effectiveOffset));
+      params.set("limit", String(TASKS_PAGE_SIZE));
 
       const response = await fetch(`/api/admin/tasks?${params.toString()}`, {
         cache: "no-store",
@@ -204,13 +226,34 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
         throw new Error("Gagal memuat tugas admin dari Supabase.");
       }
 
-      const payload = (await response.json()) as { tasks?: Task[] };
+      const payload = (await response.json()) as {
+        tasks?: Task[];
+        summary?: Partial<TaskSummary>;
+        pagination?: {
+          totalCount?: number;
+          offset?: number;
+          limit?: number;
+          hasMore?: boolean;
+        };
+      };
       const tasksData = Array.isArray(payload.tasks) ? payload.tasks : [];
+      const nextSummary = payload.summary || {};
       
       setTasks(tasksData);
+      setTaskSummary({
+        total: typeof nextSummary.total === "number" ? nextSummary.total : 0,
+        pending: typeof nextSummary.pending === "number" ? nextSummary.pending : 0,
+        inProgress: typeof nextSummary.inProgress === "number" ? nextSummary.inProgress : 0,
+        completed: typeof nextSummary.completed === "number" ? nextSummary.completed : 0,
+      });
+      setTaskListTotalCount(typeof payload.pagination?.totalCount === "number" ? payload.pagination.totalCount : tasksData.length);
+      setTaskOffset(typeof payload.pagination?.offset === "number" ? payload.pagination.offset : effectiveOffset);
       console.log("Tasks loaded for admin:", tasksData.length);
     } catch (error) {
       console.error("Error fetching tasks:", error);
+      setTasks([]);
+      setTaskSummary({ total: 0, pending: 0, inProgress: 0, completed: 0 });
+      setTaskListTotalCount(0);
     } finally {
       setLoadingTasks(false);
     }
@@ -956,33 +999,25 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
   };
 
   // Filter tasks
-  const filteredTasks = tasks.filter(task => {
-    const matchesFilter = selectedTaskFilter === "all" || task.status === selectedTaskFilter;
-    const normalizedSearch = activeSearchQuery.toLowerCase();
-    const matchesSearch = !normalizedSearch ||
-                         task.title.toLowerCase().includes(normalizedSearch) ||
-                         task.surveyorName.toLowerCase().includes(normalizedSearch) ||
-                         task.surveyorEmail.toLowerCase().includes(normalizedSearch) ||
-                         task.description.toLowerCase().includes(normalizedSearch);
-    return matchesFilter && matchesSearch;
-  });
+  const filteredTasks = tasks;
 
   // Calculate stats
   const stats = {
-    total: tasks.length,
-    pending: tasks.filter(t => t.status === "pending").length,
-    inProgress: tasks.filter(t => t.status === "in-progress").length,
-    completed: tasks.filter(t => t.status === "completed").length,
+    total: taskSummary.total,
+    pending: taskSummary.pending,
+    inProgress: taskSummary.inProgress,
+    completed: taskSummary.completed,
   };
 
   const handleSearchSubmit = (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
     const nextSearch = searchInput.trim();
+    setTaskOffset(0);
     if (isSuperAdmin && !hasRequestedTaskLoad) {
       setHasRequestedTaskLoad(true);
     }
     if (nextSearch === activeSearchQuery) {
-      void fetchTasks(true, nextSearch);
+      void fetchTasks(true, nextSearch, 0);
       return;
     }
     setActiveSearchQuery(nextSearch);
@@ -990,10 +1025,13 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
 
   const handleResetSearch = () => {
     setSearchInput("");
+    setTaskOffset(0);
     if (isSuperAdmin) {
       setActiveSearchQuery("");
       setHasRequestedTaskLoad(false);
       setTasks([]);
+      setTaskSummary({ total: 0, pending: 0, inProgress: 0, completed: 0 });
+      setTaskListTotalCount(0);
       setLoadingTasks(false);
       return;
     }
@@ -1004,7 +1042,22 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
     setActiveSearchQuery("");
   };
 
+  const handleTaskPageChange = (nextOffset: number) => {
+    const safeOffset = Math.max(0, nextOffset);
+    setTaskOffset(safeOffset);
+    void fetchTasks(true, activeSearchQuery, safeOffset);
+  };
+
+  const handleTaskFilterChange = (nextFilter: "all" | "pending" | "in-progress" | "completed") => {
+    setTaskOffset(0);
+    setSelectedTaskFilter(nextFilter);
+  };
+
   const shouldShowSuperAdminEmptyState = isSuperAdmin && !hasRequestedTaskLoad;
+  const currentTaskPage = Math.floor(taskOffset / TASKS_PAGE_SIZE) + 1;
+  const totalTaskPages = Math.max(1, Math.ceil(taskListTotalCount / TASKS_PAGE_SIZE));
+  const pageStart = taskListTotalCount === 0 ? 0 : taskOffset + 1;
+  const pageEnd = taskOffset + filteredTasks.length;
 
   return (
     <>
@@ -1079,7 +1132,7 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
-                  <span className="text-3xl font-bold text-gray-900">{stats.pending}</span>
+                  <span className="text-3xl font-bold text-gray-900">{stats.inProgress}</span>
                 </div>
                 <p className="text-sm font-medium text-gray-600">Sedang Berjalan</p>
               </div>
@@ -1103,7 +1156,7 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
-                  <span className="text-3xl font-bold text-gray-900">{stats.inProgress}</span>
+                  <span className="text-3xl font-bold text-gray-900">{stats.pending}</span>
                 </div>
                 <p className="text-sm font-medium text-gray-600">Pending</p>
               </div>
@@ -1183,25 +1236,25 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
               {/* Filter Status */}
               <div className="flex gap-3">
                 <button
-                  onClick={() => setSelectedTaskFilter("all")}
+                  onClick={() => handleTaskFilterChange("all")}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedTaskFilter === "all" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
                 >
                   Semua
                 </button>
                 <button
-                  onClick={() => setSelectedTaskFilter("pending")}
+                  onClick={() => handleTaskFilterChange("pending")}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedTaskFilter === "pending" ? "bg-yellow-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
                 >
                   Menunggu
                 </button>
                 <button
-                  onClick={() => setSelectedTaskFilter("in-progress")}
+                  onClick={() => handleTaskFilterChange("in-progress")}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedTaskFilter === "in-progress" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
                 >
                   Berjalan
                 </button>
                 <button
-                  onClick={() => setSelectedTaskFilter("completed")}
+                  onClick={() => handleTaskFilterChange("completed")}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedTaskFilter === "completed" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
                 >
                   Selesai
@@ -1274,7 +1327,9 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
             <div className="px-6 py-4 border-b border-gray-200">
               <h2 className="text-lg font-bold text-gray-900">Daftar Tugas</h2>
               <p className="text-sm text-gray-500 mt-1">
-                {shouldShowSuperAdminEmptyState ? "Belum ada data. Jalankan pencarian atau muat semua tugas." : `${filteredTasks.length} tugas ditemukan`}
+                {shouldShowSuperAdminEmptyState
+                  ? "Belum ada data. Jalankan pencarian atau muat semua tugas."
+                  : `${taskListTotalCount} tugas ditemukan${filteredTasks.length > 0 ? `, menampilkan ${pageStart}-${pageEnd}` : ""}`}
               </p>
             </div>
 
@@ -1414,6 +1469,32 @@ export default function DistribusiTugas({ isSuperAdmin = false, isActive = false
                 })}
               </div>
             )}
+
+            {!shouldShowSuperAdminEmptyState && !loadingTasks && taskListTotalCount > TASKS_PAGE_SIZE ? (
+              <div className="flex flex-col gap-3 border-t border-gray-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-gray-500">
+                  Halaman {currentTaskPage} dari {totalTaskPages}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleTaskPageChange(taskOffset - TASKS_PAGE_SIZE)}
+                    disabled={taskOffset === 0}
+                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Sebelumnya
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTaskPageChange(taskOffset + TASKS_PAGE_SIZE)}
+                    disabled={taskOffset + TASKS_PAGE_SIZE >= taskListTotalCount}
+                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Berikutnya
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

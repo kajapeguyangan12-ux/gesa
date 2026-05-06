@@ -1,0 +1,48 @@
+{
+  "dryRun": true,
+  "offset": 9000,
+  "limit": 250,
+  "tables": [
+    "reports",
+    "survey-existing",
+    "survey-apj-propose",
+    "survey-pra-existing"
+  ],
+  "batchSpan": 250,
+  "selectedCount": 250,
+  "updatedCount": 0,
+  "unchangedCount": 250,
+  "failedCount": 0,
+  "byTable": {
+    "reports": {
+      "selectedCount": 0,
+      "updatedCount": 0,
+      "unchangedCount": 0,
+      "failedCount": 0,
+      "urlChanges": 0
+    },
+    "survey-existing": {
+      "selectedCount": 0,
+      "updatedCount": 0,
+      "unchangedCount": 0,
+      "failedCount": 0,
+      "urlChanges": 0
+    },
+    "survey-apj-propose": {
+      "selectedCount": 0,
+      "updatedCount": 0,
+      "unchangedCount": 0,
+      "failedCount": 0,
+      "urlChanges": 0
+    },
+    "survey-pra-existing": {
+      "selectedCount": 250,
+      "updatedCount": 0,
+      "unchangedCount": 250,
+      "failedCount": 0,
+      "urlChanges": 0
+    }
+  },
+  "completedAt": "2026-05-05T14:06:05.256Z",
+  "maxTableSelectedCount": 250
+}

@@ -1,0 +1,17 @@
+{
+  "dryRun": false,
+  "includeExisting": false,
+  "inputFile": "c:\\Users\\ASUS\\Downloads\\1.xlsx",
+  "outputFile": "c:\\Users\\ASUS\\Downloads\\1-supabase.xlsx",
+  "sheetName": "foto_links",
+  "bucket": "report-attachments",
+  "prefix": "petugas-photos/",
+  "totalPhotoRows": 197,
+  "uniqueSourceUrls": 197,
+  "copiedCount": 197,
+  "skippedExistingCount": 0,
+  "failedCount": 0,
+  "rewrittenRowCount": 197,
+  "completedAt": "2026-05-06T06:12:24.949Z",
+  "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\excel-photo-url-retarget-manifest-run-generic-1.json"
+}

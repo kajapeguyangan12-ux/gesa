@@ -1,0 +1,13 @@
+[
+  {
+    "sourceUrl": "https://firebasestorage.googleapis.com/v0/b/aplikasi-survei-lampu-jalan.firebasestorage.app/o/petugas-photos%2F1752075533756_row14_col16.webp?alt=media&token=0136ed42-37e9-4b4d-9986-2cb9ee318af4",
+    "sourceObjectPath": "petugas-photos/1752075533756_row14_col16.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "petugas-photos/1752075533756_row14_col16.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/petugas-photos/1752075533756_row14_col16.webp",
+    "status": "uploaded",
+    "sha256": "2ad117b92b50cd10a27f270609d2f08bf5cb7f196c79d45a91fd8a49401aabff",
+    "contentType": "image/webp",
+    "contentLength": 67492
+  }
+]

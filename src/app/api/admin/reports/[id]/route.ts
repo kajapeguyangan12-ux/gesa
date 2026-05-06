@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { cleanupSupabaseStorageObjects } from "@/lib/supabaseStorageCleanup";
 
 interface ReportDetailRow {
   id: string | null;
@@ -26,6 +27,33 @@ interface ReportDetailRow {
   created_at: string | null;
   grid_data: unknown;
   raw_payload: Record<string, unknown> | null;
+}
+
+interface ReportCleanupRow {
+  id: string | null;
+  fb_doc_id: string | null;
+  grid_data: unknown;
+  raw_payload: Record<string, unknown> | null;
+}
+
+interface ReportUpdateRow {
+  title: string | null;
+  project_title: string | null;
+  project_location: string | null;
+  location: string | null;
+  reporter_name: string | null;
+  officer: string | null;
+  watt: string | null;
+  meter: string | null;
+  voltage: string | null;
+  date: string | null;
+  time: string | null;
+  status: string | null;
+  source: string | null;
+  kabupaten: string | null;
+  project_date: string | null;
+  grid_data: unknown;
+  raw_payload: Record<string, unknown>;
 }
 
 function pickString(...values: unknown[]) {
@@ -125,6 +153,25 @@ export async function DELETE(
     const { id } = await params;
     const supabase = getSupabaseAdminClient();
 
+    const { data, error: readError } = await supabase
+      .from("reports")
+      .select("id, fb_doc_id, grid_data, raw_payload")
+      .or(`id.eq.${id},fb_doc_id.eq.${id}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (readError) {
+      throw new Error(readError.message);
+    }
+
+    const existing = data as ReportCleanupRow | null;
+
+    if (!existing) {
+      return NextResponse.json({ error: "Report tidak ditemukan." }, { status: 404 });
+    }
+
+    await cleanupSupabaseStorageObjects(existing.grid_data, existing.raw_payload);
+
     const { error } = await supabase
       .from("reports")
       .delete()
@@ -150,7 +197,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const patch = (await request.json()) as Record<string, unknown>;
-    const supabase = getSupabaseAdminClient() as any;
+    const supabase = getSupabaseAdminClient();
 
     const { data: existing, error: fetchError } = await supabase
       .from("reports")
@@ -180,7 +227,7 @@ export async function PATCH(
       updatedAt: normalizeTimestamp(patch.updatedAt, modifiedAt) || modifiedAt,
     };
 
-    const updateRow = {
+    const updateRow: ReportUpdateRow = {
       title: pickString(
         patch.title,
         patch.projectTitle,
@@ -240,8 +287,13 @@ export async function PATCH(
       },
     };
 
-    const { error: updateError } = await supabase
-      .from("reports")
+    const reportsTable = supabase.from("reports") as unknown as {
+      update: (values: ReportUpdateRow) => {
+        or: (filter: string) => Promise<{ error: { message: string } | null }>;
+      };
+    };
+
+    const { error: updateError } = await reportsTable
       .update(updateRow)
       .or(`id.eq.${id},fb_doc_id.eq.${id}`);
 

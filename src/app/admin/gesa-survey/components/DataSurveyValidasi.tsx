@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 import { formatWitaDateTime } from "@/utils/dateTime";
+import { toStorageAssetUrl } from "@/utils/storageAssetUrl";
 import { fetchAdminSurveyRows, type AdminSurveyRow } from "./supabaseSurveyClient";
 import { getSupabaseBrowserClient } from "@/lib/supabaseBrowser";
 import { resolveSurveyTable } from "@/lib/supabaseHybrid";
@@ -148,6 +149,7 @@ async function handleConflictAndReload(response: Response, reload: () => Promise
 
 export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupaten?: string | null }) {
   const FULL_FETCH_LIMIT = 10000;
+  const OVERFLOW_FETCH_BATCH_SIZE = 1000;
   const LIVE_REFRESH_INTERVAL_MS = 30000;
 
   const isDocumentVisible = () => {
@@ -180,6 +182,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     propose: 0,
     praExisting: 0,
   });
+  const [actualTotalSurveys, setActualTotalSurveys] = useState(0);
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -271,11 +274,45 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       propose: 0,
       praExisting: 0,
     });
+    setActualTotalSurveys(0);
   }, [activeKabupaten]);
 
   useEffect(() => {
     void fetchAllSurveys();
   }, [activeKabupaten]);
+
+  const loadOverflowSurveys = async (
+    startOffset: number,
+    totalRows: number,
+    changedSince?: string
+  ) => {
+    const extraRows: Survey[] = [];
+    let offset = startOffset;
+
+    while (offset < totalRows) {
+      const payload = await fetchAdminSurveyRows({
+        activeKabupaten,
+        statuses: ["diverifikasi"],
+        changedSince,
+        offset,
+        limit: OVERFLOW_FETCH_BATCH_SIZE,
+      });
+
+      const batchRows = payload.rows.map(mapSupabaseSurvey);
+      if (batchRows.length === 0) {
+        break;
+      }
+
+      extraRows.push(...batchRows);
+      offset += batchRows.length;
+
+      if (batchRows.length < OVERFLOW_FETCH_BATCH_SIZE) {
+        break;
+      }
+    }
+
+    return extraRows;
+  };
 
   const fetchAllSurveys = async (forceRefresh = false) => {
     const requestSeq = ++surveysRequestSeqRef.current;
@@ -286,19 +323,34 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         setLoading(true);
       }
       setFetchError("");
-      
-      const payload = await fetchAdminSurveyRows({
-        activeKabupaten,
-        statuses: ["diverifikasi"],
-        limit: FULL_FETCH_LIMIT,
-      });
+
+      const [payload, summaryPayload] = await Promise.all([
+        fetchAdminSurveyRows({
+          activeKabupaten,
+          statuses: ["diverifikasi"],
+          limit: FULL_FETCH_LIMIT,
+        }),
+        fetchAdminSurveyRows({
+          activeKabupaten,
+          statuses: ["diverifikasi"],
+          summaryOnly: true,
+        }),
+      ]);
       if (requestSeq !== surveysRequestSeqRef.current) {
         return;
       }
       const allSurveys = payload.rows.map(mapSupabaseSurvey);
+      if (summaryPayload.counts.total > allSurveys.length) {
+        const overflowRows = await loadOverflowSurveys(allSurveys.length, summaryPayload.counts.total);
+        if (requestSeq !== surveysRequestSeqRef.current) {
+          return;
+        }
+        allSurveys.push(...overflowRows);
+      }
       setSurveys(filterSuppressedSurveys(allSurveys));
       setDataLoaded(true);
       setStats(payload.counts);
+      setActualTotalSurveys(summaryPayload.counts.total);
       latestFingerprintRef.current = buildFingerprint(payload.counts, payload.lastDataChangeAt);
       latestDataChangeRef.current = payload.lastDataChangeAt || payload.generatedAt || latestDataChangeRef.current;
       setDataSource(payload.source || "supabase");
@@ -324,16 +376,26 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
     const requestSeq = ++surveysRequestSeqRef.current;
     const payload = await fetchAdminSurveyRows({
       activeKabupaten,
+      statuses: ["diverifikasi"],
       limit: FULL_FETCH_LIMIT,
       changedSince,
     });
     if (requestSeq !== surveysRequestSeqRef.current) {
       return;
     }
-    const deltaRows = filterSuppressedSurveys(payload.rows.map(mapSupabaseSurvey));
-    setSurveys((current) => mergeSurveyDelta(current, deltaRows));
+    const deltaRows = payload.rows.map(mapSupabaseSurvey);
+    if (payload.totalRows > deltaRows.length) {
+      const overflowDeltaRows = await loadOverflowSurveys(deltaRows.length, payload.totalRows, changedSince);
+      if (requestSeq !== surveysRequestSeqRef.current) {
+        return;
+      }
+      deltaRows.push(...overflowDeltaRows);
+    }
+    const filteredDeltaRows = filterSuppressedSurveys(deltaRows);
+    setSurveys((current) => mergeSurveyDelta(current, filteredDeltaRows));
     setDataLoaded(true);
     setStats(payload.counts);
+    setActualTotalSurveys(payload.counts.total);
     latestFingerprintRef.current = buildFingerprint(payload.counts, payload.lastDataChangeAt);
     latestDataChangeRef.current = payload.lastDataChangeAt || payload.generatedAt || latestDataChangeRef.current;
     setDataSource(payload.source || "supabase");
@@ -356,6 +418,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
             statuses: ["diverifikasi"],
             includeDetails: false,
             compact: true,
+            limit: 1,
           });
           const nextFingerprint = buildFingerprint(payload.counts, payload.lastDataChangeAt);
           if (nextFingerprint !== latestFingerprintRef.current) {
@@ -1100,7 +1163,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
               />
             </div>
             <div className="ml-auto text-sm text-gray-600 font-medium">
-              Total: {filteredSurveys.length} dari {surveys.length} survey
+              Total: {filteredSurveys.length} dari {actualTotalSurveys || surveys.length} survey
             </div>
           </div>
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
@@ -1403,25 +1466,25 @@ function DetailModal({
               {survey.fotoTiangAPM && (
                 <div>
                   <p className="text-sm font-medium text-gray-700 mb-2">Foto Tiang APM</p>
-                  <img src={survey.fotoTiangAPM} alt="Tiang APM" className="w-full h-48 object-cover rounded-lg border border-gray-200" />
+                  <img src={toStorageAssetUrl(survey.fotoTiangAPM)} alt="Tiang APM" className="w-full h-48 object-cover rounded-lg border border-gray-200" />
                 </div>
               )}
               {survey.fotoTitikActual && (
                 <div>
                   <p className="text-sm font-medium text-gray-700 mb-2">Foto Titik Actual</p>
-                  <img src={survey.fotoTitikActual} alt="Titik Actual" className="w-full h-48 object-cover rounded-lg border border-gray-200" />
+                  <img src={toStorageAssetUrl(survey.fotoTitikActual)} alt="Titik Actual" className="w-full h-48 object-cover rounded-lg border border-gray-200" />
                 </div>
               )}
               {survey.fotoKemerataan && (
                 <div>
                   <p className="text-sm font-medium text-gray-700 mb-2">Foto Kemerataan</p>
-                  <img src={survey.fotoKemerataan} alt="Kemerataan" className="w-full h-48 object-cover rounded-lg border border-gray-200" />
+                  <img src={toStorageAssetUrl(survey.fotoKemerataan)} alt="Kemerataan" className="w-full h-48 object-cover rounded-lg border border-gray-200" />
                 </div>
               )}
               {survey.fotoAktual && (
                 <div>
                   <p className="text-sm font-medium text-gray-700 mb-2">Foto Aktual</p>
-                  <img src={survey.fotoAktual} alt="Foto Aktual" className="w-full h-48 object-cover rounded-lg border border-gray-200" />
+                  <img src={toStorageAssetUrl(survey.fotoAktual)} alt="Foto Aktual" className="w-full h-48 object-cover rounded-lg border border-gray-200" />
                 </div>
               )}
             </div>

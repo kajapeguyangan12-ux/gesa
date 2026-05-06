@@ -7,8 +7,6 @@ import {
   getDocs,
   query,
   orderBy,
-  where,
-  DocumentData,
   QueryConstraint,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -17,8 +15,10 @@ import { FIREBASE_COLLECTIONS } from "@/utils/constants";
 import { getActiveKabupatenFromStorage } from "@/utils/helpers";
 
 /**
- * Fetch all surveys from Firestore
+ * Legacy Firestore CRUD yang sudah tidak direferensikan oleh alur aktif.
+ * Diarsipkan agar tidak lagi dianggap sebagai service utama aplikasi.
  */
+
 export async function fetchSurveys(): Promise<SurveyData[]> {
   try {
     const surveysRef = collection(db, FIREBASE_COLLECTIONS.SURVEYS);
@@ -26,10 +26,10 @@ export async function fetchSurveys(): Promise<SurveyData[]> {
     const querySnapshot = await getDocs(q);
 
     const surveys: SurveyData[] = [];
-    querySnapshot.forEach((doc) => {
+    querySnapshot.forEach((snapshot) => {
       surveys.push({
-        id: doc.id,
-        ...doc.data(),
+        id: snapshot.id,
+        ...snapshot.data(),
       } as SurveyData);
     });
 
@@ -40,9 +40,6 @@ export async function fetchSurveys(): Promise<SurveyData[]> {
   }
 }
 
-/**
- * Fetch surveys with filters
- */
 export async function fetchSurveysWithFilters(
   filters: QueryConstraint[]
 ): Promise<SurveyData[]> {
@@ -52,10 +49,10 @@ export async function fetchSurveysWithFilters(
     const querySnapshot = await getDocs(q);
 
     const surveys: SurveyData[] = [];
-    querySnapshot.forEach((doc) => {
+    querySnapshot.forEach((snapshot) => {
       surveys.push({
-        id: doc.id,
-        ...doc.data(),
+        id: snapshot.id,
+        ...snapshot.data(),
       } as SurveyData);
     });
 
@@ -66,9 +63,6 @@ export async function fetchSurveysWithFilters(
   }
 }
 
-/**
- * Add a new survey to Firestore
- */
 export async function addSurvey(
   surveyData: Omit<SurveyData, "id">
 ): Promise<string> {
@@ -89,9 +83,6 @@ export async function addSurvey(
   }
 }
 
-/**
- * Update a survey in Firestore
- */
 export async function updateSurvey(
   surveyId: string,
   updates: Partial<SurveyData>
@@ -108,9 +99,6 @@ export async function updateSurvey(
   }
 }
 
-/**
- * Delete a survey from Firestore
- */
 export async function deleteSurvey(surveyId: string): Promise<void> {
   try {
     const surveyRef = doc(db, FIREBASE_COLLECTIONS.SURVEYS, surveyId);

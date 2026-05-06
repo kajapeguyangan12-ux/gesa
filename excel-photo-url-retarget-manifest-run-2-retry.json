@@ -1,0 +1,26 @@
+[
+  {
+    "sourceUrl": "https://firebasestorage.googleapis.com/v0/b/aplikasi-survei-lampu-jalan.firebasestorage.app/o/petugas-photos%2F1752240622037_row1_col14.webp?alt=media&token=efdd5a38-498e-4c80-8ede-cbbba666f231",
+    "sourceObjectPath": "petugas-photos/1752240622037_row1_col14.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "petugas-photos/1752240622037_row1_col14.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/petugas-photos/1752240622037_row1_col14.webp",
+    "status": "skipped-existing"
+  },
+  {
+    "sourceUrl": "https://firebasestorage.googleapis.com/v0/b/aplikasi-survei-lampu-jalan.firebasestorage.app/o/petugas-photos%2F1752245067618_row22_col18.webp?alt=media&token=7b44ca34-715a-40a6-8a7a-996fc08c0420",
+    "sourceObjectPath": "petugas-photos/1752245067618_row22_col18.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "petugas-photos/1752245067618_row22_col18.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/petugas-photos/1752245067618_row22_col18.webp",
+    "status": "skipped-existing"
+  },
+  {
+    "sourceUrl": "https://firebasestorage.googleapis.com/v0/b/aplikasi-survei-lampu-jalan.firebasestorage.app/o/petugas-photos%2F1752246448905_row29_col4.webp?alt=media&token=b52aa157-3f3f-49c2-a697-c64c8bab92bf",
+    "sourceObjectPath": "petugas-photos/1752246448905_row29_col4.webp",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "petugas-photos/1752246448905_row29_col4.webp",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/petugas-photos/1752246448905_row29_col4.webp",
+    "status": "skipped-existing"
+  }
+]

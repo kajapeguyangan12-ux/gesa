@@ -4,9 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { doc, updateDoc } from "firebase/firestore";
-import { db, storage } from "@/lib/firebase";
-import { ref, getDownloadURL } from "firebase/storage";
 import dynamic from "next/dynamic";
 
 // Dynamic import for KMZ Map Preview
@@ -270,28 +267,8 @@ function TasksContent() {
         console.log(`[LOADING] ${filename} from:`, url);
         
         try {
-          let downloadUrl = url;
-          
-          // Jika URL dari Firebase Storage, dapatkan fresh download URL
-          if (url.includes('firebasestorage.googleapis.com')) {
-            // Extract path dari URL
-            const urlObj = new URL(url);
-            const pathMatch = urlObj.pathname.match(/\/o\/(.+)/);
-            
-            if (pathMatch) {
-              const encodedPath = pathMatch[1].split('?')[0];
-              const decodedPath = decodeURIComponent(encodedPath);
-              console.log("[STORAGE] Getting fresh download URL for:", decodedPath);
-              
-              // Get fresh download URL dengan token yang valid
-              const storageRef = ref(storage, decodedPath);
-              downloadUrl = await getDownloadURL(storageRef);
-              console.log("[SUCCESS] Fresh URL obtained");
-            }
-          }
-          
           // Download file menggunakan fetch
-          const response = await fetch(downloadUrl, {
+          const response = await fetch(url, {
             method: 'GET',
             mode: 'cors',
             cache: 'default',

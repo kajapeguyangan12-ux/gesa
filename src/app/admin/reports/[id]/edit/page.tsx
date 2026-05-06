@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
+import { openStorageAssetUrl, toStorageAssetUrl } from "@/utils/storageAssetUrl";
 
 type CellValue = number | { value: number; type?: "normal" | "titik-api"; note?: string; attachmentUrl?: string; [key: string]: any };
 
@@ -117,7 +118,7 @@ function ReportEditContent() {
       cell?.imageUrl ||
       cell?.url ||
       "";
-    return { value, type, note, attachmentUrl };
+    return { value, type, note, attachmentUrl: toStorageAssetUrl(String(attachmentUrl || "").trim()) };
   };
 
   const parseGridData = (data: any): CellValue[][] => {
@@ -321,7 +322,7 @@ function ReportEditContent() {
     setModalValue(numValue ? String(numValue) : "");
     setModalType(type);
     setModalNote(note);
-    setModalAttachmentUrl(attachmentUrl);
+    setModalAttachmentUrl(toStorageAssetUrl(String(attachmentUrl || "").trim()));
     setModalOpen(true);
   };
 
@@ -332,7 +333,7 @@ function ReportEditContent() {
       const next = prev.map((row) => row.slice());
       const current = prev[modalRow]?.[modalCol];
       const base = typeof current === "object" && current ? { ...(current as any) } : {};
-      const attachmentUrl = modalAttachmentUrl.trim();
+      const attachmentUrl = toStorageAssetUrl(modalAttachmentUrl).trim();
       // Preserve existing attachment field name if used in DB
       if ("lampiran" in base) base.lampiran = attachmentUrl || "";
       if ("photoUrl" in base) base.photoUrl = attachmentUrl || "";
@@ -746,15 +747,19 @@ function ReportEditContent() {
               <div>
                 <label className="block text-sm font-bold text-gray-900 mb-2">Lampiran (URL)</label>
                 <input
-                  value={modalAttachmentUrl}
+                  value={toStorageAssetUrl(modalAttachmentUrl)}
                   onChange={(e) => setModalAttachmentUrl(e.target.value)}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900"
                   placeholder="https://..."
                 />
                 {modalAttachmentUrl ? (
-                  <div className="mt-3 rounded-lg border border-gray-200 overflow-hidden bg-gray-50">
-                    <img src={modalAttachmentUrl} alt="Lampiran" className="w-full h-60 object-contain" />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openStorageAssetUrl(modalAttachmentUrl)}
+                    className="mt-3 block w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
+                  >
+                    <img src={toStorageAssetUrl(modalAttachmentUrl)} alt="Lampiran" className="h-60 w-full object-contain" />
+                  </button>
                 ) : null}
               </div>
 

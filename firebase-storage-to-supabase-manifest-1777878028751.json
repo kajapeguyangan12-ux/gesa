@@ -1,0 +1,38 @@
+[
+  {
+    "sourcePath": "survey-pra-existing/2fBZ4BPHo5RrqwGVts9H8hG7w1C3-1775950845774-17759507603188664390283799191033-geostamp.jpg",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-pra-existing/2fBZ4BPHo5RrqwGVts9H8hG7w1C3-1775950845774-17759507603188664390283799191033-geostamp.jpg",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-pra-existing/2fBZ4BPHo5RrqwGVts9H8hG7w1C3-1775950845774-17759507603188664390283799191033-geostamp.jpg",
+    "contentType": "image/webp",
+    "size": 10742914,
+    "status": "uploaded-upsert"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997910548-image-geostamp.jpg",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997910548-image-geostamp.jpg",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776997910548-image-geostamp.jpg",
+    "contentType": "image/webp",
+    "size": 1910570,
+    "status": "uploaded-upsert"
+  },
+  {
+    "sourcePath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998298042-17769982686805024664265356694831-geostamp.jpg",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998298042-17769982686805024664265356694831-geostamp.jpg",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-pra-existing/K5UcwUg47FQWwrMlIMlQiS8hYO73-1776998298042-17769982686805024664265356694831-geostamp.jpg",
+    "contentType": "image/webp",
+    "size": 971498,
+    "status": "uploaded-upsert"
+  },
+  {
+    "sourcePath": "survey-pra-existing/OZ7lL9nJGjXE3bldn4IvwuDFbA13-1776917731265-17769177120943259136139298914328-geostamp.jpg",
+    "destinationBucket": "report-attachments",
+    "destinationPath": "survey-pra-existing/OZ7lL9nJGjXE3bldn4IvwuDFbA13-1776917731265-17769177120943259136139298914328-geostamp.jpg",
+    "publicUrl": "https://vsglioxyjshcvfpnxwcq.supabase.co/storage/v1/object/public/report-attachments/survey-pra-existing/OZ7lL9nJGjXE3bldn4IvwuDFbA13-1776917731265-17769177120943259136139298914328-geostamp.jpg",
+    "contentType": "image/webp",
+    "size": 1211904,
+    "status": "uploaded-upsert"
+  }
+]

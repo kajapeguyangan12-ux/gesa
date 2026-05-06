@@ -1,0 +1,144 @@
+{
+  "kind": "survey-pra-existing-missing-photo-copy-progress",
+  "dryRun": false,
+  "bucket": "report-attachments",
+  "prefix": "survey-pra-existing/",
+  "batchSize": 200,
+  "firebaseCount": 12279,
+  "supabaseCountBefore": 10035,
+  "missingCountBefore": 2245,
+  "nextIndex": 2245,
+  "completedBatches": 12,
+  "totals": {
+    "uploadedCount": 2241,
+    "failedCount": 4
+  },
+  "history": [
+    {
+      "batchNumber": 1,
+      "startIndex": 0,
+      "selectedCount": 200,
+      "uploadedCount": 200,
+      "failedCount": 0,
+      "failed": [],
+      "completedAt": "2026-05-04T16:47:00.835Z"
+    },
+    {
+      "batchNumber": 2,
+      "startIndex": 200,
+      "selectedCount": 200,
+      "uploadedCount": 200,
+      "failedCount": 0,
+      "failed": [],
+      "completedAt": "2026-05-04T16:54:42.378Z"
+    },
+    {
+      "batchNumber": 3,
+      "startIndex": 400,
+      "selectedCount": 200,
+      "uploadedCount": 200,
+      "failedCount": 0,
+      "failed": [],
+      "completedAt": "2026-05-04T17:03:07.496Z"
+    },
+    {
+      "batchNumber": 4,
+      "startIndex": 600,
+      "selectedCount": 200,
+      "uploadedCount": 200,
+      "failedCount": 0,
+      "failed": [],
+      "completedAt": "2026-05-04T17:10:46.040Z"
+    },
+    {
+      "batchNumber": 5,
+      "startIndex": 800,
+      "selectedCount": 200,
+      "uploadedCount": 200,
+      "failedCount": 0,
+      "failed": [],
+      "completedAt": "2026-05-04T17:18:30.370Z"
+    },
+    {
+      "batchNumber": 6,
+      "startIndex": 1000,
+      "selectedCount": 200,
+      "uploadedCount": 200,
+      "failedCount": 0,
+      "failed": [],
+      "completedAt": "2026-05-04T17:26:09.393Z"
+    },
+    {
+      "batchNumber": 7,
+      "startIndex": 1200,
+      "selectedCount": 200,
+      "uploadedCount": 200,
+      "failedCount": 0,
+      "failed": [],
+      "completedAt": "2026-05-04T17:34:29.469Z"
+    },
+    {
+      "batchNumber": 8,
+      "startIndex": 1400,
+      "selectedCount": 200,
+      "uploadedCount": 200,
+      "failedCount": 0,
+      "failed": [],
+      "completedAt": "2026-05-04T17:44:22.667Z"
+    },
+    {
+      "batchNumber": 9,
+      "startIndex": 1600,
+      "selectedCount": 200,
+      "uploadedCount": 196,
+      "failedCount": 4,
+      "failed": [
+        {
+          "objectPath": "survey-pra-existing/t7VPcYkVikVFDTwug1HFBLYc9hz1-1776732094670-2026-04-2108.40.444123842560667609708-geostamp.jpg",
+          "error": "read ECONNRESET"
+        },
+        {
+          "objectPath": "survey-pra-existing/t7VPcYkVikVFDTwug1HFBLYc9hz1-1776732156915-2026-04-2108.41.533087451034714006472-geostamp.jpg",
+          "error": "fetch failed"
+        },
+        {
+          "objectPath": "survey-pra-existing/t7VPcYkVikVFDTwug1HFBLYc9hz1-1776732218054-2026-04-2108.42.588554832583506683730-geostamp.jpg",
+          "error": "fetch failed"
+        },
+        {
+          "objectPath": "survey-pra-existing/t7VPcYkVikVFDTwug1HFBLYc9hz1-1776732267781-2026-04-2108.43.546439455226853883006-geostamp.jpg",
+          "error": "fetch failed"
+        }
+      ],
+      "completedAt": "2026-05-04T18:01:30.379Z"
+    },
+    {
+      "batchNumber": 10,
+      "startIndex": 1800,
+      "selectedCount": 200,
+      "uploadedCount": 200,
+      "failedCount": 0,
+      "failed": [],
+      "completedAt": "2026-05-04T18:22:48.881Z"
+    },
+    {
+      "batchNumber": 11,
+      "startIndex": 2000,
+      "selectedCount": 200,
+      "uploadedCount": 200,
+      "failedCount": 0,
+      "failed": [],
+      "completedAt": "2026-05-04T18:48:28.488Z"
+    },
+    {
+      "batchNumber": 12,
+      "startIndex": 2200,
+      "selectedCount": 45,
+      "uploadedCount": 45,
+      "failedCount": 0,
+      "failed": [],
+      "completedAt": "2026-05-04T18:51:18.005Z"
+    }
+  ],
+  "updatedAt": "2026-05-04T18:51:18.005Z"
+}

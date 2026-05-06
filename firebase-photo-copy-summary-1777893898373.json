@@ -1,0 +1,803 @@
+{
+  "bucket": "report-attachments",
+  "firebasePhotoRefs": 4382,
+  "distinctFirebaseObjects": 1468,
+  "uploadedCount": 257,
+  "failedCount": 158,
+  "stillMissingCount": 158,
+  "failed": [
+    {
+      "objectPath": "tasks/kmz/1775101459481_BONGAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775101533608_DAJAN PEKEN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775101569234_DAUH PEKEN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775101606093_DELOD PEKEN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775101638626_DENBANTAS.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775101716950_SESANDAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775101751714_SUBAMIA.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775101840285_WANASARI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775437765247_Kediri.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775438274178_Bengkel.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775439543406_Nyambu.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775439617718_Pandak Bandung.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775439722759_Pejaten.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775699933655_SELEMADEG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775699979790_SELEMADEG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775700549562_SELEMADEG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775700671122_WANAGIRI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775700710441_WANAGIRI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775700753937_WANAGIRI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775700809105_WANAGIRI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775701232087_BAJERA UTARA.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775701257949_BAJERA UTARA.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775701314693_BAJERA UTARA.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775701345469_BAJERA UTARA.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775701448965_BEREMBENG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775701469508_BEREMBENG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775701508660_BEREMBENG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775701554059_BEREMBENG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775701600835_BEREMBENG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775701637339_SERAMPINGAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775701907145_MANIKYANG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775701930297_MANIKYANG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775701954025_MANIKYANG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775702030248_ANTAP.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775702078632_ANTAP.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775702104520_ANTAP.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775702125864_ANTAP.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775702170960_ANTAP.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775702195080_ANTAP.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775714494115_BATURITI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775714732648_KUKUH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775714815608_TISTA.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775715633891_TISTA.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775715677635_TISTA.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775715808869_MEGATI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775716540205_PEREAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775716677137_PEREAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775716790759_LUWUS.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775716870355_LUWUS.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775716906513_LUWUS.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775716934773_LUWUS.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717047037_APUAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717108003_SEMBUNG GEDE.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717169804_APUAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717321316_ANGSERI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717377246_ANGSERI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717485704_TIMPAG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717593427_BANGLI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717680607_BATUAJI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717684149_MARGA DAJAN PURI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717717160_MARGA DAJAN PURI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717745439_MARGA DAJAN PURI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717797973_MARGA DAJAN PURI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717850669_MARGA DAUH PURI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717915419_MARGA DAUH PURI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717957043_KUWUM.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775717978638_KUWUM.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775718014025_KUWUM.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775718063845_KUWUM.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775718069534_BANGLI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775718281405_BATANNYUH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775718444956_BATANNYUH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775718614625_SAMSAM.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775718784789_BATURITI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775718915964_KUKUH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775719009526_KUKUH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775719043876_KUKUH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775719068035_KUKUH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775719397840_MEKARSARI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775719424449_TEGALJADI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775719432758_MEKARSARI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775719472163_MEKARSARI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775719508349_TEGALJADI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775719554569_TEGALJADI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775719678769_CAU BELAYU.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775720754753_BANTAS.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775721333834_BERABAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775721650159_BERABAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775721714043_BERABAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775721737936_BERABAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775721908388_TANGGUNTITI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775721938710_TANGGUNTITI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775721965273_TANGGUNTITI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775722030558_TANGGUNTITI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775722276075_MAMBANG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775722915229_JEGU.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775722942638_JEGU.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775722964438_JEGU.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775722985437_JEGU.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775723157228_JEGU.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775723373034_RIANG GEDE.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775723820546_BELIMBING.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775723951078_BIAUNG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775724284954_LALANGLINGGAH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775724321888_PEREAN TENGAH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775724353358_SELABIH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775724476915_BATUNGSEL.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775724511549_ANTOSARI.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775724527779_BATUNGSEL.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775724549087_BATUNGSEL.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775724585947_BELATUNGAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775724654380_BELATUNGAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775724675390_BELATUNGAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775724694023_SANGKETAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775724694292_BELATUNGAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775725037766_KEBON PADANGAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775725147527_MUNDUK TEMU.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775725174217_MUNDUK TEMU.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775725199563_MUNDUK TEMU.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775725223324_MUNDUK TEMU.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775725297565_MUNDUK TEMU.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775731324829_PADANGAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775731352782_PADANGAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775731380269_PADANGAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775731401528_PADANGAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775731630636_PAJAHAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775731676235_PAJAHAN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775733999723_PENEBEL.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775734024059_PENEBEL.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775734069163_PENEBEL.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775734139836_PENEBEL.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775734163971_PENEBEL.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775734498496_PENEBEL.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775734528983_PENEBEL.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775735781559_WONGAYA GEDE.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775735873111_WONGAYA GEDE.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775735927030_WONGAYA GEDE.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775735951463_WONGAYA GEDE.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775735986830_WONGAYA GEDE.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775736030430_TAJEN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775736062502_TAJEN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775736092458_SAMSAM.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775736188510_TAJEN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775736279332_TAJEN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775736314757_TAJEN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775736356452_TAJEN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775736435538_TAJEN.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775736544737_TIYING GADING.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775736596593_TEGALINGGAH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775736656481_TEGALINGGAH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775736783435_TIYING GADING.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775736903712_MUNDEH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775737119178_MUNDEH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775737470956_MUNDEH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775737578957_ANGKAH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775737690502_ANGKAH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775737709953_ANGKAH.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    },
+    {
+      "objectPath": "tasks/kmz/1775737853962_LUMBUNG.kmz",
+      "error": "mime type application/vnd.google-earth.kmz is not supported"
+    }
+  ],
+  "stillMissing": [
+    "tasks/kmz/1775101459481_BONGAN.kmz",
+    "tasks/kmz/1775101533608_DAJAN PEKEN.kmz",
+    "tasks/kmz/1775101569234_DAUH PEKEN.kmz",
+    "tasks/kmz/1775101606093_DELOD PEKEN.kmz",
+    "tasks/kmz/1775101638626_DENBANTAS.kmz",
+    "tasks/kmz/1775101716950_SESANDAN.kmz",
+    "tasks/kmz/1775101751714_SUBAMIA.kmz",
+    "tasks/kmz/1775101840285_WANASARI.kmz",
+    "tasks/kmz/1775437765247_Kediri.kmz",
+    "tasks/kmz/1775438274178_Bengkel.kmz",
+    "tasks/kmz/1775439543406_Nyambu.kmz",
+    "tasks/kmz/1775439617718_Pandak Bandung.kmz",
+    "tasks/kmz/1775439722759_Pejaten.kmz",
+    "tasks/kmz/1775699933655_SELEMADEG.kmz",
+    "tasks/kmz/1775699979790_SELEMADEG.kmz",
+    "tasks/kmz/1775700549562_SELEMADEG.kmz",
+    "tasks/kmz/1775700671122_WANAGIRI.kmz",
+    "tasks/kmz/1775700710441_WANAGIRI.kmz",
+    "tasks/kmz/1775700753937_WANAGIRI.kmz",
+    "tasks/kmz/1775700809105_WANAGIRI.kmz",
+    "tasks/kmz/1775701232087_BAJERA UTARA.kmz",
+    "tasks/kmz/1775701257949_BAJERA UTARA.kmz",
+    "tasks/kmz/1775701314693_BAJERA UTARA.kmz",
+    "tasks/kmz/1775701345469_BAJERA UTARA.kmz",
+    "tasks/kmz/1775701448965_BEREMBENG.kmz",
+    "tasks/kmz/1775701469508_BEREMBENG.kmz",
+    "tasks/kmz/1775701508660_BEREMBENG.kmz",
+    "tasks/kmz/1775701554059_BEREMBENG.kmz",
+    "tasks/kmz/1775701600835_BEREMBENG.kmz",
+    "tasks/kmz/1775701637339_SERAMPINGAN.kmz",
+    "tasks/kmz/1775701907145_MANIKYANG.kmz",
+    "tasks/kmz/1775701930297_MANIKYANG.kmz",
+    "tasks/kmz/1775701954025_MANIKYANG.kmz",
+    "tasks/kmz/1775702030248_ANTAP.kmz",
+    "tasks/kmz/1775702078632_ANTAP.kmz",
+    "tasks/kmz/1775702104520_ANTAP.kmz",
+    "tasks/kmz/1775702125864_ANTAP.kmz",
+    "tasks/kmz/1775702170960_ANTAP.kmz",
+    "tasks/kmz/1775702195080_ANTAP.kmz",
+    "tasks/kmz/1775714494115_BATURITI.kmz",
+    "tasks/kmz/1775714732648_KUKUH.kmz",
+    "tasks/kmz/1775714815608_TISTA.kmz",
+    "tasks/kmz/1775715633891_TISTA.kmz",
+    "tasks/kmz/1775715677635_TISTA.kmz",
+    "tasks/kmz/1775715808869_MEGATI.kmz",
+    "tasks/kmz/1775716540205_PEREAN.kmz",
+    "tasks/kmz/1775716677137_PEREAN.kmz",
+    "tasks/kmz/1775716790759_LUWUS.kmz",
+    "tasks/kmz/1775716870355_LUWUS.kmz",
+    "tasks/kmz/1775716906513_LUWUS.kmz",
+    "tasks/kmz/1775716934773_LUWUS.kmz",
+    "tasks/kmz/1775717047037_APUAN.kmz",
+    "tasks/kmz/1775717108003_SEMBUNG GEDE.kmz",
+    "tasks/kmz/1775717169804_APUAN.kmz",
+    "tasks/kmz/1775717321316_ANGSERI.kmz",
+    "tasks/kmz/1775717377246_ANGSERI.kmz",
+    "tasks/kmz/1775717485704_TIMPAG.kmz",
+    "tasks/kmz/1775717593427_BANGLI.kmz",
+    "tasks/kmz/1775717680607_BATUAJI.kmz",
+    "tasks/kmz/1775717684149_MARGA DAJAN PURI.kmz",
+    "tasks/kmz/1775717717160_MARGA DAJAN PURI.kmz",
+    "tasks/kmz/1775717745439_MARGA DAJAN PURI.kmz",
+    "tasks/kmz/1775717797973_MARGA DAJAN PURI.kmz",
+    "tasks/kmz/1775717850669_MARGA DAUH PURI.kmz",
+    "tasks/kmz/1775717915419_MARGA DAUH PURI.kmz",
+    "tasks/kmz/1775717957043_KUWUM.kmz",
+    "tasks/kmz/1775717978638_KUWUM.kmz",
+    "tasks/kmz/1775718014025_KUWUM.kmz",
+    "tasks/kmz/1775718063845_KUWUM.kmz",
+    "tasks/kmz/1775718069534_BANGLI.kmz",
+    "tasks/kmz/1775718281405_BATANNYUH.kmz",
+    "tasks/kmz/1775718444956_BATANNYUH.kmz",
+    "tasks/kmz/1775718614625_SAMSAM.kmz",
+    "tasks/kmz/1775718784789_BATURITI.kmz",
+    "tasks/kmz/1775718915964_KUKUH.kmz",
+    "tasks/kmz/1775719009526_KUKUH.kmz",
+    "tasks/kmz/1775719043876_KUKUH.kmz",
+    "tasks/kmz/1775719068035_KUKUH.kmz",
+    "tasks/kmz/1775719397840_MEKARSARI.kmz",
+    "tasks/kmz/1775719424449_TEGALJADI.kmz",
+    "tasks/kmz/1775719432758_MEKARSARI.kmz",
+    "tasks/kmz/1775719472163_MEKARSARI.kmz",
+    "tasks/kmz/1775719508349_TEGALJADI.kmz",
+    "tasks/kmz/1775719554569_TEGALJADI.kmz",
+    "tasks/kmz/1775719678769_CAU BELAYU.kmz",
+    "tasks/kmz/1775720754753_BANTAS.kmz",
+    "tasks/kmz/1775721333834_BERABAN.kmz",
+    "tasks/kmz/1775721650159_BERABAN.kmz",
+    "tasks/kmz/1775721714043_BERABAN.kmz",
+    "tasks/kmz/1775721737936_BERABAN.kmz",
+    "tasks/kmz/1775721908388_TANGGUNTITI.kmz",
+    "tasks/kmz/1775721938710_TANGGUNTITI.kmz",
+    "tasks/kmz/1775721965273_TANGGUNTITI.kmz",
+    "tasks/kmz/1775722030558_TANGGUNTITI.kmz",
+    "tasks/kmz/1775722276075_MAMBANG.kmz",
+    "tasks/kmz/1775722915229_JEGU.kmz",
+    "tasks/kmz/1775722942638_JEGU.kmz",
+    "tasks/kmz/1775722964438_JEGU.kmz",
+    "tasks/kmz/1775722985437_JEGU.kmz",
+    "tasks/kmz/1775723157228_JEGU.kmz",
+    "tasks/kmz/1775723373034_RIANG GEDE.kmz",
+    "tasks/kmz/1775723820546_BELIMBING.kmz",
+    "tasks/kmz/1775723951078_BIAUNG.kmz",
+    "tasks/kmz/1775724284954_LALANGLINGGAH.kmz",
+    "tasks/kmz/1775724321888_PEREAN TENGAH.kmz",
+    "tasks/kmz/1775724353358_SELABIH.kmz",
+    "tasks/kmz/1775724476915_BATUNGSEL.kmz",
+    "tasks/kmz/1775724511549_ANTOSARI.kmz",
+    "tasks/kmz/1775724527779_BATUNGSEL.kmz",
+    "tasks/kmz/1775724549087_BATUNGSEL.kmz",
+    "tasks/kmz/1775724585947_BELATUNGAN.kmz",
+    "tasks/kmz/1775724654380_BELATUNGAN.kmz",
+    "tasks/kmz/1775724675390_BELATUNGAN.kmz",
+    "tasks/kmz/1775724694023_SANGKETAN.kmz",
+    "tasks/kmz/1775724694292_BELATUNGAN.kmz",
+    "tasks/kmz/1775725037766_KEBON PADANGAN.kmz",
+    "tasks/kmz/1775725147527_MUNDUK TEMU.kmz",
+    "tasks/kmz/1775725174217_MUNDUK TEMU.kmz",
+    "tasks/kmz/1775725199563_MUNDUK TEMU.kmz",
+    "tasks/kmz/1775725223324_MUNDUK TEMU.kmz",
+    "tasks/kmz/1775725297565_MUNDUK TEMU.kmz",
+    "tasks/kmz/1775731324829_PADANGAN.kmz",
+    "tasks/kmz/1775731352782_PADANGAN.kmz",
+    "tasks/kmz/1775731380269_PADANGAN.kmz",
+    "tasks/kmz/1775731401528_PADANGAN.kmz",
+    "tasks/kmz/1775731630636_PAJAHAN.kmz",
+    "tasks/kmz/1775731676235_PAJAHAN.kmz",
+    "tasks/kmz/1775733999723_PENEBEL.kmz",
+    "tasks/kmz/1775734024059_PENEBEL.kmz",
+    "tasks/kmz/1775734069163_PENEBEL.kmz",
+    "tasks/kmz/1775734139836_PENEBEL.kmz",
+    "tasks/kmz/1775734163971_PENEBEL.kmz",
+    "tasks/kmz/1775734498496_PENEBEL.kmz",
+    "tasks/kmz/1775734528983_PENEBEL.kmz",
+    "tasks/kmz/1775735781559_WONGAYA GEDE.kmz",
+    "tasks/kmz/1775735873111_WONGAYA GEDE.kmz",
+    "tasks/kmz/1775735927030_WONGAYA GEDE.kmz",
+    "tasks/kmz/1775735951463_WONGAYA GEDE.kmz",
+    "tasks/kmz/1775735986830_WONGAYA GEDE.kmz",
+    "tasks/kmz/1775736030430_TAJEN.kmz",
+    "tasks/kmz/1775736062502_TAJEN.kmz",
+    "tasks/kmz/1775736092458_SAMSAM.kmz",
+    "tasks/kmz/1775736188510_TAJEN.kmz",
+    "tasks/kmz/1775736279332_TAJEN.kmz",
+    "tasks/kmz/1775736314757_TAJEN.kmz",
+    "tasks/kmz/1775736356452_TAJEN.kmz",
+    "tasks/kmz/1775736435538_TAJEN.kmz",
+    "tasks/kmz/1775736544737_TIYING GADING.kmz",
+    "tasks/kmz/1775736596593_TEGALINGGAH.kmz",
+    "tasks/kmz/1775736656481_TEGALINGGAH.kmz",
+    "tasks/kmz/1775736783435_TIYING GADING.kmz",
+    "tasks/kmz/1775736903712_MUNDEH.kmz",
+    "tasks/kmz/1775737119178_MUNDEH.kmz",
+    "tasks/kmz/1775737470956_MUNDEH.kmz",
+    "tasks/kmz/1775737578957_ANGKAH.kmz",
+    "tasks/kmz/1775737690502_ANGKAH.kmz",
+    "tasks/kmz/1775737709953_ANGKAH.kmz",
+    "tasks/kmz/1775737853962_LUMBUNG.kmz"
+  ],
+  "completedAt": "2026-05-04T11:24:58.373Z"
+}

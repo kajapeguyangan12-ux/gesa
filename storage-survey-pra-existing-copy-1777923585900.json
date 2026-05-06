@@ -1,0 +1,95 @@
+{
+  "bucket": "report-attachments",
+  "prefix": "survey-pra-existing/",
+  "firebaseCount": 12279,
+  "supabaseCountBefore": 7490,
+  "missingCountBefore": 4790,
+  "uploadedCount": 959,
+  "failedCount": 3831,
+  "supabaseCountAfter": 12280,
+  "stillMissingCount": 0,
+  "failedSample": [
+    {
+      "objectPath": "survey-pra-existing/c97KeDNyjBSjJiLh9w7QXyz9zN72-1775867863148-17758678382307324851330710798253-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776131591482-1776131563308-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776131778011-1776131741167-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776132105102-1776132085383-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776133757194-1776133723791-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776133909622-1776133886499-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776155538239-1776155495117-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776155806253-1776155780897-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776155938814-1776155906805-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776156092876-1776156046704-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776156288043-1776156249251-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776156506218-1776156468964-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776156717685-1776156682994-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776157352121-1776157328273-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776157471426-1776157418298-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776157614742-1776157576114-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776157749788-1776157707258-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776157927293-1776157895337-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cAQB26cyyBdQcVsX6Q1i7B1xBpl2-1776158176925-1776158146113-geostamp.jpg",
+      "error": "The resource already exists"
+    },
+    {
+      "objectPath": "survey-pra-existing/cGLLNCtALNPYrqnXzQooTtMSfXM2-1776994431066-17769943831572437303831794490800-geostamp.jpg",
+      "error": "The resource already exists"
+    }
+  ],
+  "stillMissingSample": [],
+  "completedAt": "2026-05-04T19:39:45.899Z"
+}

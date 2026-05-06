@@ -514,17 +514,24 @@ async function filterSurveyRowsToProtectSupabaseEdits(supabase, handler, rows) {
     return { rows, skippedRows: [] };
   }
 
-  const { data, error } = await supabase
-    .from(handler.targetTable)
-    .select("fb_doc_id, updated_at, raw_payload")
-    .in("fb_doc_id", ids);
+  const existingRows = [];
+  const idChunks = chunkArray(ids, 500);
 
-  if (error) {
-    throw new Error(`Failed to inspect existing survey rows in ${handler.targetTable}: ${error.message}`);
+  for (const idChunk of idChunks) {
+    const { data, error } = await supabase
+      .from(handler.targetTable)
+      .select("fb_doc_id, updated_at, raw_payload")
+      .in("fb_doc_id", idChunk);
+
+    if (error) {
+      throw new Error(`Failed to inspect existing survey rows in ${handler.targetTable}: ${error.message}`);
+    }
+
+    existingRows.push(...(data || []));
   }
 
   const existingById = new Map(
-    (data || []).map((item) => [
+    existingRows.map((item) => [
       item.fb_doc_id,
       {
         updatedAtMs: normalizeTimestampMs(item.updated_at),

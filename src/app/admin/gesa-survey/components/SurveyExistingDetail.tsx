@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useAuth } from "@/hooks/useAuth";
 import { formatWitaDateTime } from "@/utils/dateTime";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
+import { openStorageAssetUrl, toStorageAssetUrl } from "@/utils/storageAssetUrl";
 import { fetchAdminSurveyRows } from "./supabaseSurveyClient";
 
 // Dynamic import for Map component
@@ -506,10 +507,10 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
                       <td className="px-6 py-4">
                         {survey.photoUrl || survey.fotoTiangAPM || survey.fotoTitikActual ? (
                           <img 
-                            src={survey.photoUrl || survey.fotoTiangAPM || survey.fotoTitikActual} 
+                            src={toStorageAssetUrl(survey.photoUrl || survey.fotoTiangAPM || survey.fotoTitikActual)} 
                             alt="Survey" 
                             className="w-14 h-14 object-cover rounded-xl cursor-pointer hover:scale-110 transition-transform shadow-sm border-2 border-white"
-                            onClick={() => window.open(survey.photoUrl || survey.fotoTiangAPM || survey.fotoTitikActual, '_blank')}
+                            onClick={() => openStorageAssetUrl(survey.photoUrl || survey.fotoTiangAPM || survey.fotoTitikActual)}
                           />
                         ) : (
                           <div className="w-14 h-14 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center">
@@ -914,15 +915,16 @@ function InfoCard({ label, value }: { label: string; value?: string | null }) {
 }
 
 function PhotoCard({ label, url }: { label: string; url?: string }) {
+  const assetUrl = toStorageAssetUrl(url);
   return (
     <div className="group">
       <p className="text-xs text-gray-500 mb-2 font-medium">{label}</p>
       {url ? (
         <div 
           className="relative aspect-square rounded-xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-blue-400 transition-all"
-          onClick={() => window.open(url, '_blank')}
+          onClick={() => openStorageAssetUrl(url)}
         >
-          <img src={url} alt={label} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+          <img src={assetUrl} alt={label} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
             <svg className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />

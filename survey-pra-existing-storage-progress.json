@@ -1,0 +1,152 @@
+{
+  "kind": "firebase-storage-to-supabase-progress",
+  "updatedAt": "2026-05-04T14:53:53.054Z",
+  "dryRun": false,
+  "includeExisting": false,
+  "prefixes": [
+    "survey-pra-existing/"
+  ],
+  "bucket": "report-attachments",
+  "batchSize": 1000,
+  "nextOffset": 12279,
+  "completedBatches": 13,
+  "history": [
+    {
+      "offset": 0,
+      "selectedCount": 1000,
+      "uploadedCount": 0,
+      "skippedCount": 1000,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777905768093.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777905756481-0.json",
+      "completedAt": "2026-05-04T14:42:48.096Z"
+    },
+    {
+      "offset": 1000,
+      "selectedCount": 1000,
+      "uploadedCount": 0,
+      "skippedCount": 1000,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777905786235.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777905768111-1000.json",
+      "completedAt": "2026-05-04T14:43:06.239Z"
+    },
+    {
+      "offset": 2000,
+      "selectedCount": 1000,
+      "uploadedCount": 0,
+      "skippedCount": 1000,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777905811850.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777905786260-2000.json",
+      "completedAt": "2026-05-04T14:43:31.853Z"
+    },
+    {
+      "offset": 3000,
+      "selectedCount": 1000,
+      "uploadedCount": 0,
+      "skippedCount": 1000,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777905845003.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777905811872-3000.json",
+      "completedAt": "2026-05-04T14:44:05.006Z"
+    },
+    {
+      "offset": 4000,
+      "selectedCount": 1000,
+      "uploadedCount": 0,
+      "skippedCount": 1000,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777905884875.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777905845032-4000.json",
+      "completedAt": "2026-05-04T14:44:44.877Z"
+    },
+    {
+      "offset": 5000,
+      "selectedCount": 1000,
+      "uploadedCount": 0,
+      "skippedCount": 1000,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777905934188.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777905884898-5000.json",
+      "completedAt": "2026-05-04T14:45:34.191Z"
+    },
+    {
+      "offset": 6000,
+      "selectedCount": 1000,
+      "uploadedCount": 0,
+      "skippedCount": 1000,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777905989725.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777905934211-6000.json",
+      "completedAt": "2026-05-04T14:46:29.728Z"
+    },
+    {
+      "offset": 7000,
+      "selectedCount": 1000,
+      "uploadedCount": 0,
+      "skippedCount": 1000,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777906042401.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777905989745-7000.json",
+      "completedAt": "2026-05-04T14:47:22.404Z"
+    },
+    {
+      "offset": 8000,
+      "selectedCount": 1000,
+      "uploadedCount": 0,
+      "skippedCount": 1000,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777906099496.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777906042431-8000.json",
+      "completedAt": "2026-05-04T14:48:19.500Z"
+    },
+    {
+      "offset": 9000,
+      "selectedCount": 1000,
+      "uploadedCount": 0,
+      "skippedCount": 1000,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777906161685.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777906099527-9000.json",
+      "completedAt": "2026-05-04T14:49:21.688Z"
+    },
+    {
+      "offset": 10000,
+      "selectedCount": 1000,
+      "uploadedCount": 0,
+      "skippedCount": 1000,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777906232443.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777906161709-10000.json",
+      "completedAt": "2026-05-04T14:50:32.445Z"
+    },
+    {
+      "offset": 11000,
+      "selectedCount": 1000,
+      "uploadedCount": 9,
+      "skippedCount": 991,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777906347041.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777906232469-11000.json",
+      "completedAt": "2026-05-04T14:52:27.046Z"
+    },
+    {
+      "offset": 12000,
+      "selectedCount": 279,
+      "uploadedCount": 0,
+      "skippedCount": 279,
+      "failedCount": 0,
+      "manifestPath": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-manifest-1777906433031.json",
+      "summaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777906347142-12000.json",
+      "completedAt": "2026-05-04T14:53:53.032Z"
+    }
+  ],
+  "totals": {
+    "uploadedCount": 9,
+    "skippedCount": 12270,
+    "failedCount": 0
+  },
+  "totalMatched": 12279,
+  "lastSummaryFile": "C:\\Kerja\\gesa\\gesa-main\\firebase-storage-to-supabase-summary-1777906347142-12000.json"
+}

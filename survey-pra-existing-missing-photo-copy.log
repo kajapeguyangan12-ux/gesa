@@ -1,0 +1,121 @@
+{
+  "phase": "before-copy",
+  "bucket": "report-attachments",
+  "prefix": "survey-pra-existing/",
+  "firebaseCount": 12279,
+  "supabaseCountBefore": 10035,
+  "missingCountBefore": 2245,
+  "batchSize": 200,
+  "progressFile": "C:\\Kerja\\gesa\\gesa-main\\survey-pra-existing-missing-photo-copy-progress.json"
+}
+{
+  "phase": "batch-complete",
+  "batchNumber": 1,
+  "nextIndex": 200,
+  "selectedCount": 200,
+  "uploadedCount": 200,
+  "failedCount": 0
+}
+{
+  "phase": "batch-complete",
+  "batchNumber": 2,
+  "nextIndex": 400,
+  "selectedCount": 200,
+  "uploadedCount": 200,
+  "failedCount": 0
+}
+{
+  "phase": "batch-complete",
+  "batchNumber": 3,
+  "nextIndex": 600,
+  "selectedCount": 200,
+  "uploadedCount": 200,
+  "failedCount": 0
+}
+{
+  "phase": "batch-complete",
+  "batchNumber": 4,
+  "nextIndex": 800,
+  "selectedCount": 200,
+  "uploadedCount": 200,
+  "failedCount": 0
+}
+{
+  "phase": "batch-complete",
+  "batchNumber": 5,
+  "nextIndex": 1000,
+  "selectedCount": 200,
+  "uploadedCount": 200,
+  "failedCount": 0
+}
+{
+  "phase": "batch-complete",
+  "batchNumber": 6,
+  "nextIndex": 1200,
+  "selectedCount": 200,
+  "uploadedCount": 200,
+  "failedCount": 0
+}
+{
+  "phase": "batch-complete",
+  "batchNumber": 7,
+  "nextIndex": 1400,
+  "selectedCount": 200,
+  "uploadedCount": 200,
+  "failedCount": 0
+}
+{
+  "phase": "batch-complete",
+  "batchNumber": 8,
+  "nextIndex": 1600,
+  "selectedCount": 200,
+  "uploadedCount": 200,
+  "failedCount": 0
+}
+{
+  "phase": "batch-complete",
+  "batchNumber": 9,
+  "nextIndex": 1800,
+  "selectedCount": 200,
+  "uploadedCount": 196,
+  "failedCount": 4
+}
+{
+  "phase": "batch-complete",
+  "batchNumber": 10,
+  "nextIndex": 2000,
+  "selectedCount": 200,
+  "uploadedCount": 200,
+  "failedCount": 0
+}
+{
+  "phase": "batch-complete",
+  "batchNumber": 11,
+  "nextIndex": 2200,
+  "selectedCount": 200,
+  "uploadedCount": 200,
+  "failedCount": 0
+}
+{
+  "phase": "batch-complete",
+  "batchNumber": 12,
+  "nextIndex": 2245,
+  "selectedCount": 45,
+  "uploadedCount": 45,
+  "failedCount": 0
+}
+{
+  "phase": "completed",
+  "bucket": "report-attachments",
+  "prefix": "survey-pra-existing/",
+  "firebaseCount": 12279,
+  "supabaseCountBefore": 10035,
+  "missingCountBefore": 2245,
+  "uploadedCount": 2241,
+  "failedCount": 4,
+  "supabaseCountAfter": 12276,
+  "stillMissingCount": 4,
+  "completedBatches": 12,
+  "progressFile": "C:\\Kerja\\gesa\\gesa-main\\survey-pra-existing-missing-photo-copy-progress.json",
+  "completedAt": "2026-05-04T18:51:22.712Z"
+}

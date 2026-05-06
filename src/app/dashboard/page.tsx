@@ -49,7 +49,7 @@ function DashboardContent() {
       description: "Lihat tugas dari admin",
       icon: "📅",
       color: "from-green-400 to-green-600",
-      route: "/tugas-survey",
+      route: "/tasks",
       badge: stats.totalTugas > 0 ? stats.totalTugas.toString() : null,
     },
     {

@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import { useAuth } from "@/hooks/useAuth";
 import { formatWitaDateTime } from "@/utils/dateTime";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
+import { openStorageAssetUrl, toStorageAssetUrl } from "@/utils/storageAssetUrl";
 import { fetchAdminSurveyRows } from "./supabaseSurveyClient";
 
 const DynamicDetailMap = dynamic(
@@ -805,10 +806,10 @@ export default function SurveyPraExistingDetail({
                     <td className="px-6 py-4">
                       {survey.fotoAktual ? (
                         <img
-                          src={survey.fotoAktual}
+                          src={toStorageAssetUrl(survey.fotoAktual)}
                           alt="Foto Aktual"
                           className="w-14 h-14 object-cover rounded-xl cursor-pointer hover:scale-110 transition-transform shadow-sm border-2 border-white"
-                          onClick={() => window.open(survey.fotoAktual, "_blank")}
+                          onClick={() => openStorageAssetUrl(survey.fotoAktual)}
                         />
                       ) : (
                         <div className="w-14 h-14 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center">
@@ -1122,9 +1123,9 @@ export default function SurveyPraExistingDetail({
                   {selectedSurvey.fotoAktual ? (
                     <div
                       className="relative w-full max-w-xl aspect-video rounded-2xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-emerald-400 transition-all"
-                      onClick={() => window.open(selectedSurvey.fotoAktual, "_blank")}
+                      onClick={() => openStorageAssetUrl(selectedSurvey.fotoAktual)}
                     >
-                      <img src={selectedSurvey.fotoAktual} alt="Foto Aktual" className="w-full h-full object-cover" />
+                      <img src={toStorageAssetUrl(selectedSurvey.fotoAktual)} alt="Foto Aktual" className="w-full h-full object-cover" />
                     </div>
                   ) : (
                     <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center">

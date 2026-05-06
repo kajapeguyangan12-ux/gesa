@@ -24,6 +24,62 @@ interface TaskUpsertResult {
   error: { message: string } | null;
 }
 
+interface TaskListSummary {
+  total: number;
+  pending: number;
+  inProgress: number;
+  completed: number;
+}
+
+function parsePositiveInteger(value: string | null, fallback: number) {
+  const parsed = Number.parseInt(value || "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function applyTaskFilters<TQuery extends {
+  eq: (column: string, value: string) => TQuery;
+  or: (filters: string) => TQuery;
+}>(query: TQuery, options: {
+  adminId?: string;
+  adminEmail?: string;
+  includeAll: boolean;
+  search?: string;
+  status?: string;
+}) {
+  const { adminId, adminEmail, includeAll, search, status } = options;
+  let nextQuery = query;
+
+  if (!includeAll && (adminId || adminEmail)) {
+    if (adminId && adminEmail) {
+      nextQuery = nextQuery.or(`created_by_admin_id.eq.${adminId},created_by_admin_email.eq.${adminEmail}`);
+    } else if (adminId) {
+      nextQuery = nextQuery.eq("created_by_admin_id", adminId);
+    } else if (adminEmail) {
+      nextQuery = nextQuery.eq("created_by_admin_email", adminEmail);
+    }
+  }
+
+  if (search) {
+    const escaped = search.replace(/[%_]/g, "");
+    nextQuery = nextQuery.or(
+      [
+        `title.ilike.%${escaped}%`,
+        `description.ilike.%${escaped}%`,
+        `surveyor_name.ilike.%${escaped}%`,
+        `surveyor_email.ilike.%${escaped}%`,
+        `type.ilike.%${escaped}%`,
+        `status.ilike.%${escaped}%`,
+      ].join(",")
+    );
+  }
+
+  if (status) {
+    nextQuery = nextQuery.eq("status", status);
+  }
+
+  return nextQuery;
+}
+
 function mapTaskRow(row: TaskRow) {
   return {
     id: row.fb_doc_id || "",
@@ -57,44 +113,87 @@ export async function GET(request: NextRequest) {
     const adminEmail = request.nextUrl.searchParams.get("adminEmail")?.trim().toLowerCase();
     const search = request.nextUrl.searchParams.get("q")?.trim();
     const includeAll = request.nextUrl.searchParams.get("includeAll") === "true";
+    const status = request.nextUrl.searchParams.get("status")?.trim();
+    const offset = Math.max(0, parsePositiveInteger(request.nextUrl.searchParams.get("offset"), 0) - 0);
+    const requestedLimit = parsePositiveInteger(request.nextUrl.searchParams.get("limit"), includeAll ? 100 : 50);
+    const limit = Math.min(requestedLimit, includeAll ? 250 : 100);
     const supabase = getSupabaseAdminClient();
-    let query = supabase
-      .from("tasks")
-      .select("fb_doc_id, title, description, surveyor_id, surveyor_name, surveyor_email, status, type, kmz_file_url, kmz_file_url_2, offline_enabled, created_at, raw_payload")
-      .order("created_at", { ascending: false })
-      .limit(includeAll ? 500 : 200);
-
-    if (!includeAll && (adminId || adminEmail)) {
-      if (adminId && adminEmail) {
-        query = query.or(`created_by_admin_id.eq.${adminId},created_by_admin_email.eq.${adminEmail}`);
-      } else if (adminId) {
-        query = query.eq("created_by_admin_id", adminId);
-      } else if (adminEmail) {
-        query = query.eq("created_by_admin_email", adminEmail);
-      }
-    }
-
-    if (search) {
-      const escaped = search.replace(/[%_]/g, "");
-      query = query.or(
-        [
-          `title.ilike.%${escaped}%`,
-          `description.ilike.%${escaped}%`,
-          `surveyor_name.ilike.%${escaped}%`,
-          `surveyor_email.ilike.%${escaped}%`,
-          `type.ilike.%${escaped}%`,
-          `status.ilike.%${escaped}%`,
-        ].join(",")
+    const summaryBaseQuery = () =>
+      applyTaskFilters(
+        supabase.from("tasks").select("*", { count: "exact", head: true }),
+        { adminId, adminEmail, includeAll, search }
       );
+    const pageCountQuery = applyTaskFilters(
+      supabase.from("tasks").select("*", { count: "exact", head: true }),
+      { adminId, adminEmail, includeAll, search, status: status && status !== "all" ? status : undefined }
+    );
+    const pageQuery = applyTaskFilters(
+      supabase
+        .from("tasks")
+        .select("fb_doc_id, title, description, surveyor_id, surveyor_name, surveyor_email, status, type, kmz_file_url, kmz_file_url_2, offline_enabled, created_at, raw_payload")
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1),
+      { adminId, adminEmail, includeAll, search, status: status && status !== "all" ? status : undefined }
+    );
+
+    const [
+      totalCountResult,
+      pendingCountResult,
+      inProgressCountResult,
+      completedCountResult,
+      filteredCountResult,
+      pageResult,
+    ] = await Promise.all([
+      summaryBaseQuery(),
+      applyTaskFilters(
+        supabase.from("tasks").select("*", { count: "exact", head: true }),
+        { adminId, adminEmail, includeAll, search, status: "pending" }
+      ),
+      applyTaskFilters(
+        supabase.from("tasks").select("*", { count: "exact", head: true }),
+        { adminId, adminEmail, includeAll, search, status: "in-progress" }
+      ),
+      applyTaskFilters(
+        supabase.from("tasks").select("*", { count: "exact", head: true }),
+        { adminId, adminEmail, includeAll, search, status: "completed" }
+      ),
+      pageCountQuery,
+      pageQuery,
+    ]);
+
+    const countErrors = [
+      totalCountResult.error,
+      pendingCountResult.error,
+      inProgressCountResult.error,
+      completedCountResult.error,
+      filteredCountResult.error,
+      pageResult.error,
+    ].filter(Boolean);
+
+    if (countErrors.length > 0) {
+      throw new Error(countErrors[0]?.message || "Gagal memuat tugas admin dari Supabase.");
     }
 
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
+    const summary: TaskListSummary = {
+      total: totalCountResult.count || 0,
+      pending: pendingCountResult.count || 0,
+      inProgress: inProgressCountResult.count || 0,
+      completed: completedCountResult.count || 0,
+    };
+    const filteredCount = filteredCountResult.count || 0;
+    const tasks = ((pageResult.data || []) as TaskRow[]).map(mapTaskRow);
 
     return NextResponse.json({
       source: "supabase",
       scope: includeAll ? "all" : adminId || adminEmail ? "admin" : "default",
-      tasks: ((data || []) as TaskRow[]).map(mapTaskRow),
+      tasks,
+      summary,
+      pagination: {
+        offset,
+        limit,
+        totalCount: filteredCount,
+        hasMore: offset + tasks.length < filteredCount,
+      },
     });
   } catch (error) {
     return NextResponse.json(
