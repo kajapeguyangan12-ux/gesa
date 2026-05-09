@@ -75,6 +75,7 @@ interface ActiveTask {
   description?: string;
   type?: string;
   status?: string;
+  startedAt?: string | null;
   surveyorId?: string;
   kmzFileUrl?: string;
   kmzFileUrl2?: string;
@@ -230,6 +231,56 @@ function SurveyPraExistingContent() {
       return "";
     });
   }, []);
+
+  const markActiveTaskInProgress = useCallback(async () => {
+    if (!activeTask?.id) {
+      return;
+    }
+
+    if (activeTask.status === "in-progress" || activeTask.status === "completed") {
+      return;
+    }
+
+    const startedAt = activeTask.startedAt || new Date().toISOString();
+    const patch = {
+      status: "in-progress",
+      startedAt,
+    };
+
+    const response = await fetch(`/api/tasks/${activeTask.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+
+    if (!response.ok) {
+      throw new Error("Gagal memperbarui status tugas pra-existing.");
+    }
+
+    setActiveTask((previous) => (previous ? { ...previous, ...patch } : previous));
+
+    if (typeof window !== "undefined") {
+      const storedTask = window.localStorage.getItem("activeTask");
+      if (!storedTask) {
+        return;
+      }
+
+      try {
+        const parsedTask = JSON.parse(storedTask) as ActiveTask;
+        if (parsedTask.id === activeTask.id) {
+          window.localStorage.setItem(
+            "activeTask",
+            JSON.stringify({
+              ...parsedTask,
+              ...patch,
+            })
+          );
+        }
+      } catch (error) {
+        console.error("Gagal menyimpan status tugas pra-existing ke localStorage:", error);
+      }
+    }
+  }, [activeTask]);
 
   const uploadSurveyPayloadToServer = useCallback(
     async ({
@@ -1179,6 +1230,11 @@ function SurveyPraExistingContent() {
           createdAtLocal,
           uploadedFromOffline: false,
         });
+        try {
+          await markActiveTaskInProgress();
+        } catch (taskStatusError) {
+          console.error("Survey pra-existing tersimpan, tetapi status tugas gagal diperbarui:", taskStatusError);
+        }
         alert("Survey pra-existing berhasil dikirim.");
         resetSurveyForm();
         router.push(`/tugas-survey-pra-existing?taskId=${encodeURIComponent(activeTask.id)}`);
@@ -1202,6 +1258,11 @@ function SurveyPraExistingContent() {
 
       if (isOnline) {
         await syncPendingSurveys();
+        try {
+          await markActiveTaskInProgress();
+        } catch (taskStatusError) {
+          console.error("Survey pra-existing tersinkron, tetapi status tugas gagal diperbarui:", taskStatusError);
+        }
         alert("Survey pra-existing berhasil disimpan dan dikirim.");
         resetSurveyForm();
         router.push(`/tugas-survey-pra-existing?taskId=${encodeURIComponent(activeTask.id)}`);

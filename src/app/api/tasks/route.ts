@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { syncPendingTasksWithSubmittedSurveys } from "@/lib/taskStatusSync";
 
 interface TaskRow {
   fb_doc_id: string | null;
@@ -90,6 +91,31 @@ export async function GET(request: NextRequest) {
       }
 
       rows = (byEmailResult.data || []) as TaskRow[];
+    }
+
+    const pendingTasks = rows.filter((row) => row.status === "pending");
+    if (pendingTasks.length > 0) {
+      await syncPendingTasksWithSubmittedSurveys(supabase, pendingTasks);
+
+      const refreshedRows = surveyorId
+        ? await supabase
+            .from("tasks")
+            .select("fb_doc_id, title, description, surveyor_id, surveyor_name, surveyor_email, status, type, kmz_file_url, kmz_file_url_2, offline_enabled, created_at, raw_payload")
+            .eq("surveyor_id", surveyorId)
+            .order("created_at", { ascending: false })
+            .limit(100)
+        : await supabase
+            .from("tasks")
+            .select("fb_doc_id, title, description, surveyor_id, surveyor_name, surveyor_email, status, type, kmz_file_url, kmz_file_url_2, offline_enabled, created_at, raw_payload")
+            .eq("surveyor_email", surveyorEmail || "")
+            .order("created_at", { ascending: false })
+            .limit(100);
+
+      if (refreshedRows.error) {
+        throw new Error(refreshedRows.error.message);
+      }
+
+      rows = (refreshedRows.data || []) as TaskRow[];
     }
 
     return NextResponse.json({

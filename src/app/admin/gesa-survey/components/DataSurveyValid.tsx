@@ -25,7 +25,18 @@ interface Survey {
   banjar?: string;
 }
 
-export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?: string | null }) {
+interface SurveyDeepLinkTarget {
+  surveyId: string;
+  surveyType: "existing" | "propose" | "pra-existing";
+}
+
+export default function DataSurveyValid({
+  activeKabupaten,
+  deepLinkSurvey,
+}: {
+  activeKabupaten?: string | null;
+  deepLinkSurvey?: SurveyDeepLinkTarget | null;
+}) {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "super-admin";
   const targetStatus = isSuperAdmin ? "tervalidasi" : "diverifikasi";
@@ -155,6 +166,11 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
     setSelectedCategory(category);
   };
 
+  useEffect(() => {
+    if (!deepLinkSurvey) return;
+    setSelectedCategory(deepLinkSurvey.surveyType);
+  }, [deepLinkSurvey]);
+
   const handleExportCsv = () => {
     const headers = ["No", "Judul", "Tipe", "Status", "Surveyor", "Kabupaten", "Kecamatan", "Desa", "Banjar", "Tanggal Verifikasi"];
     if (isSuperAdmin) {
@@ -197,15 +213,36 @@ export default function DataSurveyValid({ activeKabupaten }: { activeKabupaten?:
 
   // Render detail view jika kategori dipilih
   if (selectedCategory === "existing") {
-    return <SurveyExistingDetail onBack={() => setSelectedCategory(null)} statusFilter={targetStatus} activeKabupaten={activeKabupaten} />;
+    return (
+      <SurveyExistingDetail
+        onBack={() => setSelectedCategory(null)}
+        statusFilter={targetStatus}
+        activeKabupaten={activeKabupaten}
+        targetSurveyId={deepLinkSurvey?.surveyType === "existing" ? deepLinkSurvey.surveyId : undefined}
+      />
+    );
   }
 
   if (selectedCategory === "propose") {
-    return <SurveyProposeDetail onBack={() => setSelectedCategory(null)} statusFilter={targetStatus} activeKabupaten={activeKabupaten} />;
+    return (
+      <SurveyProposeDetail
+        onBack={() => setSelectedCategory(null)}
+        statusFilter={targetStatus}
+        activeKabupaten={activeKabupaten}
+        targetSurveyId={deepLinkSurvey?.surveyType === "propose" ? deepLinkSurvey.surveyId : undefined}
+      />
+    );
   }
 
   if (selectedCategory === "pra-existing") {
-    return <SurveyPraExistingDetail onBack={() => setSelectedCategory(null)} statusFilter={targetStatus} activeKabupaten={activeKabupaten} />;
+    return (
+      <SurveyPraExistingDetail
+        onBack={() => setSelectedCategory(null)}
+        statusFilter={targetStatus}
+        activeKabupaten={activeKabupaten}
+        targetSurveyId={deepLinkSurvey?.surveyType === "pra-existing" ? deepLinkSurvey.surveyId : undefined}
+      />
+    );
   }
 
   return (

@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { CircleMarker, MapContainer, Polygon, Polyline, Popup, TileLayer } from "react-leaflet";
 import type { ParsedTaskGeometries } from "@/utils/taskNavigation";
 
@@ -104,7 +105,13 @@ function getMarkerStyle(survey: Survey, fillColor: string) {
   };
 }
 
-const SurveyPopupContent = memo(function SurveyPopupContent({ survey }: { survey: Survey }) {
+const SurveyPopupContent = memo(function SurveyPopupContent({
+  survey,
+  onOpenSurvey,
+}: {
+  survey: Survey;
+  onOpenSurvey: (survey: Survey) => void;
+}) {
   const style = TYPE_STYLES[survey.type] ?? fallbackTypeStyle;
 
   return (
@@ -178,6 +185,14 @@ const SurveyPopupContent = memo(function SurveyPopupContent({ survey }: { survey
           </>
         )}
       </div>
+
+      <button
+        type="button"
+        onClick={() => onOpenSurvey(survey)}
+        className="mt-3 w-full rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-700"
+      >
+        Buka detail di panel
+      </button>
     </div>
   );
 });
@@ -239,6 +254,8 @@ const MapLegend = memo(function MapLegend() {
 });
 
 export default function MapsValidasiMap({ surveys, overlayGeometries }: MapsValidasiMapProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [isMounted, setIsMounted] = useState(false);
   const [isReady, setIsReady] = useState(false);
 
@@ -265,6 +282,14 @@ export default function MapsValidasiMap({ surveys, overlayGeometries }: MapsVali
   const overlayPoints = overlayGeometries?.points ?? [];
   const overlayPolylines = overlayGeometries?.polylines ?? [];
   const overlayPolygons = overlayGeometries?.polygons ?? [];
+
+  const handleOpenSurvey = (survey: Survey) => {
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+    params.set("openSurvey", survey.id);
+    params.set("surveyType", survey.type);
+    params.set("surveyStatus", survey.status);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   if (!isMounted || !isReady) {
     return (
@@ -306,7 +331,7 @@ export default function MapsValidasiMap({ surveys, overlayGeometries }: MapsVali
               })()}
             >
             <Popup>
-              <SurveyPopupContent survey={survey} />
+              <SurveyPopupContent survey={survey} onOpenSurvey={handleOpenSurvey} />
             </Popup>
           </CircleMarker>
         ))}

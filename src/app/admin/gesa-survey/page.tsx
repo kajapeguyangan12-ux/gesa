@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import DashboardContent from "./components/DashboardContent";
 import DistribusiTugas from "./components/DistribusiTugas";
@@ -15,9 +15,16 @@ import TrackingHistory from "./components/TrackingHistory";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
 
+type SurveyDeepLinkTarget = {
+  surveyId: string;
+  surveyType: "existing" | "propose" | "pra-existing";
+  surveyStatus: string;
+};
+
 function GesaSurveyContent() {
   const { user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const isSuperAdmin = user?.role === "super-admin";
   const [activeMenu, setActiveMenu] = useState("dashboard");
   const [visitedMenus, setVisitedMenus] = useState<string[]>(["dashboard"]);
@@ -76,6 +83,34 @@ function GesaSurveyContent() {
   const validatedDataLabel = isSuperAdmin ? "Data Survey Valid" : "Data Survey Terverifikasi";
   const rejectedDataLabel = isSuperAdmin ? "Data Survey Valid (TOLAK)" : "Data Survey Terverifikasi (TOLAK)";
   const validatedMapLabel = isSuperAdmin ? "Maps Valid" : "Maps Terverifikasi";
+  const deepLinkSurvey = useMemo(() => {
+    const surveyId = searchParams.get("openSurvey")?.trim() || "";
+    const surveyType = searchParams.get("surveyType")?.trim() || "";
+    const surveyStatus = searchParams.get("surveyStatus")?.trim().toLowerCase() || "";
+
+    if (!surveyId) return null;
+    if (surveyType !== "existing" && surveyType !== "propose" && surveyType !== "pra-existing") {
+      return null;
+    }
+
+    return {
+      surveyId,
+      surveyType,
+      surveyStatus,
+    } satisfies SurveyDeepLinkTarget;
+  }, [searchParams]);
+
+  const deepLinkTargetMenu = useMemo(() => {
+    if (!deepLinkSurvey) return null;
+    if (deepLinkSurvey.surveyStatus === "ditolak") return "data-survey-tolak";
+    if (deepLinkSurvey.surveyStatus === "menunggu") return "validasi-survey";
+    return "data-survey-valid";
+  }, [deepLinkSurvey]);
+
+  useEffect(() => {
+    if (!deepLinkTargetMenu) return;
+    setActiveMenu(deepLinkTargetMenu);
+  }, [deepLinkTargetMenu]);
 
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: "📊" },
@@ -236,17 +271,27 @@ function GesaSurveyContent() {
           )}
           {visitedMenus.includes("validasi-survey") && (
             <section className={activeMenu === "validasi-survey" ? "block" : "hidden"} aria-hidden={activeMenu !== "validasi-survey"}>
-              <ValidasiSurvey activeKabupaten={activeKabupaten} isActive={activeMenu === "validasi-survey"} />
+              <ValidasiSurvey
+                activeKabupaten={activeKabupaten}
+                isActive={activeMenu === "validasi-survey"}
+                deepLinkSurvey={deepLinkTargetMenu === "validasi-survey" ? deepLinkSurvey : null}
+              />
             </section>
           )}
           {visitedMenus.includes("data-survey-valid") && (
             <section className={activeMenu === "data-survey-valid" ? "block" : "hidden"} aria-hidden={activeMenu !== "data-survey-valid"}>
-              <DataSurveyValid activeKabupaten={activeKabupaten} />
+              <DataSurveyValid
+                activeKabupaten={activeKabupaten}
+                deepLinkSurvey={deepLinkTargetMenu === "data-survey-valid" ? deepLinkSurvey : null}
+              />
             </section>
           )}
           {visitedMenus.includes("data-survey-tolak") && (
             <section className={activeMenu === "data-survey-tolak" ? "block" : "hidden"} aria-hidden={activeMenu !== "data-survey-tolak"}>
-              <DataSurveyTolak activeKabupaten={activeKabupaten} />
+              <DataSurveyTolak
+                activeKabupaten={activeKabupaten}
+                deepLinkSurvey={deepLinkTargetMenu === "data-survey-tolak" ? deepLinkSurvey : null}
+              />
             </section>
           )}
           {visitedMenus.includes("data-survey-validasi") && isSuperAdmin && (

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { syncPendingTasksWithSubmittedSurveys } from "@/lib/taskStatusSync";
 export { PATCH } from "@/app/api/admin/tasks/[id]/route";
 
 interface TaskRow {
@@ -69,9 +70,28 @@ export async function GET(
       return NextResponse.json({ error: "Task tidak ditemukan." }, { status: 404 });
     }
 
+    let taskRow = data as TaskRow;
+    if (taskRow.status === "pending") {
+      await syncPendingTasksWithSubmittedSurveys(supabase, [taskRow]);
+
+      const refreshedTask = await supabase
+        .from("tasks")
+        .select("fb_doc_id, title, description, surveyor_id, surveyor_name, surveyor_email, status, type, kmz_file_url, kmz_file_url_2, offline_enabled, created_at, raw_payload")
+        .eq("fb_doc_id", id)
+        .maybeSingle();
+
+      if (refreshedTask.error) {
+        throw new Error(refreshedTask.error.message);
+      }
+
+      if (refreshedTask.data) {
+        taskRow = refreshedTask.data as TaskRow;
+      }
+    }
+
     return NextResponse.json({
       source: "supabase",
-      task: mapTaskRow(data as TaskRow),
+      task: mapTaskRow(taskRow),
     });
   } catch (error) {
     return NextResponse.json(

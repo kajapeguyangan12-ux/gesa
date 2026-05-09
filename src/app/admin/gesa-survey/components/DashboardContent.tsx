@@ -179,6 +179,8 @@ interface TaskExportRecord {
   createdAt?: TimestampLike;
 }
 
+type NormalizedTaskStatus = "pending" | "in-progress" | "completed" | "lainnya";
+
 function resolveTimestamp(value: TimestampLike) {
   if (!value) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -335,29 +337,170 @@ function buildRawSurveySheet(rows: SurveyReportRow[]) {
   return sheet;
 }
 
-function buildRawExportSummary(rows: SurveyReportRow[]) {
+function getSurveyTypeLabel(type: string) {
   const typeLabels: Record<string, string> = {
     existing: "Survey Existing",
     propose: "Survey APJ Propose",
     "pra-existing": "Survey Pra Existing",
   };
-  const statuses = ["menunggu", "diverifikasi", "tervalidasi", "ditolak"];
-  const types = ["existing", "propose", "pra-existing"];
-  const headers = ["Tipe Survey", "Total", "Menunggu", "Diverifikasi", "Tervalidasi", "Ditolak"];
+  return typeLabels[type] || type;
+}
 
-  const rowsByType = types.map((type) => {
-    const typeRows = rows.filter((row) => row.type === type);
+function normalizeTaskStatus(value: unknown): NormalizedTaskStatus {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!normalized) return "lainnya";
+  if (normalized === "pending") return "pending";
+  if (normalized === "in-progress" || normalized === "in progress") return "in-progress";
+  if (normalized === "completed") return "completed";
+  return "lainnya";
+}
+
+function buildRawExportSummary(rows: SurveyReportRow[], tasks: TaskExportRecord[], activeKabupaten?: string | null) {
+  const types = ["existing", "propose", "pra-existing"];
+  const allSummary = buildSummary(rows);
+  const taskStatusCounts = tasks.reduce(
+    (accumulator, task) => {
+      const key = normalizeTaskStatus(task.status);
+      accumulator[key] += 1;
+      return accumulator;
+    },
+    { pending: 0, "in-progress": 0, completed: 0, lainnya: 0 }
+  );
+
+  const overviewRows: Array<[string, string | number]> = [
+    ["Kabupaten Aktif", activeKabupaten?.trim() || "Semua Kabupaten"],
+    ["Total Data Survey", allSummary.totalData],
+    ["Total Titik", allSummary.totalTitik],
+    ["Total Lampu", allSummary.totalLampu],
+    ["Total Surveyor Aktif", allSummary.totalSurveyor],
+    ["Total Menunggu", allSummary.totalMenunggu],
+    ["Total Diverifikasi", allSummary.totalDiverifikasi],
+    ["Total Tervalidasi", allSummary.totalTervalidasi],
+    ["Total Ditolak", allSummary.totalDitolak],
+    ["Total Tugas", tasks.length],
+    ["Tugas Belum Jalan", taskStatusCounts.pending],
+    ["Tugas Berjalan", taskStatusCounts["in-progress"]],
+    ["Tugas Selesai", taskStatusCounts.completed],
+  ];
+
+  if (taskStatusCounts.lainnya > 0) {
+    overviewRows.push(["Tugas Status Lainnya", taskStatusCounts.lainnya]);
+  }
+
+  const statusHeaders = [
+    "Patch",
+    "Total Data",
+    "Total Titik",
+    "Total Lampu",
+    "Surveyor Aktif",
+    "Menunggu",
+    "Diverifikasi",
+    "Tervalidasi",
+    "Ditolak",
+  ];
+
+  const statusRows = types.map((type) => {
+    const summary = buildSummary(rows.filter((row) => row.type === type));
     return [
-      typeLabels[type] || type,
-      typeRows.length,
-      ...statuses.map((status) => typeRows.filter((row) => row.status?.toLowerCase() === status).length),
+      getSurveyTypeLabel(type),
+      summary.totalData,
+      summary.totalTitik,
+      summary.totalLampu,
+      summary.totalSurveyor,
+      summary.totalMenunggu,
+      summary.totalDiverifikasi,
+      summary.totalTervalidasi,
+      summary.totalDitolak,
     ];
   });
 
+  statusRows.push([
+    "Total Semua Survey",
+    allSummary.totalData,
+    allSummary.totalTitik,
+    allSummary.totalLampu,
+    allSummary.totalSurveyor,
+    allSummary.totalMenunggu,
+    allSummary.totalDiverifikasi,
+    allSummary.totalTervalidasi,
+    allSummary.totalDitolak,
+  ]);
+
+  const taskHeaders = ["Status Tugas", "Jumlah"];
+  const taskRows = [
+    ["Belum Jalan", taskStatusCounts.pending],
+    ["Berjalan", taskStatusCounts["in-progress"]],
+    ["Selesai", taskStatusCounts.completed],
+  ];
+  if (taskStatusCounts.lainnya > 0) {
+    taskRows.push(["Lainnya", taskStatusCounts.lainnya]);
+  }
+
+  const sheetData = [
+    ["REKAP EKSEKUTIF SURVEY"],
+    [],
+    ["Ringkasan Umum", ""],
+    ["Metrik", "Nilai"],
+    ...overviewRows,
+    [],
+    ["Rekap Per Patch", ""],
+    statusHeaders,
+    ...statusRows,
+    [],
+    ["Rekap Status Tugas", ""],
+    taskHeaders,
+    ...taskRows,
+  ];
+
+  const sheet = XLSX.utils.aoa_to_sheet(sheetData);
+  sheet["!cols"] = [
+    {
+      wch: Math.max(...sheetData.map((row) => String(row[0] ?? "").length), "Rekap Status Tugas".length) + 2,
+    },
+    {
+      wch: Math.max(...sheetData.map((row) => String(row[1] ?? "").length), "Survey Existing".length) + 2,
+    },
+    ...statusHeaders.slice(2).map((_, columnOffset) => ({
+      wch: Math.max(
+        statusHeaders[columnOffset + 2].length,
+        ...statusRows.map((row) => String(row[columnOffset + 2] ?? "").length)
+      ) + 2,
+    })),
+  ];
+
+  return sheet;
+}
+
+function buildPatchSummarySheet(rows: SurveyReportRow[]) {
+  const headers = ["Patch", "Total Data", "Total Titik", "Total Lampu", "Surveyor Aktif", "Menunggu", "Diverifikasi", "Tervalidasi", "Ditolak"];
+  const types = ["existing", "propose", "pra-existing"];
+
+  const rowsByType = types.map((type) => {
+    const summary = buildSummary(rows.filter((row) => row.type === type));
+    return [
+      getSurveyTypeLabel(type),
+      summary.totalData,
+      summary.totalTitik,
+      summary.totalLampu,
+      summary.totalSurveyor,
+      summary.totalMenunggu,
+      summary.totalDiverifikasi,
+      summary.totalTervalidasi,
+      summary.totalDitolak,
+    ];
+  });
+
+  const totalSummary = buildSummary(rows);
   rowsByType.push([
     "Total Semua Survey",
-    rows.length,
-    ...statuses.map((status) => rows.filter((row) => row.status?.toLowerCase() === status).length),
+    totalSummary.totalData,
+    totalSummary.totalTitik,
+    totalSummary.totalLampu,
+    totalSummary.totalSurveyor,
+    totalSummary.totalMenunggu,
+    totalSummary.totalDiverifikasi,
+    totalSummary.totalTervalidasi,
+    totalSummary.totalDitolak,
   ]);
 
   const sheet = XLSX.utils.aoa_to_sheet([headers, ...rowsByType]);
@@ -365,6 +508,129 @@ function buildRawExportSummary(rows: SurveyReportRow[]) {
     wch: Math.max(header.length, ...rowsByType.map((row) => String(row[columnIndex] ?? "").length)) + 2,
   }));
 
+  return sheet;
+}
+
+function buildKecamatanSummarySheet(rows: SurveyReportRow[]) {
+  const headers = ["Kecamatan", "Total Data", "Total Titik", "Total Lampu", "Surveyor Aktif", "Menunggu", "Diverifikasi", "Tervalidasi", "Ditolak", "Komposisi Lampu"];
+  const summaryRows = buildKecamatanSummary(rows).map((item) => [
+    item.kecamatan,
+    item.totalData,
+    item.totalTitik,
+    item.totalLampu,
+    item.totalSurveyor,
+    item.totalMenunggu,
+    item.totalDiverifikasi,
+    item.totalTervalidasi,
+    item.totalDitolak,
+    item.lampTypeBreakdownText,
+  ]);
+  const sheet = XLSX.utils.aoa_to_sheet([headers, ...summaryRows]);
+  sheet["!cols"] = headers.map((header, columnIndex) => ({
+    wch: Math.min(
+      columnIndex === headers.length - 1 ? 60 : 26,
+      Math.max(header.length, ...summaryRows.map((row) => String(row[columnIndex] ?? "").length)) + 2
+    ),
+  }));
+  return sheet;
+}
+
+function buildLampTypeSummarySheet(rows: SurveyReportRow[]) {
+  const headers = ["Jenis Lampu", "Jumlah Titik", "Jumlah Lampu", "Persentase Lampu (%)"];
+  const summaryRows = buildLampTypeSummary(rows).map((item) => [
+    item.lampType,
+    item.surveyCount,
+    item.lampCount,
+    Number(item.percentage.toFixed(2)),
+  ]);
+  const sheet = XLSX.utils.aoa_to_sheet([headers, ...summaryRows]);
+  sheet["!cols"] = headers.map((header, columnIndex) => ({
+    wch: Math.max(header.length, ...summaryRows.map((row) => String(row[columnIndex] ?? "").length)) + 2,
+  }));
+  return sheet;
+}
+
+function buildTaskStatusSummarySheet(tasks: TaskExportRecord[], rows: SurveyReportRow[]) {
+  const surveyCountByTaskId = rows.reduce<Map<string, number>>((accumulator, row) => {
+    const taskId = row.taskId?.trim();
+    if (!taskId) return accumulator;
+    accumulator.set(taskId, (accumulator.get(taskId) || 0) + 1);
+    return accumulator;
+  }, new Map<string, number>());
+
+  const headers = [
+    "No",
+    "Judul Tugas",
+    "Tipe Tugas",
+    "Status Tugas",
+    "Jumlah Data Survey Masuk",
+    "Surveyor",
+    "Admin Pembuat",
+    "Email Admin",
+    "Tanggal Dibuat",
+  ];
+
+  const taskRows = tasks.map((task, index) => [
+    index + 1,
+    task.title,
+    task.type,
+    task.status,
+    surveyCountByTaskId.get(task.id) || 0,
+    task.surveyorName,
+    task.createdByAdminName,
+    task.createdByAdminEmail,
+    formatDateTime(task.createdAt),
+  ]);
+
+  const sheet = XLSX.utils.aoa_to_sheet([headers, ...taskRows]);
+  sheet["!cols"] = headers.map((header, columnIndex) => ({
+    wch: Math.min(
+      36,
+      Math.max(header.length, ...taskRows.map((row) => String(row[columnIndex] ?? "").length)) + 2
+    ),
+  }));
+  return sheet;
+}
+
+function buildZeroSurveyTaskSheet(tasks: TaskExportRecord[], rows: SurveyReportRow[]) {
+  const surveyCountByTaskId = rows.reduce<Map<string, number>>((accumulator, row) => {
+    const taskId = row.taskId?.trim();
+    if (!taskId) return accumulator;
+    accumulator.set(taskId, (accumulator.get(taskId) || 0) + 1);
+    return accumulator;
+  }, new Map<string, number>());
+
+  const zeroTasks = tasks.filter((task) => (surveyCountByTaskId.get(task.id) || 0) === 0);
+  const headers = [
+    "No",
+    "Judul Tugas",
+    "Tipe Tugas",
+    "Status Tugas",
+    "Jumlah Data Survey Masuk",
+    "Surveyor",
+    "Admin Pembuat",
+    "Email Admin",
+    "Tanggal Dibuat",
+  ];
+  const taskRows = zeroTasks.map((task, index) => [
+    index + 1,
+    task.title,
+    task.type,
+    task.status,
+    0,
+    task.surveyorName,
+    task.createdByAdminName,
+    task.createdByAdminEmail,
+    formatDateTime(task.createdAt),
+  ]);
+
+  const sheet = XLSX.utils.aoa_to_sheet([headers, ...taskRows]);
+  sheet["!cols"] = headers.map((header, columnIndex) => ({
+    wch: Math.min(
+      36,
+      Math.max(header.length, ...taskRows.map((row) => String(row[columnIndex] ?? "").length)) + 2
+    ),
+  }));
   return sheet;
 }
 
@@ -1610,8 +1876,16 @@ export default function DashboardContent({
         return;
       }
 
+      const tasks = await fetchTaskExportRecords();
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, buildRawExportSummary(rows), "Ringkasan Status");
+      XLSX.utils.book_append_sheet(workbook, buildRawExportSummary(rows, tasks, activeKabupaten), "Rekap Eksekutif");
+      XLSX.utils.book_append_sheet(workbook, buildPatchSummarySheet(rows), "Rekap Per Patch");
+      XLSX.utils.book_append_sheet(workbook, buildKecamatanSummarySheet(rows), "Rekap Kecamatan");
+      XLSX.utils.book_append_sheet(workbook, buildLampTypeSummarySheet(rows), "Rekap Jenis Lampu");
+      if (tasks.length) {
+        XLSX.utils.book_append_sheet(workbook, buildTaskStatusSummarySheet(tasks, rows), "Rekap Tugas");
+        XLSX.utils.book_append_sheet(workbook, buildZeroSurveyTaskSheet(tasks, rows), "Tugas Nol Survey");
+      }
 
       const sheetGroups = [
         { name: "Semua Data Mentah", rows },

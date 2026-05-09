@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
 import { buildTaskInsertRow, createHybridId } from "@/lib/supabaseHybrid";
+import { syncPendingTasksWithSubmittedSurveys } from "@/lib/taskStatusSync";
 
 interface TaskRow {
   fb_doc_id: string | null;
@@ -118,6 +119,20 @@ export async function GET(request: NextRequest) {
     const requestedLimit = parsePositiveInteger(request.nextUrl.searchParams.get("limit"), includeAll ? 100 : 50);
     const limit = Math.min(requestedLimit, includeAll ? 250 : 100);
     const supabase = getSupabaseAdminClient();
+    const pendingTasksResult = await applyTaskFilters(
+      supabase
+        .from("tasks")
+        .select("fb_doc_id, type, raw_payload, status")
+        .eq("status", "pending"),
+      { adminId, adminEmail, includeAll, search }
+    );
+
+    if (pendingTasksResult.error) {
+      throw new Error(pendingTasksResult.error.message);
+    }
+
+    await syncPendingTasksWithSubmittedSurveys(supabase, (pendingTasksResult.data || []) as TaskRow[]);
+
     const summaryBaseQuery = () =>
       applyTaskFilters(
         supabase.from("tasks").select("*", { count: "exact", head: true }),

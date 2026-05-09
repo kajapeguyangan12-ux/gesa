@@ -2,6 +2,7 @@
 
 import { memo, useState, useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
 import { PRA_EXISTING_TABANAN_DATA } from "@/app/survey-pra-existing/location-data";
 import type { TaskNavigationInfo } from "@/utils/taskNavigation";
@@ -245,13 +246,23 @@ function haveSameStats(
 
 const SUPPRESSED_SURVEY_TTL_MS = 20000;
 
+interface SurveyDeepLinkTarget {
+  surveyId: string;
+  surveyType: "existing" | "propose" | "pra-existing";
+}
+
 export default function ValidasiSurvey({
   activeKabupaten,
   isActive = true,
+  deepLinkSurvey,
 }: {
   activeKabupaten?: string | null;
   isActive?: boolean;
+  deepLinkSurvey?: SurveyDeepLinkTarget | null;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<"existing" | "propose" | "pra-existing">("existing");
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [stats, setStats] = useState({
@@ -321,6 +332,7 @@ export default function ValidasiSurvey({
   const latestSurveyChangeRef = useRef("");
   const surveysRequestSeqRef = useRef(0);
   const statsRequestSeqRef = useRef(0);
+  const dismissedTargetSurveyIdRef = useRef<string | null>(null);
   const suppressedSurveyIdsRef = useRef(new Map<string, number>());
   const inFlightStatsRef = useRef(false);
   const inFlightSurveysRef = useRef(false);
@@ -1003,6 +1015,51 @@ export default function ValidasiSurvey({
     setShowDetailMap(false);
     setShowDetailModal(true);
   };
+
+  const closeDetailModal = () => {
+    dismissedTargetSurveyIdRef.current = deepLinkSurvey?.surveyId || selectedSurvey?.id || null;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("openSurvey");
+    params.delete("surveyType");
+    params.delete("surveyStatus");
+    const nextQuery = params.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+    setShowDetailModal(false);
+    setShowDetailMap(false);
+    setSelectedTaskNavigationInfo(null);
+  };
+
+  useEffect(() => {
+    if (!deepLinkSurvey) return;
+    if (activeTab !== deepLinkSurvey.surveyType) {
+      setActiveTab(deepLinkSurvey.surveyType);
+    }
+  }, [activeTab, deepLinkSurvey]);
+
+  useEffect(() => {
+    if (!deepLinkSurvey?.surveyId) {
+      dismissedTargetSurveyIdRef.current = null;
+      return;
+    }
+    if (dismissedTargetSurveyIdRef.current === deepLinkSurvey.surveyId) return;
+
+    if (!deepLinkSurvey) return;
+    if (activeTab !== deepLinkSurvey.surveyType) return;
+
+    const matchedSurvey = currentTabSurveys.find((survey) => survey.id === deepLinkSurvey.surveyId);
+    if (!matchedSurvey) return;
+    if (selectedSurvey?.id === matchedSurvey.id && showDetailModal) return;
+
+    const matchedIndex = filteredSurveys.findIndex((survey) => survey.id === matchedSurvey.id);
+    if (matchedIndex >= 0 && !showAll) {
+      const nextPage = Math.floor(matchedIndex / itemsPerPage) + 1;
+      if (nextPage !== currentPage) {
+        setCurrentPage(nextPage);
+      }
+    }
+
+    handleViewDetail(matchedSurvey);
+  }, [activeTab, currentPage, currentTabSurveys, deepLinkSurvey, filteredSurveys, itemsPerPage, selectedSurvey?.id, showAll, showDetailModal]);
 
   const handleEdit = (survey: Survey) => {
     setEditFormData({
@@ -1821,9 +1878,7 @@ export default function ValidasiSurvey({
                 </div>
                 <button
                   onClick={() => {
-                    setShowDetailModal(false);
-                    setShowDetailMap(false);
-                    setSelectedTaskNavigationInfo(null);
+                    closeDetailModal();
                   }}
                   className="p-2 hover:bg-gray-100 rounded-lg transition-all flex-shrink-0"
                   title="Tutup"
@@ -2386,7 +2441,7 @@ export default function ValidasiSurvey({
             <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 lg:p-6 rounded-b-2xl lg:rounded-b-3xl">
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 lg:gap-3">
                 <button
-                  onClick={() => setShowDetailModal(false)}
+                  onClick={closeDetailModal}
                   className="px-4 lg:px-6 py-2.5 lg:py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg lg:rounded-xl transition-all text-sm lg:text-base"
                 >
                   Tutup

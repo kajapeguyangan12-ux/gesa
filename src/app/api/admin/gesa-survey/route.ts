@@ -509,6 +509,43 @@ function matchesKabupaten(row: SurveyRow, activeKabupaten: string | null) {
   return normalizeKabupatenLabel(row.kabupaten) === normalizeKabupatenLabel(activeKabupaten);
 }
 
+async function filterOrphanSurveyRows(
+  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  rows: SurveyRow[]
+) {
+  const taskIds = Array.from(
+    new Set(
+      rows
+        .map((row) => (typeof row.taskId === "string" ? row.taskId.trim() : ""))
+        .filter(Boolean)
+    )
+  );
+
+  if (taskIds.length === 0) return rows;
+
+  const existingTaskIds = new Set<string>();
+  for (const taskIdGroup of chunkArray(taskIds, 200)) {
+    const { data, error } = await supabase
+      .from("tasks")
+      .select("fb_doc_id")
+      .in("fb_doc_id", taskIdGroup);
+
+    if (error) throw new Error(error.message);
+
+    for (const row of ((data || []) as Array<{ fb_doc_id?: string | null }>)) {
+      if (typeof row.fb_doc_id === "string" && row.fb_doc_id.trim()) {
+        existingTaskIds.add(row.fb_doc_id.trim());
+      }
+    }
+  }
+
+  return rows.filter((row) => {
+    const taskId = typeof row.taskId === "string" ? row.taskId.trim() : "";
+    if (!taskId) return true;
+    return existingTaskIds.has(taskId);
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     const includeDetails = request.nextUrl.searchParams.get("includeDetails") === "1";
@@ -720,9 +757,22 @@ export async function GET(request: NextRequest) {
     };
 
     const loadedResults = await Promise.all(tablesToLoad.map(({ table, type }) => loadTable(table, type)));
-    const proposeRows = requestedType && requestedType !== "propose" ? [] : loadedResults[tablesToLoad.findIndex((item) => item.type === "apj-propose")] || [];
-    const existingRows = requestedType && requestedType !== "existing" ? [] : loadedResults[tablesToLoad.findIndex((item) => item.type === "existing")] || [];
-    const praExistingRows = requestedType && requestedType !== "pra-existing" ? [] : loadedResults[tablesToLoad.findIndex((item) => item.type === "pra-existing")] || [];
+    const loadedByType = new Map<SurveyType, SurveyRow[]>();
+    tablesToLoad.forEach(({ type }, index) => {
+      loadedByType.set(type, loadedResults[index] || []);
+    });
+
+    const [proposeRows, existingRows, praExistingRows] = await Promise.all([
+      requestedType && requestedType !== "propose"
+        ? Promise.resolve([])
+        : filterOrphanSurveyRows(supabase, loadedByType.get("apj-propose") || []),
+      requestedType && requestedType !== "existing"
+        ? Promise.resolve([])
+        : filterOrphanSurveyRows(supabase, loadedByType.get("existing") || []),
+      requestedType && requestedType !== "pra-existing"
+        ? Promise.resolve([])
+        : filterOrphanSurveyRows(supabase, loadedByType.get("pra-existing") || []),
+    ]);
 
     const combinedRows = [...proposeRows, ...existingRows, ...praExistingRows].sort((a, b) => {
       const left = typeof a.createdAt === "string" ? new Date(a.createdAt).getTime() : 0;

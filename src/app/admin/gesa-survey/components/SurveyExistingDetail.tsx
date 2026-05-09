@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { formatWitaDateTime } from "@/utils/dateTime";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
@@ -101,6 +102,7 @@ interface SurveyExistingDetailProps {
   onBack: () => void;
   statusFilter?: string;
   activeKabupaten?: string | null;
+  targetSurveyId?: string;
 }
 
 function resolveStatusFilters(statusFilter?: string) {
@@ -111,8 +113,16 @@ function resolveStatusFilters(statusFilter?: string) {
   return [statusFilter ?? normalized];
 }
 
-export default function SurveyExistingDetail({ onBack, statusFilter = "diverifikasi", activeKabupaten }: SurveyExistingDetailProps) {
+export default function SurveyExistingDetail({
+  onBack,
+  statusFilter = "diverifikasi",
+  activeKabupaten,
+  targetSurveyId,
+}: SurveyExistingDetailProps) {
   const { user } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const isSuperAdmin = user?.role === "super-admin";
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,6 +139,7 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalItems, setTotalItems] = useState(0);
+  const dismissedTargetSurveyIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     setSurveys([]);
@@ -237,6 +248,18 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
     setShowDetailModal(true);
   };
 
+  const closeDetailModal = () => {
+    dismissedTargetSurveyIdRef.current = targetSurveyId || selectedSurvey?.id || null;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("openSurvey");
+    params.delete("surveyType");
+    params.delete("surveyStatus");
+    const nextQuery = params.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+    setShowDetailModal(false);
+    setShowDetailMap(false);
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm("Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.")) return;
     
@@ -329,6 +352,28 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
   const startIndex = filteredSurveys.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
   const endIndex = filteredSurveys.length === 0 ? 0 : Math.min(startIndex + itemsPerPage - 1, effectiveTotalItems);
   const paginatedSurveys = filteredSurveys.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  useEffect(() => {
+    if (!targetSurveyId) {
+      dismissedTargetSurveyIdRef.current = null;
+      return;
+    }
+    if (dismissedTargetSurveyIdRef.current === targetSurveyId) return;
+
+    if (!targetSurveyId) return;
+
+    const matchedSurvey = filteredSurveys.find((survey) => survey.id === targetSurveyId);
+    if (!matchedSurvey) return;
+    if (selectedSurvey?.id === matchedSurvey.id && showDetailModal) return;
+
+    const matchedIndex = filteredSurveys.findIndex((survey) => survey.id === targetSurveyId);
+    const nextPage = Math.floor(matchedIndex / itemsPerPage) + 1;
+    if (nextPage !== currentPage) {
+      setCurrentPage(nextPage);
+    }
+
+    handleViewDetail(matchedSurvey);
+  }, [currentPage, filteredSurveys, itemsPerPage, selectedSurvey?.id, showDetailModal, targetSurveyId]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -651,8 +696,7 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
       {showDetailModal && selectedSurvey && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => {
-            setShowDetailModal(false);
-            setShowDetailMap(false);
+            closeDetailModal();
           }} />
           <div className="flex items-center justify-center min-h-screen p-4">
             <div className="relative bg-white rounded-3xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
@@ -665,8 +709,7 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
                   </div>
                   <button
                     onClick={() => {
-                      setShowDetailModal(false);
-                      setShowDetailMap(false);
+                      closeDetailModal();
                     }}
                     className="p-2 hover:bg-white/20 rounded-xl transition-colors"
                   >
@@ -860,7 +903,7 @@ export default function SurveyExistingDetail({ onBack, statusFilter = "diverifik
               {/* Modal Footer */}
               <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 rounded-b-3xl flex justify-end gap-3">
                 <button
-                  onClick={() => setShowDetailModal(false)}
+                  onClick={closeDetailModal}
                   className="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors"
                 >
                   Tutup
