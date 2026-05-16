@@ -1146,6 +1146,7 @@ export default function DashboardContent({
   const [reportsVisible, setReportsVisible] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailLoaded, setDetailLoaded] = useState(false);
+  const [detailRefreshing, setDetailRefreshing] = useState(false);
   const [summaryRefreshing, setSummaryRefreshing] = useState(false);
   const [taskExporting, setTaskExporting] = useState(false);
   const [rawSurveyExporting, setRawSurveyExporting] = useState(false);
@@ -1157,6 +1158,7 @@ export default function DashboardContent({
   const [showVerificationReport, setShowVerificationReport] = useState(true);
   const [showKecamatanReport, setShowKecamatanReport] = useState(true);
   const latestSummaryFingerprintRef = useRef("");
+  const reportStateRef = useRef(reportState);
   const [startDate, setStartDate] = useState(() => {
     const today = new Date();
     return formatDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -1186,6 +1188,10 @@ export default function DashboardContent({
     params.set("dashboardDetail", "1");
     return params.toString();
   }, [activeKabupaten]);
+
+  useEffect(() => {
+    reportStateRef.current = reportState;
+  }, [reportState]);
 
   const persistReportCache = (data: DashboardReportState) => {
     if (isSuperAdmin || typeof window === "undefined") return;
@@ -1335,6 +1341,9 @@ export default function DashboardContent({
 
     const loadReports = async (background = false) => {
       try {
+        if (background) {
+          setDetailRefreshing(true);
+        }
         setReportState((current) => ({
           ...current,
           loading: background ? current.loading : current.allRows.length === 0,
@@ -1382,6 +1391,11 @@ export default function DashboardContent({
       } catch (error) {
         if (cancelled) return;
 
+        if (background && reportStateRef.current.allRows.length > 0) {
+          console.error("Failed to refresh dashboard detail in background:", error);
+          return;
+        }
+
         setAdminVerificationRows([]);
         setReportState({
           ...initialReportState,
@@ -1390,17 +1404,19 @@ export default function DashboardContent({
         });
       } finally {
         if (!cancelled) {
+          setDetailRefreshing(false);
           setDetailLoaded(true);
         }
       }
     };
 
-    void loadReports();
+    const shouldRefreshInBackground = detailLoaded || reportStateRef.current.allRows.length > 0;
+    void loadReports(shouldRefreshInBackground);
 
     return () => {
       cancelled = true;
     };
-  }, [activeKabupaten, dashboardApiQuery, dashboardVerifierApiQuery, detailVisible, isSuperAdmin, reportCacheKey, user?.uid, isActive, summaryVersion]);
+  }, [activeKabupaten, dashboardApiQuery, dashboardVerifierApiQuery, detailVisible, detailLoaded, isSuperAdmin, reportCacheKey, user?.uid, isActive, summaryVersion]);
 
   const waitingReviewCount = useMemo(
     () =>
@@ -1473,7 +1489,7 @@ export default function DashboardContent({
     () => lampTypeSummaryRows.map((row) => row.lampType),
     [lampTypeSummaryRows]
   );
-  const activeSourceLabel = bundleSource === "supabase" ? "Supabase" : "Firestore";
+  const activeSourceLabel = bundleSource === "supabase" ? "Supabase" : "Cache panel";
   const activeTimestamp = lastUpdatedAt;
 
   const normalizedDateRange = useMemo(() => {
@@ -2058,6 +2074,11 @@ export default function DashboardContent({
                           : "Muat Detail"}
                     </button>
                   )}
+                  {detailVisible && detailRefreshing && !reportState.loading ? (
+                    <div className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-white">
+                      Memperbarui detail di background...
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -2116,7 +2137,7 @@ export default function DashboardContent({
               {!detailVisible ? (
                 <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-8 text-sm text-gray-600 shadow-sm">
                   Summary ringan sudah tampil.
-                  Sumber aktif: <span className="font-semibold">{bundleSource === "supabase" ? "Supabase" : "Firestore"}</span>.
+                  Sumber aktif: <span className="font-semibold">{bundleSource === "supabase" ? "Supabase" : "Cache panel"}</span>.
                   Klik `Muat Detail` untuk membuka tabel verifikasi dan rincian dashboard.
                 </div>
               ) : reportState.loading ? (
@@ -2132,6 +2153,11 @@ export default function DashboardContent({
                 </div>
               ) : (
                 <>
+                  {detailRefreshing ? (
+                    <div className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-3 text-sm text-blue-800 shadow-sm">
+                      Detail sedang diperbarui di background. Tampilan saat ini tetap bisa dibaca.
+                    </div>
+                  ) : null}
                   <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div>
@@ -2253,7 +2279,7 @@ export default function DashboardContent({
                           {isSuperAdmin
                             ? "Ringkasan admin yang melakukan verifikasi berdasarkan rentang tanggal yang dipilih, lengkap dengan jumlah titik dan waktu verifikasi."
                             : "Ringkasan jumlah verifikasi per hari untuk admin yang sedang login, dihitung dari data Supabase yang cocok dengan identitas verifikator Anda."}
-                          {" "}Sumber aktif: {bundleSource === "supabase" ? "Supabase" : "Firestore"}.
+                          {" "}Sumber aktif: {bundleSource === "supabase" ? "Supabase" : "Cache panel"}.
                         </p>
                       </div>
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">

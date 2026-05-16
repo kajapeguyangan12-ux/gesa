@@ -49,6 +49,7 @@
     "clear:supabase:storage:surveys:dry-run": "node scripts/clear-supabase-storage-prefixes.js --dry-run",
     "migrate:supabase:auth-users": "node scripts/migrate-user-admin-to-supabase-auth.js",
     "migrate:supabase:auth-users:dry-run": "node scripts/migrate-user-admin-to-supabase-auth.js --dry-run",
+    "audit:supabase:user-admin-auth-sync": "node scripts/audit-user-admin-auth-sync.js",
     "sync:supabase:once": "node scripts/sync-firebase-to-supabase-once.js",
     "sync:supabase:once:survey-work": "set SYNC_PROFILE=survey-work&& node scripts/sync-firebase-to-supabase-once.js",
     "sync:supabase:once:backoffice": "set SYNC_PROFILE=backoffice&& node scripts/sync-firebase-to-supabase-once.js",

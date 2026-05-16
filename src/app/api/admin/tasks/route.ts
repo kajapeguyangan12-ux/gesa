@@ -12,6 +12,7 @@ interface TaskRow {
   surveyor_email: string | null;
   status: string | null;
   type: string | null;
+  kabupaten?: string | null;
   kmz_file_url: string | null;
   kmz_file_url_2: string | null;
   offline_enabled: boolean | null;
@@ -32,22 +33,43 @@ interface TaskListSummary {
   completed: number;
 }
 
+interface TaskTypeSummary {
+  all: number;
+  existing: number;
+  propose: number;
+  proposeExisting: number;
+  praExisting: number;
+}
+
 function parsePositiveInteger(value: string | null, fallback: number) {
   const parsed = Number.parseInt(value || "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function normalizeKabupatenLabel(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^kabupaten\s+/i, "")
+    .replace(/^kab\.\s*/i, "")
+    .replace(/^kab\s+/i, "");
+}
+
 function applyTaskFilters<TQuery extends {
   eq: (column: string, value: string) => TQuery;
   or: (filters: string) => TQuery;
+  ilike: (column: string, value: string) => TQuery;
 }>(query: TQuery, options: {
   adminId?: string;
   adminEmail?: string;
+  kabupaten?: string;
   includeAll: boolean;
   search?: string;
   status?: string;
+  type?: string;
 }) {
-  const { adminId, adminEmail, includeAll, search, status } = options;
+  const { adminId, adminEmail, kabupaten, includeAll, search, status, type } = options;
   let nextQuery = query;
 
   if (!includeAll && (adminId || adminEmail)) {
@@ -78,6 +100,14 @@ function applyTaskFilters<TQuery extends {
     nextQuery = nextQuery.eq("status", status);
   }
 
+  if (type) {
+    nextQuery = nextQuery.eq("type", type);
+  }
+
+  if (kabupaten) {
+    nextQuery = nextQuery.ilike("kabupaten", `%${kabupaten}%`);
+  }
+
   return nextQuery;
 }
 
@@ -97,8 +127,18 @@ function mapTaskRow(row: TaskRow) {
     createdAt: row.created_at,
     startedAt: row.raw_payload?.startedAt || null,
     completedAt: row.raw_payload?.completedAt || null,
-    kabupaten: typeof row.raw_payload?.kabupaten === "string" ? row.raw_payload.kabupaten : "",
-    kabupatenName: typeof row.raw_payload?.kabupatenName === "string" ? row.raw_payload.kabupatenName : "",
+    kabupaten:
+      typeof row.kabupaten === "string"
+        ? row.kabupaten
+        : typeof row.raw_payload?.kabupaten === "string"
+          ? row.raw_payload.kabupaten
+          : "",
+    kabupatenName:
+      typeof row.raw_payload?.kabupatenName === "string"
+        ? row.raw_payload.kabupatenName
+        : typeof row.kabupaten === "string"
+          ? row.kabupaten
+          : "",
     excelFileUrl:
       typeof row.raw_payload?.excelFileUrl === "string"
         ? row.raw_payload.excelFileUrl
@@ -108,13 +148,122 @@ function mapTaskRow(row: TaskRow) {
   };
 }
 
+async function fetchAllTaskRows(
+  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  options: {
+    adminId?: string;
+    adminEmail?: string;
+    includeAll: boolean;
+    search?: string;
+  }
+) {
+  const pageSize = 500;
+  const rows: TaskRow[] = [];
+  let offset = 0;
+
+  while (true) {
+    const query = applyTaskFilters(
+      supabase
+        .from("tasks")
+        .select(
+          "fb_doc_id, title, description, surveyor_id, surveyor_name, surveyor_email, status, type, kabupaten, kmz_file_url, kmz_file_url_2, offline_enabled, created_at, raw_payload"
+        )
+        .order("created_at", { ascending: false })
+        .range(offset, offset + pageSize - 1),
+      options
+    );
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+
+    const batch = (data || []) as TaskRow[];
+    rows.push(...batch);
+
+    if (batch.length < pageSize) break;
+    offset += batch.length;
+  }
+
+  return rows;
+}
+
+function filterTaskRowsByKabupaten(rows: TaskRow[], kabupaten?: string) {
+  if (!kabupaten) return rows;
+  const target = normalizeKabupatenLabel(kabupaten);
+  return rows.filter((row) => {
+    const candidates = [
+      row.kabupaten,
+      row.raw_payload?.kabupaten,
+      row.raw_payload?.kabupatenName,
+    ];
+    return candidates.some((value) => normalizeKabupatenLabel(value) === target);
+  });
+}
+
+async function loadMatchingTaskIdsFromSurveyTables(
+  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  rows: TaskRow[],
+  kabupaten?: string
+) {
+  if (!kabupaten) return new Set<string>();
+
+  const target = normalizeKabupatenLabel(kabupaten);
+  const taskIds = Array.from(
+    new Set(
+      rows
+        .map((row) => (typeof row.fb_doc_id === "string" ? row.fb_doc_id.trim() : ""))
+        .filter(Boolean)
+    )
+  );
+
+  if (taskIds.length === 0) return new Set<string>();
+
+  const matchingTaskIds = new Set<string>();
+  const surveyTables = ["survey_existing", "survey_apj_propose", "survey_pra_existing"] as const;
+
+  for (const taskIdChunkStart of Array.from({ length: Math.ceil(taskIds.length / 200) }, (_, index) => index * 200)) {
+    const taskIdChunk = taskIds.slice(taskIdChunkStart, taskIdChunkStart + 200);
+
+    for (const table of surveyTables) {
+      const { data, error } = await supabase
+        .from(table)
+        .select("task_id, kabupaten, raw_payload")
+        .in("task_id", taskIdChunk);
+
+      if (error) throw new Error(error.message);
+
+      for (const row of (data || []) as Array<{
+        task_id?: string | null;
+        kabupaten?: string | null;
+        raw_payload?: Record<string, unknown> | null;
+      }>) {
+        const taskId = typeof row.task_id === "string" ? row.task_id.trim() : "";
+        if (!taskId) continue;
+
+        const candidates = [
+          row.kabupaten,
+          row.raw_payload?.kabupaten,
+          row.raw_payload?.kabupatenName,
+        ];
+
+        if (candidates.some((value) => normalizeKabupatenLabel(value) === target)) {
+          matchingTaskIds.add(taskId);
+        }
+      }
+    }
+  }
+
+  return matchingTaskIds;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const adminId = request.nextUrl.searchParams.get("adminId")?.trim();
     const adminEmail = request.nextUrl.searchParams.get("adminEmail")?.trim().toLowerCase();
+    const kabupaten = request.nextUrl.searchParams.get("kabupaten")?.trim();
     const search = request.nextUrl.searchParams.get("q")?.trim();
     const includeAll = request.nextUrl.searchParams.get("includeAll") === "true";
     const status = request.nextUrl.searchParams.get("status")?.trim();
+    const type = request.nextUrl.searchParams.get("type")?.trim();
     const offset = Math.max(0, parsePositiveInteger(request.nextUrl.searchParams.get("offset"), 0) - 0);
     const requestedLimit = parsePositiveInteger(request.nextUrl.searchParams.get("limit"), includeAll ? 100 : 50);
     const limit = Math.min(requestedLimit, includeAll ? 250 : 100);
@@ -124,7 +273,7 @@ export async function GET(request: NextRequest) {
         .from("tasks")
         .select("fb_doc_id, type, raw_payload, status")
         .eq("status", "pending"),
-      { adminId, adminEmail, includeAll, search }
+      { adminId, adminEmail, kabupaten, includeAll, search }
     );
 
     if (pendingTasksResult.error) {
@@ -132,77 +281,59 @@ export async function GET(request: NextRequest) {
     }
 
     await syncPendingTasksWithSubmittedSurveys(supabase, (pendingTasksResult.data || []) as TaskRow[]);
-
-    const summaryBaseQuery = () =>
-      applyTaskFilters(
-        supabase.from("tasks").select("*", { count: "exact", head: true }),
-        { adminId, adminEmail, includeAll, search }
-      );
-    const pageCountQuery = applyTaskFilters(
-      supabase.from("tasks").select("*", { count: "exact", head: true }),
-      { adminId, adminEmail, includeAll, search, status: status && status !== "all" ? status : undefined }
+    const fetchedRows = await fetchAllTaskRows(supabase, {
+      adminId,
+      adminEmail,
+      includeAll,
+      search,
+    });
+    const directlyMatchedRows = filterTaskRowsByKabupaten(fetchedRows, kabupaten);
+    const surveyMatchedTaskIds = await loadMatchingTaskIdsFromSurveyTables(supabase, fetchedRows, kabupaten);
+    const directMatchedIds = new Set(
+      directlyMatchedRows
+        .map((row) => (typeof row.fb_doc_id === "string" ? row.fb_doc_id.trim() : ""))
+        .filter(Boolean)
     );
-    const pageQuery = applyTaskFilters(
-      supabase
-        .from("tasks")
-        .select("fb_doc_id, title, description, surveyor_id, surveyor_name, surveyor_email, status, type, kmz_file_url, kmz_file_url_2, offline_enabled, created_at, raw_payload")
-        .order("created_at", { ascending: false })
-        .range(offset, offset + limit - 1),
-      { adminId, adminEmail, includeAll, search, status: status && status !== "all" ? status : undefined }
-    );
-
-    const [
-      totalCountResult,
-      pendingCountResult,
-      inProgressCountResult,
-      completedCountResult,
-      filteredCountResult,
-      pageResult,
-    ] = await Promise.all([
-      summaryBaseQuery(),
-      applyTaskFilters(
-        supabase.from("tasks").select("*", { count: "exact", head: true }),
-        { adminId, adminEmail, includeAll, search, status: "pending" }
-      ),
-      applyTaskFilters(
-        supabase.from("tasks").select("*", { count: "exact", head: true }),
-        { adminId, adminEmail, includeAll, search, status: "in-progress" }
-      ),
-      applyTaskFilters(
-        supabase.from("tasks").select("*", { count: "exact", head: true }),
-        { adminId, adminEmail, includeAll, search, status: "completed" }
-      ),
-      pageCountQuery,
-      pageQuery,
-    ]);
-
-    const countErrors = [
-      totalCountResult.error,
-      pendingCountResult.error,
-      inProgressCountResult.error,
-      completedCountResult.error,
-      filteredCountResult.error,
-      pageResult.error,
-    ].filter(Boolean);
-
-    if (countErrors.length > 0) {
-      throw new Error(countErrors[0]?.message || "Gagal memuat tugas admin dari Supabase.");
-    }
+    const allRows = kabupaten
+      ? fetchedRows.filter((row) => {
+          const taskId = typeof row.fb_doc_id === "string" ? row.fb_doc_id.trim() : "";
+          const hasKnownKabupatenSignal =
+            Boolean(normalizeKabupatenLabel(row.kabupaten)) ||
+            Boolean(normalizeKabupatenLabel(row.raw_payload?.kabupaten)) ||
+            Boolean(normalizeKabupatenLabel(row.raw_payload?.kabupatenName));
+          const matchesDirect = taskId ? directMatchedIds.has(taskId) : false;
+          const matchesSurvey = taskId ? surveyMatchedTaskIds.has(taskId) : false;
+          const isLegacyUnassignedTabanan = kabupaten === "tabanan" && !hasKnownKabupatenSignal && !matchesSurvey;
+          return matchesDirect || matchesSurvey || isLegacyUnassignedTabanan;
+        })
+      : fetchedRows;
 
     const summary: TaskListSummary = {
-      total: totalCountResult.count || 0,
-      pending: pendingCountResult.count || 0,
-      inProgress: inProgressCountResult.count || 0,
-      completed: completedCountResult.count || 0,
+      total: allRows.length,
+      pending: allRows.filter((row) => row.status === "pending").length,
+      inProgress: allRows.filter((row) => row.status === "in-progress").length,
+      completed: allRows.filter((row) => row.status === "completed").length,
     };
-    const filteredCount = filteredCountResult.count || 0;
-    const tasks = ((pageResult.data || []) as TaskRow[]).map(mapTaskRow);
+    const statusFilteredRows =
+      status && status !== "all" ? allRows.filter((row) => row.status === status) : allRows;
+    const typeSummary: TaskTypeSummary = {
+      all: statusFilteredRows.length,
+      existing: statusFilteredRows.filter((row) => row.type === "existing").length,
+      propose: statusFilteredRows.filter((row) => row.type === "propose").length,
+      proposeExisting: statusFilteredRows.filter((row) => row.type === "propose-existing").length,
+      praExisting: statusFilteredRows.filter((row) => row.type === "pra-existing").length,
+    };
+    const typeFilteredRows =
+      type && type !== "all" ? statusFilteredRows.filter((row) => row.type === type) : statusFilteredRows;
+    const filteredCount = typeFilteredRows.length;
+    const tasks = typeFilteredRows.slice(offset, offset + limit).map(mapTaskRow);
 
     return NextResponse.json({
       source: "supabase",
       scope: includeAll ? "all" : adminId || adminEmail ? "admin" : "default",
       tasks,
       summary,
+      typeSummary,
       pagination: {
         offset,
         limit,

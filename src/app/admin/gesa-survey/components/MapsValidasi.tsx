@@ -166,6 +166,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "super-admin";
   const targetStatus = isSuperAdmin ? "tervalidasi" : "diverifikasi";
+  const primaryStatusLabel = isSuperAdmin ? "Tervalidasi" : "Diverifikasi";
   const pageTitle = isSuperAdmin ? "Maps Valid" : "Maps Terverifikasi";
   const pageDescription = isSuperAdmin
     ? "Visualisasi bersama titik koordinat survey yang telah divalidasi dalam peta interaktif"
@@ -174,8 +175,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
   const [loading, setLoading] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [selectedKecamatan, setSelectedKecamatan] = useState("Semua Kecamatan");
-  const [showPendingSurveys, setShowPendingSurveys] = useState(false);
-  const [showRejectedSurveys, setShowRejectedSurveys] = useState(false);
+  const [selectedStatuses, setSelectedStatuses] = useState<AdminSurveyStatus[]>([targetStatus]);
   const [overviewLoaded, setOverviewLoaded] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [dataSource, setDataSource] = useState<string>("Belum ada");
@@ -195,15 +195,15 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
     praExisting: 0,
   });
 
-  const selectedStatuses = useMemo<AdminSurveyStatus[]>(
-    () => {
-      const statuses: AdminSurveyStatus[] = [targetStatus];
-      if (showPendingSurveys) statuses.push("menunggu");
-      if (showRejectedSurveys) statuses.push("ditolak");
-      return statuses;
-    },
-    [showPendingSurveys, showRejectedSurveys, targetStatus]
-  );
+  const selectedStatusSet = useMemo(() => new Set(selectedStatuses), [selectedStatuses]);
+
+  const statusFilterSummary = useMemo(() => {
+    const labels: string[] = [];
+    if (selectedStatusSet.has(targetStatus)) labels.push(primaryStatusLabel.toLowerCase());
+    if (selectedStatusSet.has("menunggu")) labels.push("belum diverifikasi");
+    if (selectedStatusSet.has("ditolak")) labels.push("ditolak");
+    return labels.length ? labels.join(", ") : "tanpa status";
+  }, [primaryStatusLabel, selectedStatusSet, targetStatus]);
 
   const kecamatanOptions = activeKabupaten === "tabanan"
     ? ["Semua Kecamatan", ...Object.keys(PRA_EXISTING_TABANAN_DATA).sort()]
@@ -215,7 +215,32 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
     polygons: kmzOverlay?.polygons.length || 0,
   }), [kmzOverlay]);
 
+  const toggleStatusFilter = useCallback((status: AdminSurveyStatus) => {
+    setSelectedStatuses((current) =>
+      current.includes(status) ? current.filter((item) => item !== status) : [...current, status]
+    );
+  }, []);
+
   const fetchSurveys = useCallback(async (filterKecamatan?: string) => {
+    if (selectedStatuses.length === 0) {
+      setSurveys([]);
+      setMapLoaded(false);
+      setOverviewLoaded(true);
+      setStats({
+        total: 0,
+        visible: 0,
+        pending: 0,
+        rejected: 0,
+        primaryStatus: 0,
+        existing: 0,
+        propose: 0,
+        praExisting: 0,
+      });
+      setDataSource("Belum ada");
+      setLastUpdatedAt(null);
+      return;
+    }
+
     try {
       setLoading(true);
       const payload = await fetchAdminSurveyRows({
@@ -303,7 +328,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
     });
     setDataSource("Belum ada");
     setLastUpdatedAt(null);
-  }, [activeKabupaten, targetStatus, showPendingSurveys, showRejectedSurveys]);
+  }, [activeKabupaten, selectedStatuses, targetStatus]);
 
   const handleResetView = () => {
     setSurveys([]);
@@ -351,9 +376,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
   }, []);
 
   const exportBaseName = useMemo(() => {
-    const statusLabels = [targetStatus];
-    if (showPendingSurveys) statusLabels.push("menunggu");
-    if (showRejectedSurveys) statusLabels.push("ditolak");
+    const statusLabels = selectedStatuses.length ? selectedStatuses : ["tanpa-status"];
     const modeLabel = statusLabels.join("-");
     const kecamatanLabel =
       selectedKecamatan !== "Semua Kecamatan"
@@ -361,7 +384,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
         : "semua-kecamatan";
     const kabupatenLabel = (activeKabupaten || "semua-kabupaten").toLowerCase().replace(/\s+/g, "-");
     return `maps-survey-${kabupatenLabel}-${kecamatanLabel}-${modeLabel}`;
-  }, [activeKabupaten, selectedKecamatan, showPendingSurveys, showRejectedSurveys, targetStatus]);
+  }, [activeKabupaten, selectedKecamatan, selectedStatuses]);
 
   const triggerDownload = useCallback((blob: Blob, filename: string) => {
     const objectUrl = URL.createObjectURL(blob);
@@ -445,50 +468,61 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
         <div className="flex flex-col lg:flex-row lg:items-end gap-4">
           <div className="flex-1">
             <h2 className="text-lg font-bold text-gray-900 mb-1">Kontrol Tampilan Map</h2>
-            <p className="text-sm text-gray-600">Default map kosong. Tampilkan semua atau pilih kecamatan saat diperlukan.</p>
+            <p className="text-sm text-gray-600">Pilih status satuan atau gabungan, lalu tampilkan semua data atau filter kecamatan.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => {
-                setShowPendingSurveys(false);
-                setShowRejectedSurveys(false);
-              }}
+              onClick={() => toggleStatusFilter(targetStatus)}
               className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                !showPendingSurveys && !showRejectedSurveys
+                selectedStatusSet.has(targetStatus)
                   ? "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200"
                   : "bg-gray-100 text-gray-500 ring-1 ring-gray-200"
               }`}
             >
-              {isSuperAdmin ? "Hanya Tervalidasi" : "Hanya Diverifikasi"}
+              {primaryStatusLabel}
             </button>
             <button
               type="button"
-              onClick={() => setShowPendingSurveys(true)}
+              onClick={() => toggleStatusFilter("menunggu")}
               className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                showPendingSurveys
+                selectedStatusSet.has("menunggu")
                   ? "bg-amber-100 text-amber-700 ring-1 ring-amber-200"
                   : "bg-gray-100 text-gray-500 ring-1 ring-gray-200"
               }`}
             >
-              Tambahkan Belum Diverifikasi
+              Belum Diverifikasi
             </button>
             <button
               type="button"
-              onClick={() => setShowRejectedSurveys((current) => !current)}
+              onClick={() => toggleStatusFilter("ditolak")}
               className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                showRejectedSurveys
+                selectedStatusSet.has("ditolak")
                   ? "bg-rose-100 text-rose-700 ring-1 ring-rose-200"
                   : "bg-gray-100 text-gray-500 ring-1 ring-gray-200"
               }`}
             >
-              Tampilkan Ditolak
+              Ditolak
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedStatuses([targetStatus, "menunggu", "ditolak"])}
+              className="px-4 py-2 rounded-xl text-sm font-semibold bg-slate-100 text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-200"
+            >
+              Pilih Semua Status
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedStatuses([targetStatus])}
+              className="px-4 py-2 rounded-xl text-sm font-semibold bg-white text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
+            >
+              Reset ke {primaryStatusLabel}
             </button>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
             <button
               onClick={() => void fetchSurveys()}
-              disabled={loading}
+              disabled={loading || selectedStatuses.length === 0}
               className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-semibold rounded-xl transition-colors"
             >
               Tampilkan Semua
@@ -506,12 +540,15 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
             </select>
             <button
               onClick={() => void fetchSurveys(selectedKecamatan)}
-              disabled={loading || selectedKecamatan === "Semua Kecamatan"}
+              disabled={loading || selectedKecamatan === "Semua Kecamatan" || selectedStatuses.length === 0}
               className="px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white font-semibold rounded-xl transition-colors"
             >
               Tampilkan Kecamatan
             </button>
           </div>
+        </div>
+        <div className="mt-3 text-xs text-slate-600">
+          Status aktif: {selectedStatuses.length ? statusFilterSummary : "belum ada status dipilih"}.
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
@@ -696,13 +733,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
                 <h3 className="font-bold text-gray-900 text-lg">{pageTitle}</h3>
                 <p className="text-sm text-gray-600">
                   {mapLoaded
-                    ? `Menampilkan ${stats.visible} titik koordinat survey ${[
-                        isSuperAdmin ? "tervalidasi" : "terverifikasi",
-                        showPendingSurveys ? "belum diverifikasi" : null,
-                        showRejectedSurveys ? "ditolak" : null,
-                      ]
-                        .filter(Boolean)
-                        .join(", ")}`
+                    ? `Menampilkan ${stats.visible} titik koordinat survey ${statusFilterSummary}`
                     : "Map belum dimuat. Pilih Tampilkan Semua atau filter kecamatan."}
                 </p>
               </div>
@@ -735,6 +766,7 @@ export default function MapsValidasi({ activeKabupaten }: { activeKabupaten?: st
             <span className="font-medium"> Tampil:</span> {mapLoaded ? stats.visible : "-"} • 
             <span className="font-medium"> Belum Diverifikasi:</span> {overviewLoaded ? stats.pending : "-"} • 
             <span className="font-medium"> Ditolak:</span> {overviewLoaded ? stats.rejected : "-"} • 
+            <span className="font-medium"> Status:</span> {selectedStatuses.length ? statusFilterSummary : "belum dipilih"} • 
             <span className="font-medium"> Zoom:</span> Drag untuk menggeser, scroll untuk zoom • 
             <span className="font-medium"> Filter:</span> {!mapLoaded ? "Belum dipilih" : selectedKecamatan === "Semua Kecamatan" ? "Semua Collection" : selectedKecamatan}
           </p>

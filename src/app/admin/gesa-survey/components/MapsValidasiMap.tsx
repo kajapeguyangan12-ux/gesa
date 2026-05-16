@@ -271,11 +271,27 @@ export default function MapsValidasiMap({ surveys, overlayGeometries }: MapsVali
   }, []);
 
   const mapPoints = useMemo(
-    () =>
-      surveys.map((survey) => ({
-        survey,
-        style: TYPE_STYLES[survey.type] ?? fallbackTypeStyle,
-      })).filter(({ survey }) => Number.isFinite(survey.latitude) && Number.isFinite(survey.longitude)),
+    () => {
+      const seenKeys = new Set<string>();
+
+      return surveys
+        .map((survey, index) => ({
+          survey,
+          style: TYPE_STYLES[survey.type] ?? fallbackTypeStyle,
+          renderKey: `${survey.id}-${survey.status}-${survey.type}-${survey.latitude}-${survey.longitude}-${index}`,
+          dedupeKey: `${survey.id}-${survey.status}-${survey.type}-${survey.latitude}-${survey.longitude}`,
+        }))
+        .filter(({ survey, dedupeKey }) => {
+          if (!Number.isFinite(survey.latitude) || !Number.isFinite(survey.longitude)) {
+            return false;
+          }
+          if (seenKeys.has(dedupeKey)) {
+            return false;
+          }
+          seenKeys.add(dedupeKey);
+          return true;
+        });
+    },
     [surveys]
   );
 
@@ -314,9 +330,9 @@ export default function MapsValidasiMap({ surveys, overlayGeometries }: MapsVali
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         
-        {mapPoints.map(({ survey, style }) => (
+        {mapPoints.map(({ survey, style, renderKey }) => (
             <CircleMarker
-              key={`${survey.id}-${survey.latitude}-${survey.longitude}`}
+              key={renderKey}
               center={[survey.latitude, survey.longitude]}
               radius={8}
               pathOptions={(() => {

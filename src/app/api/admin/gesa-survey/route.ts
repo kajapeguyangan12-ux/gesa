@@ -66,6 +66,8 @@ const emptySummary: ReportSummary = {
 };
 
 const SUPABASE_PAGE_SIZE = 1000;
+const RESPONSE_CACHE_TTL_MS = 15_000;
+const routeResponseCache = new Map<string, { expiresAt: number; payload: unknown }>();
 
 function chunkArray<T>(items: T[], size: number) {
   if (size <= 0) return [items];
@@ -74,6 +76,23 @@ function chunkArray<T>(items: T[], size: number) {
     chunks.push(items.slice(index, index + size));
   }
   return chunks;
+}
+
+function getCachedRoutePayload(cacheKey: string) {
+  const entry = routeResponseCache.get(cacheKey);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    routeResponseCache.delete(cacheKey);
+    return null;
+  }
+  return entry.payload;
+}
+
+function setCachedRoutePayload(cacheKey: string, payload: unknown) {
+  routeResponseCache.set(cacheKey, {
+    expiresAt: Date.now() + RESPONSE_CACHE_TTL_MS,
+    payload,
+  });
 }
 
 function toTimestamp(value: unknown) {
@@ -332,19 +351,11 @@ function resolveVerificationActor(status: string, rawPayload: Record<string, unk
   const verifiedBy = pickActorName(rawPayload.verifiedBy);
   const editedBy = pickActorName(rawPayload.editedBy, rawPayload.modifiedBy);
   const validatedBy = pickActorName(rawPayload.validatedBy);
-  const fallbackIdentity = pickActorName(
-    rawPayload.userName,
-    rawPayload.user_name,
-    rawPayload.userEmail,
-    rawPayload.user_email,
-    rawPayload.name,
-    rawPayload.email
-  );
 
   if (verifiedBy) return verifiedBy;
   if ((normalizedStatus === "diverifikasi" || normalizedStatus === "tervalidasi") && editedBy) return editedBy;
   if (validatedBy) return validatedBy;
-  return fallbackIdentity;
+  return "";
 }
 
 function resolveVerificationTimestamp(
@@ -354,16 +365,16 @@ function resolveVerificationTimestamp(
   actorName: string
 ) {
   const normalizedStatus = status.trim().toLowerCase();
-  if (normalizedStatus === "diverifikasi" && row.updated_at) {
-    return row.updated_at;
-  }
-
   const directVerifiedAt = row.verified_at ?? rawPayload.verifiedAt ?? null;
   if (directVerifiedAt) return directVerifiedAt;
 
   if (normalizedStatus === "tervalidasi") {
     const validatedAt = rawPayload.validatedAt ?? null;
     if (validatedAt) return validatedAt;
+  }
+
+  if (normalizedStatus === "diverifikasi" && row.updated_at) {
+    return row.updated_at;
   }
 
   if ((normalizedStatus === "diverifikasi" || normalizedStatus === "tervalidasi") && actorName) {
@@ -509,7 +520,7 @@ function matchesKabupaten(row: SurveyRow, activeKabupaten: string | null) {
   return normalizeKabupatenLabel(row.kabupaten) === normalizeKabupatenLabel(activeKabupaten);
 }
 
-async function filterOrphanSurveyRows(
+async function loadExistingTaskIdsForSurveyRows(
   supabase: ReturnType<typeof getSupabaseAdminClient>,
   rows: SurveyRow[]
 ) {
@@ -521,7 +532,7 @@ async function filterOrphanSurveyRows(
     )
   );
 
-  if (taskIds.length === 0) return rows;
+  if (taskIds.length === 0) return null;
 
   const existingTaskIds = new Set<string>();
   for (const taskIdGroup of chunkArray(taskIds, 200)) {
@@ -539,6 +550,11 @@ async function filterOrphanSurveyRows(
     }
   }
 
+  return existingTaskIds;
+}
+
+function filterSurveyRowsByTaskIds(rows: SurveyRow[], existingTaskIds: Set<string> | null) {
+  if (!existingTaskIds) return rows;
   return rows.filter((row) => {
     const taskId = typeof row.taskId === "string" ? row.taskId.trim() : "";
     if (!taskId) return true;
@@ -548,6 +564,7 @@ async function filterOrphanSurveyRows(
 
 export async function GET(request: NextRequest) {
   try {
+    const cacheKey = request.nextUrl.search;
     const includeDetails = request.nextUrl.searchParams.get("includeDetails") === "1";
     const compact = request.nextUrl.searchParams.get("compact") === "1";
     const summaryOnly = request.nextUrl.searchParams.get("summaryOnly") === "1";
@@ -559,6 +576,12 @@ export async function GET(request: NextRequest) {
     const changedSinceRaw = request.nextUrl.searchParams.get("changedSince")?.trim() || "";
     const changedSince = changedSinceRaw ? new Date(changedSinceRaw) : null;
     const useDelta = Boolean(changedSince && !Number.isNaN(changedSince.getTime()));
+    if (!useDelta) {
+      const cachedPayload = getCachedRoutePayload(cacheKey);
+      if (cachedPayload) {
+        return NextResponse.json(cachedPayload);
+      }
+    }
     const offset = Math.max(0, Number.parseInt(request.nextUrl.searchParams.get("offset") || "0", 10) || 0);
     const limitParam = Number.parseInt(request.nextUrl.searchParams.get("limit") || "0", 10) || 0;
     const limit = limitParam > 0 ? limitParam : null;
@@ -662,7 +685,7 @@ export async function GET(request: NextRequest) {
 
     const allowedTaskIdsArray = allowedTaskIds ? Array.from(allowedTaskIds) : null;
     if ((adminId || adminEmail) && allowedTaskIdsArray && allowedTaskIdsArray.length === 0) {
-      return NextResponse.json({
+      const payload = {
         source: "supabase",
         generatedAt: new Date().toISOString(),
         lastDataChangeAt: new Date().toISOString(),
@@ -674,7 +697,9 @@ export async function GET(request: NextRequest) {
         praExistingByKecamatan: [],
         totalRows: 0,
         allRows: [],
-      });
+      };
+      if (!useDelta) setCachedRoutePayload(cacheKey, payload);
+      return NextResponse.json(payload);
     }
 
     const tablesToLoad: Array<{ table: string; type: SurveyType }> = [];
@@ -725,7 +750,7 @@ export async function GET(request: NextRequest) {
       const lastDataChangeAt =
         Math.max(proposeSummary.lastChangedAt, existingSummary.lastChangedAt, praExistingSummary.lastChangedAt) || Date.now();
 
-      return NextResponse.json({
+      const payload = {
         source: "supabase",
         generatedAt: new Date().toISOString(),
         lastDataChangeAt: new Date(lastDataChangeAt).toISOString(),
@@ -737,7 +762,9 @@ export async function GET(request: NextRequest) {
         praExistingByKecamatan: [],
         totalRows: proposeSummary.totalData + existingSummary.totalData + praExistingSummary.totalData,
         allRows: [],
-      });
+      };
+      if (!useDelta) setCachedRoutePayload(cacheKey, payload);
+      return NextResponse.json(payload);
     }
 
     const loadTable = async (table: string, type: SurveyType) => {
@@ -761,18 +788,20 @@ export async function GET(request: NextRequest) {
     tablesToLoad.forEach(({ type }, index) => {
       loadedByType.set(type, loadedResults[index] || []);
     });
-
-    const [proposeRows, existingRows, praExistingRows] = await Promise.all([
+    const combinedLoadedRows = tablesToLoad.flatMap(({ type }) => loadedByType.get(type) || []);
+    const existingTaskIds = await loadExistingTaskIdsForSurveyRows(supabase, combinedLoadedRows);
+    const proposeRows =
       requestedType && requestedType !== "propose"
-        ? Promise.resolve([])
-        : filterOrphanSurveyRows(supabase, loadedByType.get("apj-propose") || []),
+        ? []
+        : filterSurveyRowsByTaskIds(loadedByType.get("apj-propose") || [], existingTaskIds);
+    const existingRows =
       requestedType && requestedType !== "existing"
-        ? Promise.resolve([])
-        : filterOrphanSurveyRows(supabase, loadedByType.get("existing") || []),
+        ? []
+        : filterSurveyRowsByTaskIds(loadedByType.get("existing") || [], existingTaskIds);
+    const praExistingRows =
       requestedType && requestedType !== "pra-existing"
-        ? Promise.resolve([])
-        : filterOrphanSurveyRows(supabase, loadedByType.get("pra-existing") || []),
-    ]);
+        ? []
+        : filterSurveyRowsByTaskIds(loadedByType.get("pra-existing") || [], existingTaskIds);
 
     const combinedRows = [...proposeRows, ...existingRows, ...praExistingRows].sort((a, b) => {
       const left = typeof a.createdAt === "string" ? new Date(a.createdAt).getTime() : 0;
@@ -794,7 +823,7 @@ export async function GET(request: NextRequest) {
       ? (limit ? combinedRows.slice(offset, offset + limit) : combinedRows.slice(offset))
       : [];
 
-    return NextResponse.json({
+    const payload = {
       source: "supabase",
       generatedAt: new Date().toISOString(),
       lastDataChangeAt: new Date(lastDataChangeAt).toISOString(),
@@ -810,7 +839,9 @@ export async function GET(request: NextRequest) {
       praExistingByKecamatan: buildKecamatanSummary(praExistingRows),
       totalRows,
       allRows,
-    });
+    };
+    if (!useDelta) setCachedRoutePayload(cacheKey, payload);
+    return NextResponse.json(payload);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Gagal memuat data gesa survey dari Supabase." },

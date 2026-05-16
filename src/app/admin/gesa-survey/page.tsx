@@ -265,6 +265,7 @@ function GesaSurveyContent() {
               <DistribusiTugas
                 setActiveMenu={setActiveMenu}
                 isSuperAdmin={isSuperAdmin}
+                activeKabupaten={activeKabupaten}
                 isActive={activeMenu === "distribusi-tugas"}
               />
             </section>

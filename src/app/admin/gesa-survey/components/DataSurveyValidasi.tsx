@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { formatPanelUpdatedAt, getReadableDataSourceLabel } from "@/utils/panelDataSource";
 import { formatWitaDateTime } from "@/utils/dateTime";
 import { toStorageAssetUrl } from "@/utils/storageAssetUrl";
+import { getCachedData, setCachedData } from "@/utils/firestoreCache";
 import { fetchAdminSurveyRows, type AdminSurveyRow } from "./supabaseSurveyClient";
 import { getSupabaseBrowserClient } from "@/lib/supabaseBrowser";
 import { resolveSurveyTable } from "@/lib/supabaseHybrid";
@@ -124,6 +125,22 @@ type TimestampLike =
   | undefined;
 
 const SUPPRESSED_SURVEY_TTL_MS = 20000;
+const VALIDATION_DATA_CACHE_TTL_MS = 2 * 60 * 1000;
+
+interface ValidationDataCacheEntry {
+  surveys: Survey[];
+  stats: {
+    total: number;
+    existing: number;
+    propose: number;
+    praExisting: number;
+  };
+  actualTotalSurveys: number;
+  dataSource: string;
+  lastUpdatedAt: string | null;
+  lastDataChangeAt: string;
+  fingerprint: string;
+}
 
 async function readApiError(response: Response, fallbackMessage: string) {
   try {
@@ -151,6 +168,10 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   const FULL_FETCH_LIMIT = 10000;
   const OVERFLOW_FETCH_BATCH_SIZE = 1000;
   const LIVE_REFRESH_INTERVAL_MS = 30000;
+  const validationCacheKey = useMemo(
+    () => `admin_gesa_survey_validasi_${(activeKabupaten || "all").toLowerCase()}`,
+    [activeKabupaten]
+  );
 
   const isDocumentVisible = () => {
     if (typeof document === "undefined") return true;
@@ -191,6 +212,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   const latestFingerprintRef = useRef("");
   const latestDataChangeRef = useRef("");
   const surveysRequestSeqRef = useRef(0);
+  const surveysRef = useRef<Survey[]>([]);
   const suppressedSurveyIdsRef = useRef(new Map<string, number>());
   const realtimeRefreshTimeoutRef = useRef<number | null>(null);
   const targetStatuses = useMemo(() => new Set(["diverifikasi"]), []);
@@ -258,16 +280,37 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
   };
 
   useEffect(() => {
+    surveysRef.current = surveys;
+  }, [surveys]);
+
+  useEffect(() => {
     setSelectedSurveyIds([]);
   }, [filterType, filterStatus, filterSurveyor, filterKecamatan, filterDesa, coordinateSearch]);
 
   useEffect(() => {
-    setSurveys([]);
     setCurrentPage(1);
     setShowAll(false);
-    setDataLoaded(false);
+    setFetchError("");
     latestFingerprintRef.current = "";
     latestDataChangeRef.current = "";
+    const cached = getCachedData<ValidationDataCacheEntry>(validationCacheKey);
+
+    if (cached) {
+      setSurveys(cached.surveys);
+      setStats(cached.stats);
+      setActualTotalSurveys(cached.actualTotalSurveys);
+      setDataSource(cached.dataSource || "supabase");
+      setLastUpdatedAt(cached.lastUpdatedAt ? new Date(cached.lastUpdatedAt) : null);
+      setDataLoaded(true);
+      setLoading(false);
+      latestFingerprintRef.current = cached.fingerprint || "";
+      latestDataChangeRef.current = cached.lastDataChangeAt || "";
+      return;
+    }
+
+    setSurveys([]);
+    setDataLoaded(false);
+    setLoading(true);
     setStats({
       total: 0,
       existing: 0,
@@ -275,7 +318,9 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       praExisting: 0,
     });
     setActualTotalSurveys(0);
-  }, [activeKabupaten]);
+    setDataSource("Belum ada");
+    setLastUpdatedAt(null);
+  }, [validationCacheKey]);
 
   useEffect(() => {
     void fetchAllSurveys();
@@ -324,48 +369,56 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       }
       setFetchError("");
 
-      const [payload, summaryPayload] = await Promise.all([
-        fetchAdminSurveyRows({
-          activeKabupaten,
-          statuses: ["diverifikasi"],
-          limit: FULL_FETCH_LIMIT,
-        }),
-        fetchAdminSurveyRows({
-          activeKabupaten,
-          statuses: ["diverifikasi"],
-          summaryOnly: true,
-        }),
-      ]);
+      const payload = await fetchAdminSurveyRows({
+        activeKabupaten,
+        statuses: ["diverifikasi"],
+        limit: FULL_FETCH_LIMIT,
+      });
       if (requestSeq !== surveysRequestSeqRef.current) {
         return;
       }
       const allSurveys = payload.rows.map(mapSupabaseSurvey);
-      if (summaryPayload.counts.total > allSurveys.length) {
-        const overflowRows = await loadOverflowSurveys(allSurveys.length, summaryPayload.counts.total);
+      if (payload.totalRows > allSurveys.length) {
+        const overflowRows = await loadOverflowSurveys(allSurveys.length, payload.totalRows);
         if (requestSeq !== surveysRequestSeqRef.current) {
           return;
         }
         allSurveys.push(...overflowRows);
       }
-      setSurveys(filterSuppressedSurveys(allSurveys));
+      const nextSurveys = filterSuppressedSurveys(allSurveys);
+      setSurveys(nextSurveys);
       setDataLoaded(true);
       setStats(payload.counts);
-      setActualTotalSurveys(summaryPayload.counts.total);
+      setActualTotalSurveys(payload.totalRows);
       latestFingerprintRef.current = buildFingerprint(payload.counts, payload.lastDataChangeAt);
       latestDataChangeRef.current = payload.lastDataChangeAt || payload.generatedAt || latestDataChangeRef.current;
       setDataSource(payload.source || "supabase");
-      setLastUpdatedAt(
-        payload.lastDataChangeAt
-          ? new Date(payload.lastDataChangeAt)
-          : payload.generatedAt
-            ? new Date(payload.generatedAt)
-            : new Date()
+      const resolvedLastUpdatedAt = payload.lastDataChangeAt
+        ? new Date(payload.lastDataChangeAt)
+        : payload.generatedAt
+          ? new Date(payload.generatedAt)
+          : new Date();
+      setLastUpdatedAt(resolvedLastUpdatedAt);
+      setCachedData<ValidationDataCacheEntry>(
+        validationCacheKey,
+        {
+          surveys: nextSurveys,
+          stats: payload.counts,
+          actualTotalSurveys: payload.totalRows,
+          dataSource: payload.source || "supabase",
+          lastUpdatedAt: resolvedLastUpdatedAt.toISOString(),
+          lastDataChangeAt: payload.lastDataChangeAt || payload.generatedAt || "",
+          fingerprint: buildFingerprint(payload.counts, payload.lastDataChangeAt),
+        },
+        VALIDATION_DATA_CACHE_TTL_MS
       );
     } catch (error) {
       console.error("Error fetching surveys:", error);
       setFetchError(error instanceof Error ? error.message : "Gagal memuat data validasi.");
-      setDataSource("Belum ada");
-      setLastUpdatedAt(null);
+      if (surveysRef.current.length === 0) {
+        setDataSource("Belum ada");
+        setLastUpdatedAt(null);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -392,19 +445,32 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
       deltaRows.push(...overflowDeltaRows);
     }
     const filteredDeltaRows = filterSuppressedSurveys(deltaRows);
-    setSurveys((current) => mergeSurveyDelta(current, filteredDeltaRows));
+    const nextSurveys = mergeSurveyDelta(surveysRef.current, filteredDeltaRows);
+    setSurveys(nextSurveys);
     setDataLoaded(true);
     setStats(payload.counts);
     setActualTotalSurveys(payload.counts.total);
     latestFingerprintRef.current = buildFingerprint(payload.counts, payload.lastDataChangeAt);
     latestDataChangeRef.current = payload.lastDataChangeAt || payload.generatedAt || latestDataChangeRef.current;
     setDataSource(payload.source || "supabase");
-    setLastUpdatedAt(
-      payload.lastDataChangeAt
-        ? new Date(payload.lastDataChangeAt)
-        : payload.generatedAt
-          ? new Date(payload.generatedAt)
-          : new Date()
+    const resolvedLastUpdatedAt = payload.lastDataChangeAt
+      ? new Date(payload.lastDataChangeAt)
+      : payload.generatedAt
+        ? new Date(payload.generatedAt)
+        : new Date();
+    setLastUpdatedAt(resolvedLastUpdatedAt);
+    setCachedData<ValidationDataCacheEntry>(
+      validationCacheKey,
+      {
+        surveys: nextSurveys,
+        stats: payload.counts,
+        actualTotalSurveys: payload.counts.total,
+        dataSource: payload.source || "supabase",
+        lastUpdatedAt: resolvedLastUpdatedAt.toISOString(),
+        lastDataChangeAt: payload.lastDataChangeAt || payload.generatedAt || "",
+        fingerprint: buildFingerprint(payload.counts, payload.lastDataChangeAt),
+      },
+      VALIDATION_DATA_CACHE_TTL_MS
     );
   };
 
@@ -416,9 +482,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
           const payload = await fetchAdminSurveyRows({
             activeKabupaten,
             statuses: ["diverifikasi"],
-            includeDetails: false,
-            compact: true,
-            limit: 1,
+            summaryOnly: true,
           });
           const nextFingerprint = buildFingerprint(payload.counts, payload.lastDataChangeAt);
           if (nextFingerprint !== latestFingerprintRef.current) {
@@ -1198,7 +1262,7 @@ export default function DataSurveyValidasi({ activeKabupaten }: { activeKabupate
         </div>
 
         
-        {loading ? (
+        {loading || !dataLoaded ? (
           <div className="flex flex-col items-center justify-center py-16">
             <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
             <p className="text-gray-600">Memuat data survey...</p>

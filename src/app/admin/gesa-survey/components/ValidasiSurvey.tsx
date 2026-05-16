@@ -386,35 +386,16 @@ export default function ValidasiSurvey({
     });
   };
 
-  const matchesExactPraExistingDuplicate = (targetSurvey: Survey, candidate: Survey) => {
-    return (
-      targetSurvey.type === "pra-existing" &&
-      candidate.type === "pra-existing" &&
-      candidate.taskId === targetSurvey.taskId &&
-      candidate.surveyorName === targetSurvey.surveyorName &&
-      candidate.title === targetSurvey.title &&
-      candidate.latitude === targetSurvey.latitude &&
-      candidate.longitude === targetSurvey.longitude
-    );
-  };
-
-  const removeSurveyFromWorkingSet = (
-    targetSurvey: Survey,
-    mode: "single" | "exact-pra-existing-group" = "single"
-  ) => {
+  const removeSurveyFromWorkingSet = (targetSurvey: Survey) => {
     const surveysToRemove = surveys.filter((item) =>
-      mode === "exact-pra-existing-group"
-        ? item.id === targetSurvey.id || matchesExactPraExistingDuplicate(targetSurvey, item)
-        : item.id === targetSurvey.id
+      item.id === targetSurvey.id
     );
 
     suppressSurveyIds(surveysToRemove.map((item) => item.id));
 
     setSurveys((current) =>
       current.filter((item) =>
-        mode === "exact-pra-existing-group"
-          ? !(item.id === targetSurvey.id || matchesExactPraExistingDuplicate(targetSurvey, item))
-          : item.id !== targetSurvey.id
+        item.id !== targetSurvey.id
       )
     );
 
@@ -1225,10 +1206,7 @@ export default function ValidasiSurvey({
         }
       }
 
-      removeSurveyFromWorkingSet(
-        survey,
-        survey.type === "pra-existing" ? "exact-pra-existing-group" : "single"
-      );
+      removeSurveyFromWorkingSet(survey);
       setShowDetailModal(false);
       setSelectedSurvey(null);
       
@@ -1299,10 +1277,7 @@ export default function ValidasiSurvey({
         }
       }
 
-      removeSurveyFromWorkingSet(
-        survey,
-        survey.type === "pra-existing" ? "exact-pra-existing-group" : "single"
-      );
+      removeSurveyFromWorkingSet(survey);
       setShowDetailModal(false);
       setSelectedSurvey(null);
       

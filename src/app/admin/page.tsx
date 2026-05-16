@@ -364,7 +364,7 @@ function AdminPanelContent() {
             <div className="text-sm text-blue-900">
               <span className="font-semibold">Sumber aktif: Supabase.</span>{" "}
               Daftar laporan ditampilkan dari Supabase.
-              {" "}Jika query utama gagal atau kosong, sistem fallback ke Firestore.
+              {" "}Jika refresh sedang lambat, panel akan mempertahankan data terakhir yang masih valid.
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -392,7 +392,7 @@ function AdminPanelContent() {
             </div>
           </div>
           <div className="mb-4 text-xs font-medium text-gray-500">
-            Sumber aktif: {dataSource === "supabase" ? "Supabase" : "Firestore langsung"}
+            Sumber aktif: {dataSource === "supabase" ? "Supabase" : "Cache panel sementara"}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">{/* Judul / Lokasi */}
             <div>

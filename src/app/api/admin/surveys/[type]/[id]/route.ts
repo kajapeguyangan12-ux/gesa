@@ -19,11 +19,6 @@ interface SurveyExistingRow {
   raw_payload: Record<string, unknown> | null;
 }
 
-interface SurveyDuplicateRow {
-  fb_doc_id?: string | null;
-  raw_payload?: Record<string, unknown> | null;
-}
-
 interface SurveyCleanupRow {
   kmz_file_url: string | null;
   foto_tiang_arm: string | null;
@@ -124,50 +119,6 @@ export async function PATCH(
         { error: "Data survey baru saja berubah oleh admin lain. Silakan muat ulang data terbaru." },
         { status: 409 }
       );
-    }
-
-    if (
-      surveyType === "pra-existing" &&
-      typeof sanitizedPatch.status === "string" &&
-      ["diverifikasi", "ditolak", "tervalidasi"].includes(sanitizedPatch.status) &&
-      typeof existing.task_id === "string" &&
-      typeof existing.surveyor_uid === "string" &&
-      typeof existing.title === "string" &&
-      typeof existing.latitude === "number" &&
-      typeof existing.longitude === "number"
-    ) {
-      const { data: duplicates, error: duplicateReadError } = await supabase
-        .from(table)
-        .select("fb_doc_id, raw_payload")
-        .eq("task_id", existing.task_id)
-        .eq("surveyor_uid", existing.surveyor_uid)
-        .eq("title", existing.title)
-        .eq("latitude", existing.latitude)
-        .eq("longitude", existing.longitude)
-        .eq("status", "menunggu");
-
-      if (duplicateReadError) {
-        throw new Error(duplicateReadError.message);
-      }
-
-      for (const duplicate of (duplicates || []) as SurveyDuplicateRow[]) {
-        const duplicateId = typeof duplicate.fb_doc_id === "string" ? duplicate.fb_doc_id : "";
-        if (!duplicateId || duplicateId === id) continue;
-        const duplicateRow: SurveyUpdateRow = buildSurveyUpdateRow(
-          surveyType,
-          (duplicate.raw_payload as Record<string, unknown> | null) || {},
-          sanitizedPatch
-        );
-        const duplicateTable = supabase.from(table) as unknown as {
-          update: (values: SurveyUpdateRow) => {
-            eq: (column: string, value: string) => Promise<{ error: { message: string } | null }>;
-          };
-        };
-        const { error: duplicateUpdateError } = await duplicateTable.update(duplicateRow).eq("fb_doc_id", duplicateId);
-        if (duplicateUpdateError) {
-          throw new Error(duplicateUpdateError.message);
-        }
-      }
     }
 
     return NextResponse.json({ ok: true });

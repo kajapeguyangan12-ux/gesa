@@ -159,8 +159,8 @@ export function normalizeAdminSurveyRow(raw: AdminSurveyRow): AdminSurveyRow {
     kepemilikan: (raw.kepemilikan as string) || (raw.keteranganTiang as string) || "N/A",
     jenis: (raw.jenis as string) || (raw.jenisTitik as string) || "N/A",
     tinggiArm: (raw.tinggiArm as string) || (raw.tinggiARM as string) || "N/A",
-    verifiedBy: raw.verifiedBy || (raw.editedBy as string) || "Admin",
-    validatedBy: raw.validatedBy || (raw.editedBy as string) || "Admin",
+    verifiedBy: raw.verifiedBy || (raw.editedBy as string) || "",
+    validatedBy: raw.validatedBy || (raw.editedBy as string) || "",
     kabupatenName: raw.kabupatenName || raw.kabupaten || "",
     kepemilikanDisplay: raw.kepemilikanDisplay || raw.keteranganTiang || raw.kepemilikanTiang || "",
   };

@@ -116,6 +116,24 @@ function resolveStatusFilters(statusFilter?: string) {
   return [statusFilter ?? normalized];
 }
 
+function resolveComparableDate(value: TimestampLike) {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  if (typeof value === "object" && typeof value.toDate === "function") {
+    const parsed = value.toDate();
+    return parsed instanceof Date && !Number.isNaN(parsed.getTime()) ? parsed : null;
+  }
+  if (typeof value === "object" && "seconds" in value && typeof value.seconds === "number") {
+    const parsed = new Date(value.seconds * 1000);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
+
 export default function SurveyPraExistingDetail({
   onBack,
   statusFilter = "diverifikasi",
@@ -138,6 +156,8 @@ export default function SurveyPraExistingDetail({
   const [searchQuery, setSearchQuery] = useState("");
   const [filterKecamatan, setFilterKecamatan] = useState("Semua Kecamatan");
   const [filterDesa, setFilterDesa] = useState("Semua Desa");
+  const [filterDateStart, setFilterDateStart] = useState("");
+  const [filterDateEnd, setFilterDateEnd] = useState("");
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -476,6 +496,30 @@ export default function SurveyPraExistingDetail({
       return false;
     }
 
+    if (filterDateStart || filterDateEnd) {
+      const surveyDate =
+        resolveComparableDate(survey.verifiedAt) ||
+        resolveComparableDate(survey.validatedAt) ||
+        resolveComparableDate(survey.createdAt);
+      if (!surveyDate) {
+        return false;
+      }
+
+      if (filterDateStart) {
+        const startDate = new Date(`${filterDateStart}T00:00:00`);
+        if (surveyDate < startDate) {
+          return false;
+        }
+      }
+
+      if (filterDateEnd) {
+        const endDate = new Date(`${filterDateEnd}T23:59:59.999`);
+        if (surveyDate > endDate) {
+          return false;
+        }
+      }
+    }
+
     return true;
   });
 
@@ -510,7 +554,7 @@ export default function SurveyPraExistingDetail({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterKecamatan, filterDesa]);
+  }, [searchQuery, filterKecamatan, filterDesa, filterDateStart, filterDateEnd]);
 
   const handlePageChange = (page: number) => {
     if (page < 1 || page > totalPages || page === currentPage) return;
@@ -733,6 +777,38 @@ export default function SurveyPraExistingDetail({
                 </option>
               ))}
             </select>
+
+            <input
+              type="date"
+              value={filterDateStart}
+              onChange={(e) => setFilterDateStart(e.target.value)}
+              className="px-3 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all text-gray-900 bg-white"
+              aria-label="Tanggal verifikasi admin mulai"
+              title="Tanggal verifikasi admin mulai"
+            />
+
+            <input
+              type="date"
+              value={filterDateEnd}
+              onChange={(e) => setFilterDateEnd(e.target.value)}
+              min={filterDateStart || undefined}
+              className="px-3 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all text-gray-900 bg-white"
+              aria-label="Tanggal verifikasi admin akhir"
+              title="Tanggal verifikasi admin akhir"
+            />
+
+            {(filterDateStart || filterDateEnd) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterDateStart("");
+                  setFilterDateEnd("");
+                }}
+                className="px-3 py-2.5 border border-gray-200 rounded-xl bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                Reset Tanggal
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 rounded-xl border border-emerald-100">
             <span className="text-emerald-700 font-medium">{filteredSurveys.length}</span>
@@ -1018,9 +1094,14 @@ export default function SurveyPraExistingDetail({
                         Ditolak oleh <span className="font-medium text-gray-700">{selectedSurvey.rejectedBy || "Admin"}</span> pada{" "}
                         {formatDate(selectedSurvey.rejectedAt)}
                       </>
+                    ) : selectedSurvey.status === "diverifikasi" ? (
+                      <>
+                        Diverifikasi oleh <span className="font-medium text-gray-700">{selectedSurvey.verifiedBy || "-"}</span> pada{" "}
+                        {formatDate(selectedSurvey.verifiedAt)}
+                      </>
                     ) : (
                       <>
-                        Divalidasi oleh <span className="font-medium text-gray-700">{selectedSurvey.validatedBy}</span> pada{" "}
+                        Divalidasi oleh <span className="font-medium text-gray-700">{selectedSurvey.validatedBy || "-"}</span> pada{" "}
                         {formatDate(selectedSurvey.validatedAt)}
                       </>
                     )}

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { createInitialSuperAdmin } from "@/lib/createSuperAdmin";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 
@@ -17,8 +16,14 @@ export default function SetupPage() {
 
     setLoading(true);
     try {
-      const res = await createInitialSuperAdmin();
-      setResult(res);
+      const response = await fetch("/api/setup/super-admin", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      const payload = await response.json();
+      setResult(payload);
     } catch (error: any) {
       setResult({ success: false, message: error.message });
     } finally {

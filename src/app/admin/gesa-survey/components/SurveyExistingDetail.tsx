@@ -35,13 +35,13 @@ interface Survey {
   status: string;
   surveyorName: string;
   surveyorEmail?: string;
-  createdAt: any;
-  updatedAt?: any;
-  verifiedAt: any;
+  createdAt: TimestampLike;
+  updatedAt?: TimestampLike;
+  verifiedAt: TimestampLike;
   verifiedBy: string;
-  validatedAt: any;
+  validatedAt: TimestampLike;
   validatedBy: string;
-  rejectedAt?: any;
+  rejectedAt?: TimestampLike;
   rejectedBy?: string;
   rejectionReason?: string;
   latitude: number;
@@ -75,6 +75,14 @@ interface Survey {
   lainnyaBertiang?: string;
   keterangan?: string;
 }
+
+type TimestampLike =
+  | { toDate?: () => Date; seconds?: number }
+  | Date
+  | string
+  | number
+  | null
+  | undefined;
 
 async function readApiError(response: Response, fallbackMessage: string) {
   try {
@@ -113,6 +121,24 @@ function resolveStatusFilters(statusFilter?: string) {
   return [statusFilter ?? normalized];
 }
 
+function resolveComparableDate(value: TimestampLike) {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  if (typeof value === "object" && typeof value.toDate === "function") {
+    const parsed = value.toDate();
+    return parsed instanceof Date && !Number.isNaN(parsed.getTime()) ? parsed : null;
+  }
+  if (typeof value === "object" && typeof value.seconds === "number") {
+    const parsed = new Date(value.seconds * 1000);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
+
 export default function SurveyExistingDetail({
   onBack,
   statusFilter = "diverifikasi",
@@ -134,6 +160,8 @@ export default function SurveyExistingDetail({
   const [showDetailMap, setShowDetailMap] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterZona, setFilterZona] = useState<string>("all");
+  const [filterDateStart, setFilterDateStart] = useState("");
+  const [filterDateEnd, setFilterDateEnd] = useState("");
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -190,7 +218,7 @@ export default function SurveyExistingDetail({
     }
   };
 
-  const formatDate = (timestamp: any) => {
+  const formatDate = (timestamp: TimestampLike) => {
     if (!timestamp) return "N/A";
     try {
       return (
@@ -342,8 +370,35 @@ export default function SurveyExistingDetail({
         );
     
     const matchesZona = filterZona === "all" || survey.zona === filterZona;
-    
-    return matchesSearch && matchesZona;
+    if (!matchesSearch || !matchesZona) {
+      return false;
+    }
+
+    if (filterDateStart || filterDateEnd) {
+      const surveyDate =
+        resolveComparableDate(survey.verifiedAt) ||
+        resolveComparableDate(survey.validatedAt) ||
+        resolveComparableDate(survey.createdAt);
+      if (!surveyDate) {
+        return false;
+      }
+
+      if (filterDateStart) {
+        const startDate = new Date(`${filterDateStart}T00:00:00`);
+        if (surveyDate < startDate) {
+          return false;
+        }
+      }
+
+      if (filterDateEnd) {
+        const endDate = new Date(`${filterDateEnd}T23:59:59.999`);
+        if (surveyDate > endDate) {
+          return false;
+        }
+      }
+    }
+
+    return true;
   });
 
   // Pagination logic
@@ -377,7 +432,7 @@ export default function SurveyExistingDetail({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterZona]);
+  }, [searchQuery, filterZona, filterDateStart, filterDateEnd]);
 
   const handlePageChange = (page: number) => {
     if (page < 1 || page > totalPages || page === currentPage) return;
@@ -466,6 +521,38 @@ export default function SurveyExistingDetail({
               <option key={zona} value={zona}>{zona}</option>
             ))}
           </select>
+
+            <input
+              type="date"
+              value={filterDateStart}
+              onChange={(e) => setFilterDateStart(e.target.value)}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white min-w-[170px] text-gray-900"
+              aria-label="Tanggal verifikasi admin mulai"
+              title="Tanggal verifikasi admin mulai"
+            />
+
+            <input
+              type="date"
+              value={filterDateEnd}
+              onChange={(e) => setFilterDateEnd(e.target.value)}
+              min={filterDateStart || undefined}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white min-w-[170px] text-gray-900"
+              aria-label="Tanggal verifikasi admin akhir"
+              title="Tanggal verifikasi admin akhir"
+            />
+
+          {(filterDateStart || filterDateEnd) && (
+            <button
+              type="button"
+              onClick={() => {
+                setFilterDateStart("");
+                setFilterDateEnd("");
+              }}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              Reset Tanggal
+            </button>
+          )}
           
           <div className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 rounded-xl border border-blue-100">
             <span className="text-blue-700 font-medium">{filteredSurveys.length}</span>
@@ -732,9 +819,13 @@ export default function SurveyExistingDetail({
                       <>
                         Ditolak oleh <span className="font-medium text-gray-700">{selectedSurvey.rejectedBy || "Admin"}</span> pada {formatDate(selectedSurvey.rejectedAt)}
                       </>
+                    ) : selectedSurvey.status === "diverifikasi" ? (
+                      <>
+                        Diverifikasi oleh <span className="font-medium text-gray-700">{selectedSurvey.verifiedBy || "-"}</span> pada {formatDate(selectedSurvey.verifiedAt)}
+                      </>
                     ) : (
                       <>
-                        Divalidasi oleh <span className="font-medium text-gray-700">{selectedSurvey.validatedBy}</span> pada {formatDate(selectedSurvey.validatedAt)}
+                        Divalidasi oleh <span className="font-medium text-gray-700">{selectedSurvey.validatedBy || "-"}</span> pada {formatDate(selectedSurvey.validatedAt)}
                       </>
                     )}
                   </span>
