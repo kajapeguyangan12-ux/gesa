@@ -6,8 +6,12 @@ import { useAuth } from "@/hooks/useAuth";
 
 export default function ProtectedRoute({
   children,
+  allowedRoles,
+  unauthorizedRedirect = "/module-selection",
 }: {
   children: React.ReactNode;
+  allowedRoles?: string[];
+  unauthorizedRedirect?: string;
 }) {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -16,7 +20,11 @@ export default function ProtectedRoute({
     if (!loading && !user) {
       router.push("/");
     }
-  }, [user, loading, router]);
+
+    if (!loading && user && allowedRoles && !allowedRoles.includes(user.role)) {
+      router.push(unauthorizedRedirect);
+    }
+  }, [user, loading, router, allowedRoles, unauthorizedRedirect]);
 
   if (loading) {
     return (
@@ -31,6 +39,10 @@ export default function ProtectedRoute({
   }
 
   if (!user) {
+    return null;
+  }
+
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
     return null;
   }
 

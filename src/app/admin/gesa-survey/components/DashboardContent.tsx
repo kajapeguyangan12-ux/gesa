@@ -31,6 +31,9 @@ interface SurveyReportRow {
   name?: string;
   email?: string;
   verifiedAt?: TimestampLike;
+  rejectedBy?: string;
+  rejectedAt?: TimestampLike;
+  rejectionReason?: string;
   updatedAt?: TimestampLike;
   kabupaten?: string;
   kecamatan?: string;
@@ -137,6 +140,10 @@ function resolveVerifierName(row: SurveyReportRow) {
       row.email
     ) || UNKNOWN_VERIFIER_LABEL
   );
+}
+
+function resolveRejectorName(row: SurveyReportRow) {
+  return pickFirstNonEmptyString(row.rejectedBy) || UNKNOWN_VERIFIER_LABEL;
 }
 
 function resolveVerifierIdentityKey(row: SurveyReportRow) {
@@ -865,6 +872,7 @@ interface DailyVerificationSummaryRow {
 
 interface VerifierDailyExportCell {
   totalVerifikasi: number;
+  totalDitolak: number;
   firstVerifiedAt: Date | null;
   lastVerifiedAt: Date | null;
 }
@@ -890,6 +898,7 @@ function enumerateDateRange(start: Date, end: Date) {
 
 function buildVerifierDailyExportMatrix(
   rows: SurveyReportRow[],
+  rejectedRows: SurveyReportRow[],
   range?: {
     start: Date | null;
     end: Date | null;
@@ -911,6 +920,7 @@ function buildVerifierDailyExportMatrix(
       verifierGroup.get(dateKey) ||
       ({
         totalVerifikasi: 0,
+        totalDitolak: 0,
         firstVerifiedAt: null,
         lastVerifiedAt: null,
       } satisfies VerifierDailyExportCell);
@@ -928,6 +938,30 @@ function buildVerifierDailyExportMatrix(
     grouped.set(verifierName, verifierGroup);
   });
 
+  rejectedRows.forEach((row) => {
+    const rejectedDate = resolveTimestamp(row.rejectedAt);
+    if (!rejectedDate) return;
+
+    const rejectorName = resolveRejectorName(row);
+    const dateKey = toDateKey(rejectedDate);
+    uniqueDateKeys.add(dateKey);
+
+    const rejectorGroup = grouped.get(rejectorName) || new Map<string, VerifierDailyExportCell>();
+    const current =
+      rejectorGroup.get(dateKey) ||
+      ({
+        totalVerifikasi: 0,
+        totalDitolak: 0,
+        firstVerifiedAt: null,
+        lastVerifiedAt: null,
+      } satisfies VerifierDailyExportCell);
+
+    current.totalDitolak += 1;
+
+    rejectorGroup.set(dateKey, current);
+    grouped.set(rejectorName, rejectorGroup);
+  });
+
   const dateKeys =
     range?.start && range?.end
       ? enumerateDateRange(range.start, range.end).map((date) => toDateKey(date))
@@ -936,17 +970,25 @@ function buildVerifierDailyExportMatrix(
   const rowsByVerifier = Array.from(grouped.entries())
     .map(([verifierName, dateMap]) => {
       let totalVerifikasi = 0;
+      let totalDitolak = 0;
       dateMap.forEach((cell) => {
         totalVerifikasi += cell.totalVerifikasi;
+        totalDitolak += cell.totalDitolak;
       });
 
       return {
         verifierName,
         totalVerifikasi,
+        totalDitolak,
         dateMap,
       };
     })
-    .sort((a, b) => b.totalVerifikasi - a.totalVerifikasi || a.verifierName.localeCompare(b.verifierName));
+    .sort(
+      (a, b) =>
+        b.totalVerifikasi - a.totalVerifikasi ||
+        b.totalDitolak - a.totalDitolak ||
+        a.verifierName.localeCompare(b.verifierName)
+    );
 
   return {
     dateKeys,
@@ -1514,6 +1556,19 @@ export default function DashboardContent({
       })
       .sort((a, b) => (resolveTimestamp(b.verifiedAt)?.getTime() || 0) - (resolveTimestamp(a.verifiedAt)?.getTime() || 0));
   }, [normalizedDateRange.end, normalizedDateRange.start, reportState.allRows]);
+  const rejectedDetailRows = useMemo(() => {
+    return reportState.allRowsRaw
+      .filter((row) => {
+        const normalizedStatus = (row.status || "").trim().toLowerCase();
+        if (normalizedStatus !== "ditolak") return false;
+        const rejectedDate = resolveTimestamp(row.rejectedAt);
+        if (!rejectedDate) return false;
+        if (normalizedDateRange.start && rejectedDate < normalizedDateRange.start) return false;
+        if (normalizedDateRange.end && rejectedDate > normalizedDateRange.end) return false;
+        return true;
+      })
+      .sort((a, b) => (resolveTimestamp(b.rejectedAt)?.getTime() || 0) - (resolveTimestamp(a.rejectedAt)?.getTime() || 0));
+  }, [normalizedDateRange.end, normalizedDateRange.start, reportState.allRowsRaw]);
 
   const verifierSummaryRows = useMemo(
     () => buildVerifierSummary(verifierDetailRows),
@@ -1628,9 +1683,9 @@ export default function DashboardContent({
   );
 
   const handleExportVerifierExcel = () => {
-    if (!verifierDetailRows.length) return;
+    if (!verifierDetailRows.length && !rejectedDetailRows.length) return;
 
-    const dailyMatrix = buildVerifierDailyExportMatrix(verifierDetailRows, normalizedDateRange);
+    const dailyMatrix = buildVerifierDailyExportMatrix(verifierDetailRows, rejectedDetailRows, normalizedDateRange);
     const dailyTotals = dailyMatrix.dateKeys.map((dateKey) =>
       verifierDetailRows.reduce<VerifierDailyExportCell>(
         (accumulator, detailRow) => {
@@ -1648,15 +1703,27 @@ export default function DashboardContent({
         },
         {
           totalVerifikasi: 0,
+          totalDitolak: 0,
           firstVerifiedAt: null,
           lastVerifiedAt: null,
         }
+      )
+    );
+    const rejectedDailyTotals = dailyMatrix.dateKeys.map((dateKey) =>
+      rejectedDetailRows.reduce(
+        (count, detailRow) => {
+          const rejectedAt = resolveTimestamp(detailRow.rejectedAt);
+          if (!rejectedAt || toDateKey(rejectedAt) !== dateKey) return count;
+          return count + 1;
+        },
+        0
       )
     );
     const matrixHeaders = [
       "Nama Admin Verifikasi",
       ...dailyMatrix.dateKeys.flatMap((dateKey) => [
         `${formatFullExportDate(dateKey)} - Hasil`,
+        `${formatFullExportDate(dateKey)} - Ditolak`,
         `${formatFullExportDate(dateKey)} - Mulai`,
         `${formatFullExportDate(dateKey)} - Selesai`,
       ]),
@@ -1669,6 +1736,7 @@ export default function DashboardContent({
         const cell = row.dateMap.get(dateKey);
         return [
           cell?.totalVerifikasi ?? 0,
+          cell?.totalDitolak ?? 0,
           formatWitaTime(cell?.firstVerifiedAt),
           formatWitaTime(cell?.lastVerifiedAt),
         ];
@@ -1678,8 +1746,9 @@ export default function DashboardContent({
 
     matrixRows.push([
       "Total Semua Admin",
-      ...dailyTotals.flatMap((totalForDate) => [
+      ...dailyTotals.flatMap((totalForDate, index) => [
         totalForDate.totalVerifikasi || 0,
+        rejectedDailyTotals[index] || 0,
         formatWitaTime(totalForDate.firstVerifiedAt),
         formatWitaTime(totalForDate.lastVerifiedAt),
       ]),
@@ -2304,7 +2373,7 @@ export default function DashboardContent({
                         {isSuperAdmin ? (
                           <button
                             onClick={handleExportVerifierExcel}
-                            disabled={!verifierDetailRows.length}
+                            disabled={!verifierDetailRows.length && !rejectedDetailRows.length}
                             className="rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
                           >
                             Export Excel

@@ -55,6 +55,75 @@ const menuItems: MenuItem[] = [
   { id: "upload-design", label: "Upload Data Design", icon: "📤" },
 ];
 
+const menuTheme: Record<
+  string,
+  {
+    title: string;
+    description: string;
+    badge: string;
+    panelClass: string;
+    accentClass: string;
+    glowClass: string;
+  }
+> = {
+  home: {
+    title: "Home",
+    description: "Pilih fitur yang ingin digunakan untuk operasional modul kontruksi.",
+    badge: "Ringkasan Modul",
+    panelClass: "from-emerald-600 via-teal-600 to-cyan-600",
+    accentClass: "text-emerald-700",
+    glowClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  },
+  distribusi: {
+    title: "Distribusi Pekerjaan",
+    description: "Bagikan tugas kontruksi ke petugas lapangan dan pantau histori pembagiannya.",
+    badge: "Distribusi Aktif",
+    panelClass: "from-sky-600 via-cyan-600 to-blue-600",
+    accentClass: "text-sky-700",
+    glowClass: "bg-sky-50 text-sky-700 border-sky-200",
+  },
+  manajemen: {
+    title: "Manajemen Pengguna",
+    description: "Kelola petugas kontruksi yang terhubung dengan modul ini.",
+    badge: "Akses Petugas",
+    panelClass: "from-violet-600 via-fuchsia-600 to-purple-600",
+    accentClass: "text-violet-700",
+    glowClass: "bg-violet-50 text-violet-700 border-violet-200",
+  },
+  validasi: {
+    title: "Validasi Data Kontruksi",
+    description: "Periksa kiriman petugas sebelum data resmi masuk ke tahap valid.",
+    badge: "Butuh Pemeriksaan",
+    panelClass: "from-amber-500 via-orange-500 to-rose-500",
+    accentClass: "text-orange-700",
+    glowClass: "bg-orange-50 text-orange-700 border-orange-200",
+  },
+  "data-valid": {
+    title: "Data Kontruksi Valid",
+    description: "Kumpulan data kontruksi yang sudah lolos validasi dan siap digunakan.",
+    badge: "Siap Digunakan",
+    panelClass: "from-emerald-500 via-green-500 to-lime-500",
+    accentClass: "text-green-700",
+    glowClass: "bg-green-50 text-green-700 border-green-200",
+  },
+  "maps-valid": {
+    title: "Maps Data Valid",
+    description: "Tinjau hasil validasi melalui tampilan peta agar pembacaan titik lebih cepat.",
+    badge: "Peta Operasional",
+    panelClass: "from-cyan-600 via-sky-600 to-indigo-600",
+    accentClass: "text-cyan-700",
+    glowClass: "bg-cyan-50 text-cyan-700 border-cyan-200",
+  },
+  "upload-design": {
+    title: "Upload Data Design",
+    description: "Unggah file design hasil survey agar siap dibagikan ke tim kontruksi.",
+    badge: "Sinkron Design",
+    panelClass: "from-rose-500 via-pink-500 to-fuchsia-500",
+    accentClass: "text-rose-700",
+    glowClass: "bg-rose-50 text-rose-700 border-rose-200",
+  },
+};
+
 export default function AdminKontruksiPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -115,6 +184,25 @@ export default function AdminKontruksiPage() {
     }
   }, [active, submissions.length, validItems.length]);
 
+  useEffect(() => {
+    if (active !== "home") return;
+    if (kontruksiUsers.length === 0) {
+      loadKontruksiUsers();
+    }
+    if (submissions.length === 0) {
+      loadKontruksiSubmissions();
+    }
+    if (validItems.length === 0) {
+      loadKontruksiValid();
+    }
+    if (designUploads.length === 0) {
+      loadDesignUploads();
+    }
+    if (historyItems.length === 0) {
+      loadHistory();
+    }
+  }, [active, kontruksiUsers.length, submissions.length, validItems.length, designUploads.length, historyItems.length]);
+
   const loadKontruksiUsers = async () => {
     try {
       setLoadingUsers(true);
@@ -174,6 +262,16 @@ export default function AdminKontruksiPage() {
       });
     } catch {
       return "-";
+    }
+  };
+
+  const getDateValue = (value: any) => {
+    if (!value) return 0;
+    try {
+      const date = typeof value?.toDate === "function" ? value.toDate() : new Date(value);
+      return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+    } catch {
+      return 0;
     }
   };
 
@@ -399,37 +497,135 @@ export default function AdminKontruksiPage() {
 
   const cards = useMemo(() => menuItems.filter((m) => m.id !== "home"), []);
   const notifItems = useMemo<NotifItem[]>(() => [], []);
+  const activeTheme = menuTheme[active] || menuTheme.home;
+  const activeMenuLabel = activeTheme.title;
+  const activeMenuDescription = activeTheme.description;
+  const dashboardMetrics = useMemo(() => {
+    const totalPetugas = kontruksiUsers.length;
+    const totalMasuk = submissions.length;
+    const totalValid = validItems.length;
+    const totalDesign = designUploads.length;
+    const totalDistribusi = historyItems.length;
+    const validationRate = totalMasuk + totalValid > 0 ? Math.round((totalValid / (totalMasuk + totalValid)) * 100) : 0;
+    const productivityRate = totalDistribusi > 0 ? Math.min(100, Math.round((totalValid / totalDistribusi) * 100)) : 0;
+
+    return [
+      {
+        label: "Petugas Aktif",
+        value: totalPetugas,
+        note: "Pengguna kontruksi yang sudah siap menerima tugas.",
+        accent: "from-emerald-500 to-teal-500",
+      },
+      {
+        label: "Data Masuk",
+        value: totalMasuk,
+        note: "Laporan yang masih menunggu pemeriksaan admin.",
+        accent: "from-amber-500 to-orange-500",
+      },
+      {
+        label: "Data Valid",
+        value: totalValid,
+        note: `Tingkat validasi saat ini ${validationRate}% dari total alur data.`,
+        accent: "from-sky-500 to-cyan-500",
+      },
+      {
+        label: "Design Upload",
+        value: totalDesign,
+        note: `Distribusi aktif ${totalDistribusi} tugas, produktivitas ${productivityRate}%.`,
+        accent: "from-fuchsia-500 to-rose-500",
+      },
+    ];
+  }, [kontruksiUsers.length, submissions.length, validItems.length, designUploads.length, historyItems.length]);
+  const dashboardOverview = useMemo(() => {
+    const totalFlow = submissions.length + validItems.length;
+    const validationRate = totalFlow > 0 ? Math.round((validItems.length / totalFlow) * 100) : 0;
+
+    return {
+      validationRate,
+      totalFlow,
+    };
+  }, [submissions.length, validItems.length]);
+  const zoneStats = useMemo(() => {
+    const source = [...submissions, ...validItems];
+    const counts = new Map<string, number>();
+
+    source.forEach((item) => {
+      const zoneName = item.zona?.trim() || "Tanpa Zona";
+      counts.set(zoneName, (counts.get(zoneName) || 0) + 1);
+    });
+
+    const items = Array.from(counts.entries())
+      .map(([zone, total]) => ({ zone, total }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+
+    const maxTotal = items[0]?.total || 1;
+    return items.map((item) => ({
+      ...item,
+      width: `${Math.max(18, Math.round((item.total / maxTotal) * 100))}%`,
+    }));
+  }, [submissions, validItems]);
+  const dashboardTimeline = useMemo(() => {
+    const designEvents = designUploads.map((item: any) => ({
+      id: `design-${item.id}`,
+      title: item.fileName || "Upload design baru",
+      subtitle: `Design diunggah oleh ${item.uploadedByName || "Admin"}`,
+      time: formatDate(item.createdAt),
+      sortTime: getDateValue(item.createdAt),
+      tone: "bg-rose-100 text-rose-700",
+    }));
+    const validEvents = validItems.map((item) => ({
+      id: `valid-${item.id}`,
+      title: item.namaTitik || item.idTitik || "Data valid",
+      subtitle: `Titik ${item.idTitik || "-"} siap dipakai di peta`,
+      time: formatDate(item.validatedAt),
+      sortTime: getDateValue(item.validatedAt),
+      tone: "bg-emerald-100 text-emerald-700",
+    }));
+    const taskEvents = historyItems.map((item) => ({
+      id: `task-${item.id}`,
+      title: item.assigneeName || "Distribusi tugas",
+      subtitle: `Pembagian ${item.zones?.length || 0} zona ke petugas`,
+      time: formatDate(item.createdAt),
+      sortTime: getDateValue(item.createdAt),
+      tone: "bg-sky-100 text-sky-700",
+    }));
+
+    return [...designEvents, ...validEvents, ...taskEvents]
+      .sort((a, b) => b.sortTime - a.sortTime)
+      .slice(0, 5);
+  }, [designUploads, validItems, historyItems]);
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-red-50">
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.16),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.12),_transparent_24%),linear-gradient(180deg,_#f7fffc_0%,_#f8fafc_48%,_#fff7ed_100%)]">
         {/* Top Bar */}
-        <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-200">
-          <div className="max-w-[1920px] mx-auto px-4 sm:px-6 py-3">
+        <header className="sticky top-0 z-40 border-b border-emerald-100/80 bg-white/90 backdrop-blur-md">
+          <div className="w-full px-4 sm:px-6 lg:px-8 py-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => router.push("/admin/module-selection")}
-                  className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 transition-all"
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-700 transition-all hover:-translate-x-0.5 hover:bg-emerald-100"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                   </svg>
                 </button>
                 <div>
-                  <div className="text-sm text-gray-500">Dashboard</div>
-                  <div className="text-lg font-bold text-gray-900">Gesa Kontruksi</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">Dashboard</div>
+                  <div className="text-lg font-bold text-slate-900">Gesa Kontruksi</div>
                 </div>
               </div>
 
-              <div className="flex-1 hidden md:flex justify-center">
-                <div className="w-full max-w-xl relative">
-                  <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="hidden flex-1 md:flex justify-center px-4">
+                <div className="relative w-full max-w-2xl">
+                  <svg className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                   <input
-                    placeholder="Search..."
-                    className="w-full pl-10 pr-4 py-2.5 rounded-full border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-red-300"
+                    placeholder="Cari menu, petugas, atau data kontruksi..."
+                    className="w-full rounded-full border border-emerald-100 bg-emerald-50/70 py-3 pl-11 pr-4 text-sm text-slate-700 shadow-inner outline-none transition-all placeholder:text-slate-400 focus:border-emerald-300 focus:bg-white focus:ring-2 focus:ring-emerald-100"
                   />
                 </div>
               </div>
@@ -437,7 +633,7 @@ export default function AdminKontruksiPage() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setShowNotif(true)}
-                  className="w-10 h-10 rounded-full border border-gray-200 hover:bg-gray-50 flex items-center justify-center"
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-emerald-100 bg-white text-slate-600 transition-all hover:bg-emerald-50"
                   aria-label="Notifikasi"
                 >
                   <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -446,7 +642,7 @@ export default function AdminKontruksiPage() {
                 </button>
                 <button
                   onClick={() => setShowProfile(true)}
-                  className="w-10 h-10 rounded-full border-2 border-gray-200 bg-gray-100 flex items-center justify-center font-bold text-gray-700"
+                  className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-emerald-100 bg-gradient-to-br from-emerald-500 to-teal-600 font-bold text-white shadow-sm"
                   aria-label="Profil"
                 >
                   {(user?.displayName || "A").charAt(0).toUpperCase()}
@@ -456,62 +652,96 @@ export default function AdminKontruksiPage() {
           </div>
         </header>
 
-        <main className="max-w-[1920px] mx-auto px-4 sm:px-6 py-6">
-          <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
+        <main className="w-full px-4 sm:px-6 lg:px-8 py-6">
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
             {/* Sidebar */}
-            <aside className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
-              <div className="text-xs uppercase text-gray-400 font-semibold mb-3">Menu</div>
+            <aside className="rounded-[28px] border border-emerald-100/80 bg-white/90 p-4 shadow-[0_18px_60px_-28px_rgba(15,23,42,0.2)] backdrop-blur xl:sticky xl:top-24">
+              <div className="mb-4 rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600 p-4 text-white shadow-lg">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-100">Menu Modul</div>
+                <div className="mt-2 text-lg font-bold">Panel Kontruksi</div>
+                <div className="mt-1 text-sm text-emerald-50/90">
+                  Pusat distribusi pekerjaan, validasi data, dan pengelolaan design untuk operasional kontruksi.
+                </div>
+              </div>
               <div className="space-y-2">
                 {menuItems.map((item) => (
                   <button
                     key={item.id}
                     onClick={() => setActive(item.id)}
-                    className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border transition-all text-sm font-semibold ${
+                    className={`w-full flex items-center gap-3 rounded-2xl border px-3 py-3 text-sm font-semibold transition-all ${
                       active === item.id
-                        ? "bg-red-50 border-red-200 text-red-700"
-                        : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+                        ? "border-emerald-200 bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 text-emerald-700 shadow-sm"
+                        : "border-transparent bg-white text-slate-600 hover:border-emerald-100 hover:bg-emerald-50/70"
                     }`}
                   >
-                    <span className="text-lg">{item.icon}</span>
-                    <span>{item.label}</span>
+                    <span
+                      className={`flex h-10 w-10 items-center justify-center rounded-xl text-lg ${
+                        active === item.id ? "bg-white text-emerald-700 shadow-sm" : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {item.icon}
+                    </span>
+                    <div className="min-w-0 text-left">
+                      <div className="truncate">{item.label}</div>
+                      <div className="text-xs font-medium text-slate-400">
+                        {menuTheme[item.id]?.badge || "Fitur"}
+                      </div>
+                    </div>
                   </button>
                 ))}
               </div>
             </aside>
 
             {/* Content */}
-            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-              <div className="mb-5">
-                <h2 className="text-xl font-bold text-gray-900">
-                  {active === "home"
-                    ? "Home"
-                    : active === "distribusi"
-                    ? "Distribusi Pekerjaan"
-                    : active === "manajemen"
-                    ? "Manajemen Pengguna"
-                    : active === "validasi"
-                    ? "Validasi Data Kontruksi"
-                  : active === "data-valid"
-                    ? "Data Kontruksi Valid"
-                    : active === "maps-valid"
-                    ? "Maps Data Valid"
-                    : "Upload Data Design"}
-                </h2>
-                <p className="text-sm text-gray-500">Pilih fitur yang ingin digunakan.</p>
+            <section className="min-w-0 rounded-[32px] border border-emerald-100/80 bg-white/90 p-5 lg:p-6 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.24)] backdrop-blur">
+              <div className={`relative overflow-hidden rounded-[28px] bg-gradient-to-r ${activeTheme.panelClass} p-5 lg:p-6 text-white shadow-lg`}>
+                <div className="absolute inset-y-0 right-0 w-56 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.28),_transparent_62%)]" />
+                <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                  <div className="max-w-2xl">
+                    <div className="inline-flex items-center rounded-full border border-white/25 bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-white/90">
+                      {activeTheme.badge}
+                    </div>
+                    <h2 className="mt-4 text-3xl font-bold tracking-tight">{activeMenuLabel}</h2>
+                    <p className="mt-2 max-w-xl text-sm text-white/88">{activeMenuDescription}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 sm:min-w-[280px] lg:min-w-[320px]">
+                    <div className="rounded-2xl border border-white/20 bg-white/12 p-4 backdrop-blur">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70">Mode</div>
+                      <div className="mt-2 text-lg font-bold">Admin Kontruksi</div>
+                    </div>
+                    <div className="rounded-2xl border border-white/20 bg-white/12 p-4 backdrop-blur">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70">Fokus</div>
+                      <div className="mt-2 text-lg font-bold">Operasional Kontruksi</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-4 mt-5 flex flex-col gap-3 border-b border-emerald-100 pb-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h3 className={`text-xl font-bold ${activeTheme.accentClass}`}>{activeMenuLabel}</h3>
+                  <p className="mt-1 text-sm text-slate-500">{activeMenuDescription}</p>
+                </div>
+                <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${activeTheme.glowClass}`}>
+                  Status panel: {activeTheme.badge}
+                </span>
               </div>
 
               {active === "distribusi" ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                   <button
                     onClick={async () => {
                       setShowHistory(true);
                       if (historyItems.length === 0) await loadHistory();
                     }}
-                    className="group border border-gray-200 rounded-2xl p-4 hover:shadow-md hover:border-red-200 transition-all bg-white"
+                    className="group rounded-[24px] border border-emerald-100 bg-gradient-to-br from-white to-emerald-50/40 p-5 text-left transition-all hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-[0_18px_40px_-24px_rgba(16,185,129,0.35)]"
                   >
                     <div className="text-3xl mb-2">🗓️</div>
-                    <div className="text-sm font-bold text-gray-900 group-hover:text-red-700">
+                    <div className="text-sm font-bold text-slate-900 group-hover:text-emerald-700">
                       Riwayat Tugas Kontruksi
+                    </div>
+                    <div className="mt-2 text-xs leading-5 text-slate-500">
+                      Pantau histori pembagian tugas dan aktivitas pengiriman pekerjaan lapangan.
                     </div>
                   </button>
                   <button
@@ -519,16 +749,19 @@ export default function AdminKontruksiPage() {
                       setShowAssignUsers(true);
                       if (kontruksiUsers.length === 0) await loadKontruksiUsers();
                     }}
-                    className="group border border-gray-200 rounded-2xl p-4 hover:shadow-md hover:border-red-200 transition-all bg-white"
+                    className="group rounded-[24px] border border-emerald-100 bg-gradient-to-br from-white to-cyan-50/40 p-5 text-left transition-all hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-[0_18px_40px_-24px_rgba(6,182,212,0.28)]"
                   >
                     <div className="text-3xl mb-2">📝</div>
-                    <div className="text-sm font-bold text-gray-900 group-hover:text-red-700">
+                    <div className="text-sm font-bold text-slate-900 group-hover:text-emerald-700">
                       Bagikan Tugas Kontruksi
+                    </div>
+                    <div className="mt-2 text-xs leading-5 text-slate-500">
+                      Atur pembagian kerja ke petugas kontruksi secara lebih cepat dari satu panel.
                     </div>
                   </button>
                 </div>
               ) : active === "manajemen" ? (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div className="text-xs text-gray-500">
                       Hanya menampilkan dan menambah pengguna dengan role petugas kontruksi.
@@ -554,18 +787,18 @@ export default function AdminKontruksiPage() {
                   {loadingUsers ? (
                     <div className="text-sm text-gray-500">Memuat daftar petugas kontruksi...</div>
                   ) : kontruksiUsers.length === 0 ? (
-                    <div className="border-2 border-dashed border-gray-200 rounded-2xl p-10 text-center">
+                    <div className="rounded-[24px] border-2 border-dashed border-emerald-100 bg-emerald-50/30 p-12 text-center">
                       <div className="text-sm font-semibold text-gray-600">Belum ada petugas kontruksi</div>
                       <div className="text-xs text-gray-500 mt-1">
                         Tambahkan petugas kontruksi untuk mengelola tugas di modul ini.
                       </div>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
                       {kontruksiUsers.map((u) => (
                         <div
                           key={u.id}
-                          className="border border-gray-200 rounded-xl p-4 flex items-center justify-between gap-3"
+                          className="flex items-center justify-between gap-3 rounded-[22px] border border-emerald-100 bg-white p-4 shadow-sm"
                         >
                           <div className="min-w-0">
                             <div className="text-sm font-bold text-gray-900 truncate">
@@ -584,7 +817,7 @@ export default function AdminKontruksiPage() {
                   )}
                 </div>
               ) : active === "validasi" ? (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div className="text-xs text-gray-500">
                       Data dari petugas akan masuk ke sini untuk divalidasi sebelum menjadi data valid.
@@ -602,18 +835,18 @@ export default function AdminKontruksiPage() {
                   {loadingSubmissions ? (
                     <div className="text-sm text-gray-500">Memuat data kontruksi...</div>
                   ) : submissions.length === 0 ? (
-                    <div className="border-2 border-dashed border-gray-200 rounded-2xl p-10 text-center">
+                    <div className="rounded-[24px] border-2 border-dashed border-amber-100 bg-amber-50/30 p-12 text-center">
                       <div className="text-sm font-semibold text-gray-600">Belum ada data kontruksi masuk</div>
                       <div className="text-xs text-gray-500 mt-1">
                         Data akan muncul setelah petugas mengirim laporan kontruksi.
                       </div>
                     </div>
                   ) : (
-                    <div className="grid gap-3">
+                    <div className="grid gap-4">
                       {submissions.map((item) => (
                         <div
                           key={item.id}
-                          className="border border-gray-200 rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+                          className="flex flex-col gap-4 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between"
                         >
                           <div className="min-w-0">
                             <div className="text-sm font-bold text-gray-900 truncate">
@@ -627,7 +860,7 @@ export default function AdminKontruksiPage() {
                               {formatDate(item.createdAt)}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                             <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-50 text-yellow-700 border border-yellow-200">
                               Perlu Validasi
                             </span>
@@ -661,7 +894,7 @@ export default function AdminKontruksiPage() {
                   )}
                 </div>
               ) : active === "data-valid" ? (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div className="text-xs text-gray-500">
                       Data kontruksi yang sudah valid dan siap digunakan di peta.
@@ -679,16 +912,16 @@ export default function AdminKontruksiPage() {
                   {loadingValid ? (
                     <div className="text-sm text-gray-500">Memuat data valid...</div>
                   ) : validItems.length === 0 ? (
-                    <div className="border-2 border-dashed border-gray-200 rounded-2xl p-10 text-center">
+                    <div className="rounded-[24px] border-2 border-dashed border-green-100 bg-green-50/30 p-12 text-center">
                       <div className="text-sm font-semibold text-gray-600">Belum ada data kontruksi valid</div>
                       <div className="text-xs text-gray-500 mt-1">
                         Data valid akan muncul setelah proses validasi selesai.
                       </div>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
                       {validItems.map((item) => (
-                        <div key={item.id} className="border border-gray-200 rounded-xl p-4">
+                        <div key={item.id} className="rounded-[22px] border border-emerald-100 bg-white p-5 shadow-sm">
                           <div className="text-sm font-bold text-gray-900 truncate">
                             {item.namaTitik || item.idTitik || "Titik Kontruksi"}
                           </div>
@@ -717,10 +950,10 @@ export default function AdminKontruksiPage() {
               ) : active === "maps-valid" ? (
                 <MapsKontruksiValid />
               ) : active === "upload-design" ? (
-                <div className="border border-gray-200 rounded-2xl p-5 bg-gradient-to-br from-red-50 to-white">
-                  <div className="text-sm font-bold text-gray-900 mb-2">Upload Data Design (Dari Survey)</div>
-                  <div className="text-xs text-gray-600 mb-4">
-                    Unggah file design yang sudah dibuat berdasarkan data survey.
+                <div className="rounded-[28px] border border-rose-100 bg-gradient-to-br from-rose-50 via-white to-orange-50 p-6 shadow-sm">
+                  <div className="mb-2 text-base font-bold text-slate-900">Upload Data Design</div>
+                  <div className="mb-5 max-w-2xl text-sm text-slate-600">
+                    Unggah file design final agar siap dipakai tim kontruksi sebagai acuan pekerjaan lapangan.
                   </div>
                   <label className="block">
                     <input
@@ -733,30 +966,156 @@ export default function AdminKontruksiPage() {
                         e.currentTarget.value = "";
                       }}
                     />
-                    <div className="border-2 border-dashed border-red-200 rounded-xl p-6 text-center bg-white hover:bg-red-50 transition-all cursor-pointer">
+                    <div className="cursor-pointer rounded-[24px] border-2 border-dashed border-rose-200 bg-white p-10 text-center transition-all hover:bg-rose-50/60">
                       <div className="text-3xl mb-2">📤</div>
-                      <div className="text-sm font-semibold text-gray-900">Klik untuk upload</div>
-                      <div className="text-xs text-gray-500 mt-1">XLSX atau XLS</div>
+                      <div className="text-sm font-semibold text-slate-900">Klik untuk upload file design</div>
+                      <div className="mt-1 text-xs text-slate-500">Format XLSX atau XLS</div>
                     </div>
                   </label>
-                  <div className="mt-4 text-xs text-gray-500">
+                  <div className="mt-4 text-xs text-slate-500">
                     Status: {uploadStatus || "Belum ada file diupload."}
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {cards.map((card) => (
-                    <button
-                      key={card.id}
-                      onClick={() => setActive(card.id)}
-                      className="group border border-gray-200 rounded-2xl p-4 hover:shadow-md hover:border-red-200 transition-all bg-white"
-                    >
-                      <div className="text-3xl mb-2">{card.icon}</div>
-                      <div className="text-sm font-bold text-gray-900 group-hover:text-red-700">
-                        {card.label}
+                <div className="space-y-5 xl:space-y-6">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4 xl:grid-cols-2">
+                    {dashboardMetrics.map((metric) => (
+                      <div
+                        key={metric.label}
+                        className="relative overflow-hidden rounded-[26px] border border-emerald-100 bg-white p-5 shadow-sm"
+                      >
+                        <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${metric.accent}`} />
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{metric.label}</div>
+                        <div className="mt-3 text-4xl font-bold tracking-tight text-slate-900">{metric.value}</div>
+                        <div className="mt-2 max-w-xs text-sm leading-6 text-slate-500">{metric.note}</div>
                       </div>
-                    </button>
-                  ))}
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-5 2xl:grid-cols-[1.5fr_1fr]">
+                    <div className="rounded-[30px] border border-slate-200 bg-[linear-gradient(135deg,_rgba(236,253,245,0.95),_rgba(255,255,255,0.98)_52%,_rgba(224,242,254,0.9))] p-6 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.28)]">
+                      <div className="flex flex-col gap-3 border-b border-emerald-100 pb-4 md:flex-row md:items-end md:justify-between">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">Report Operasional</div>
+                          <div className="mt-2 text-2xl font-bold text-slate-900">Statistik kerja tim kontruksi</div>
+                          <div className="mt-1 text-sm text-slate-500">Ringkasan validasi, distribusi, dan persebaran data untuk monitoring harian.</div>
+                        </div>
+                        <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-white/80 px-4 py-3">
+                          <div
+                            className="h-16 w-16 rounded-full"
+                            style={{
+                              background: `conic-gradient(#10b981 ${dashboardOverview.validationRate}% , rgba(16,185,129,0.12) 0)`,
+                            }}
+                          >
+                            <div className="flex h-full w-full items-center justify-center rounded-full border-4 border-white bg-white text-sm font-bold text-emerald-700">
+                              {dashboardOverview.validationRate}%
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Data Valid</div>
+                            <div className="mt-1 text-lg font-bold text-slate-900">{dashboardMetrics[2]?.note}</div>
+                            <div className="mt-1 text-xs text-slate-500">Total alur terpantau {dashboardOverview.totalFlow} item.</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+                        <div className="rounded-[24px] border border-white/80 bg-white/85 p-5 shadow-sm">
+                          <div className="text-sm font-bold text-slate-900">Distribusi data per zona</div>
+                          <div className="mt-1 text-xs text-slate-500">Zona dengan volume item kontruksi tertinggi saat ini.</div>
+                          <div className="mt-5 space-y-4">
+                            {zoneStats.length > 0 ? (
+                              zoneStats.map((item) => (
+                                <div key={item.zone}>
+                                  <div className="mb-2 flex items-center justify-between gap-4 text-sm">
+                                    <span className="font-semibold text-slate-700">{item.zone}</span>
+                                    <span className="text-slate-500">{item.total} titik</span>
+                                  </div>
+                                  <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                                    <div
+                                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500"
+                                      style={{ width: item.width }}
+                                    />
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="rounded-2xl border border-dashed border-emerald-100 bg-emerald-50/40 p-8 text-sm text-slate-500">
+                                Belum ada data zona untuk divisualkan.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[24px] border border-white/80 bg-slate-950 p-5 text-white shadow-sm">
+                          <div className="text-sm font-bold">Pipeline Operasional</div>
+                          <div className="mt-1 text-xs text-slate-300">Alur kerja dari design sampai data siap dipakai.</div>
+                          <div className="mt-5 space-y-4">
+                            <div className="rounded-2xl bg-white/8 p-4">
+                              <div className="flex items-center justify-between text-sm">
+                                <span>Design Tersedia</span>
+                                <span className="font-bold">{designUploads.length}</span>
+                              </div>
+                              <div className="mt-3 h-2 rounded-full bg-white/10">
+                                <div className="h-full rounded-full bg-gradient-to-r from-rose-400 to-orange-300" style={{ width: `${Math.min(100, Math.max(14, designUploads.length * 12))}%` }} />
+                              </div>
+                            </div>
+                            <div className="rounded-2xl bg-white/8 p-4">
+                              <div className="flex items-center justify-between text-sm">
+                                <span>Distribusi Tugas</span>
+                                <span className="font-bold">{historyItems.length}</span>
+                              </div>
+                              <div className="mt-3 h-2 rounded-full bg-white/10">
+                                <div className="h-full rounded-full bg-gradient-to-r from-sky-400 to-cyan-300" style={{ width: `${Math.min(100, Math.max(14, historyItems.length * 10))}%` }} />
+                              </div>
+                            </div>
+                            <div className="rounded-2xl bg-white/8 p-4">
+                              <div className="flex items-center justify-between text-sm">
+                                <span>Validasi Selesai</span>
+                                <span className="font-bold">{validItems.length}</span>
+                              </div>
+                              <div className="mt-3 h-2 rounded-full bg-white/10">
+                                <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-lime-300" style={{ width: `${Math.min(100, Math.max(14, validItems.length * 10))}%` }} />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.28)]">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-600">Aktivitas Terkini</div>
+                          <div className="mt-2 text-2xl font-bold text-slate-900">Update lapangan terbaru</div>
+                        </div>
+                        <div className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                          Live
+                        </div>
+                      </div>
+                      <div className="mt-5 space-y-3">
+                        {dashboardTimeline.length > 0 ? (
+                          dashboardTimeline.map((event) => (
+                            <div key={event.id} className="flex gap-3 rounded-[22px] border border-slate-100 bg-slate-50/80 p-4">
+                              <div className={`mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl text-xs font-bold ${event.tone}`}>
+                                ●
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-sm font-bold text-slate-900">{event.title}</div>
+                                <div className="mt-1 text-sm leading-6 text-slate-500">{event.subtitle}</div>
+                                <div className="mt-2 text-xs font-medium text-slate-400">{event.time}</div>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500">
+                            Aktivitas terbaru akan muncul setelah ada upload, distribusi, atau validasi data.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
               )}
             </section>

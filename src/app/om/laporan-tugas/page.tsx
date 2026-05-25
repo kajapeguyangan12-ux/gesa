@@ -1,13 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Image from "next/image";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
+import { OMPageShell } from "@/components/om/OMPageShell";
 
 export default function OMLaporanTugasPage() {
-  const router = useRouter();
   const { user } = useAuth();
   const [reportType, setReportType] = useState("preventif");
   const [title, setTitle] = useState("");
@@ -69,91 +67,106 @@ export default function OMLaporanTugasPage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gray-50">
-        <div className="mx-auto max-w-4xl px-4 py-8">
-          <button
-            onClick={() => router.back()}
-            className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 shadow-sm hover:bg-gray-100"
-          >
-            ← Kembali
-          </button>
-          <div className="mt-6 rounded-3xl border border-gray-200 bg-white p-8 shadow-sm">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-semibold text-gray-900">Laporan Tugas O&M</h1>
-                <p className="mt-2 text-sm text-gray-500">
-                  Kirim laporan preventif atau korektif. Semua laporan akan masuk ke Admin dan Super Admin.
-                </p>
-              </div>
-              <div className="relative h-16 w-16">
-                <Image src="/BDG1.png" alt="Logo" fill className="object-contain" />
-              </div>
-            </div>
-
-            <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+      <OMPageShell
+        eyebrow="Pelaporan Tugas"
+        title="Input laporan O&M dalam workspace yang lebih bersih dan siap dipakai harian."
+        description="Kirim laporan preventif atau korektif dengan format yang lebih rapi, sehingga admin bisa menerima informasi inti lebih cepat dan lebih konsisten."
+        statusTitle="Pelaporan dibuat lebih fokus ke aksi utama."
+        statusDescription="Form ini sudah disusun mengikuti bahasa visual O&M baru, dengan hirarki yang lebih jelas antara konteks pekerjaan, input utama, dan status pengiriman."
+        metaCards={[
+          { label: "Fungsi", value: "Submit", hint: "Kirim laporan pekerjaan lapangan", tone: "teal" },
+          { label: "Mode", value: "Input", hint: "Aksi utama untuk petugas atau admin", tone: "cyan" },
+          { label: "Tujuan", value: "Admin", hint: "Masuk ke admin dan super admin", tone: "slate" },
+          { label: "Status", value: "Live", hint: "Form aktif dan siap digunakan", tone: "emerald" },
+        ]}
+      >
+        <div className="rounded-[28px] border border-white/70 bg-white/92 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.38)]">
+          <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1.3fr)_320px] xl:p-6">
+            <form onSubmit={handleSubmit} className="space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-gray-700">Tipe Laporan</span>
+                  <span className="text-sm font-semibold text-slate-700">Tipe Laporan</span>
                   <select
                     value={reportType}
                     onChange={(e) => setReportType(e.target.value)}
-                    className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm focus:border-red-500 focus:outline-none"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-teal-400 focus:ring-4 focus:ring-teal-100"
                   >
                     <option value="preventif">Preventif</option>
                     <option value="korektif">Korektif</option>
                   </select>
                 </label>
+
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-gray-700">Lokasi (opsional)</span>
+                  <span className="text-sm font-semibold text-slate-700">Lokasi</span>
                   <input
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
                     placeholder="Contoh: Jalan Mawar, Denpasar"
-                    className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm focus:border-red-500 focus:outline-none"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-teal-400 focus:ring-4 focus:ring-teal-100"
                   />
                 </label>
               </div>
 
               <label className="space-y-2">
-                <span className="text-sm font-medium text-gray-700">Judul Laporan</span>
+                <span className="text-sm font-semibold text-slate-700">Judul Laporan</span>
                 <input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Masukkan judul laporan"
-                  className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm focus:border-red-500 focus:outline-none"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-teal-400 focus:ring-4 focus:ring-teal-100"
                 />
               </label>
 
               <label className="space-y-2">
-                <span className="text-sm font-medium text-gray-700">Deskripsi</span>
+                <span className="text-sm font-semibold text-slate-700">Deskripsi</span>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Jelaskan masalah atau pekerjaan yang harus dilakukan"
-                  rows={5}
-                  className="w-full rounded-3xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm focus:border-red-500 focus:outline-none"
+                  rows={7}
+                  className="w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-teal-400 focus:ring-4 focus:ring-teal-100"
                 />
               </label>
 
-              {error && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+              {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
               {success && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>}
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-xs text-gray-500">
-                  Laporan Anda akan otomatis diberitahu ke Admin dan Super Admin.
+              <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-xs leading-5 text-slate-500">
+                  Laporan yang dikirim akan otomatis diteruskan ke admin dan super admin untuk tindak lanjut.
                 </div>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="inline-flex items-center justify-center rounded-3xl bg-red-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
+                  className="inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-teal-600 via-cyan-600 to-emerald-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-cyan-200/70 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loading ? "Mengirim..." : "Kirim Laporan"}
                 </button>
               </div>
             </form>
+
+            <div className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-teal-50 p-5">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Panduan Singkat</div>
+              <h3 className="mt-3 text-xl font-bold text-slate-950">Buat laporan singkat, jelas, dan bisa ditindaklanjuti.</h3>
+
+              <div className="mt-5 space-y-3">
+                <div className="rounded-2xl border border-teal-100 bg-white/90 p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-teal-700">01</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">Pilih tipe laporan yang sesuai dengan pekerjaan.</div>
+                </div>
+                <div className="rounded-2xl border border-cyan-100 bg-white/90 p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-cyan-700">02</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">Tulis judul yang langsung menjelaskan masalah atau kegiatan.</div>
+                </div>
+                <div className="rounded-2xl border border-emerald-100 bg-white/90 p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-emerald-700">03</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">Isi deskripsi dengan kondisi lapangan dan tindakan yang dibutuhkan.</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </OMPageShell>
     </ProtectedRoute>
   );
 }

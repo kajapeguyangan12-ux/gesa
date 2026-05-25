@@ -1,39 +1,31 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import Image from "next/image";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { OMPageShell, OMPlaceholderPanel } from "@/components/om/OMPageShell";
 
 export default function OMHistoryLaporanPage() {
-  const router = useRouter();
-
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gray-50">
-        <div className="mx-auto max-w-4xl px-4 py-8">
-          <button
-            onClick={() => router.back()}
-            className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 shadow-sm hover:bg-gray-100"
-          >
-            ← Kembali
-          </button>
-          <div className="mt-6 rounded-3xl border border-gray-200 bg-white p-8 shadow-sm">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-semibold text-gray-900">History Laporan O&M</h1>
-                <p className="mt-2 text-sm text-gray-500">Riwayat laporan dan catatan O&M.</p>
-              </div>
-              <div className="relative h-16 w-16">
-                <Image src="/BDG1.png" alt="Logo" fill className="object-contain" />
-              </div>
-            </div>
-            <div className="mt-10 rounded-3xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-gray-600">
-              <p className="text-lg font-medium text-gray-900">Sedang dalam pengembangan</p>
-              <p className="mt-3 text-sm">Halaman riwayat laporan O&M akan tersedia di versi berikutnya.</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <OMPageShell
+        eyebrow="Riwayat Laporan"
+        title="Riwayat laporan O&M dengan struktur yang siap untuk audit dan penelusuran."
+        description="Halaman ini diarahkan untuk membaca histori pekerjaan, melihat kronologi update, dan membantu admin menelusuri keputusan dari laporan lama."
+        statusTitle="Riwayat akan dipusatkan di satu alur baca."
+        statusDescription="Tampilan disiapkan untuk menangani histori yang panjang tanpa terlihat berantakan, sehingga cocok untuk audit internal dan evaluasi operasional."
+        metaCards={[
+          { label: "Fungsi", value: "Log", hint: "Jejak laporan dan perubahan", tone: "teal" },
+          { label: "Mode", value: "Trace", hint: "Fokus penelusuran histori", tone: "cyan" },
+          { label: "Target", value: "Admin", hint: "Audit pekerjaan lebih mudah", tone: "slate" },
+          { label: "Tahap", value: "Draft", hint: "Siap diisi data riwayat", tone: "emerald" },
+        ]}
+      >
+        <OMPlaceholderPanel
+          label="Riwayat Laporan"
+          title="Panel histori akan dimuat di area ini."
+          description="Ruang ini cocok untuk timeline, daftar catatan, perubahan status, dan identitas petugas atau admin yang terlibat di setiap tahapan laporan."
+          note="Halaman riwayat sedang dipersiapkan."
+        />
+      </OMPageShell>
     </ProtectedRoute>
   );
 }

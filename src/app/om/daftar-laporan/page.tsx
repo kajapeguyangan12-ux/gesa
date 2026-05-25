@@ -1,39 +1,31 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import Image from "next/image";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { OMPageShell, OMPlaceholderPanel } from "@/components/om/OMPageShell";
 
 export default function OMDaftarLaporanPage() {
-  const router = useRouter();
-
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gray-50">
-        <div className="mx-auto max-w-4xl px-4 py-8">
-          <button
-            onClick={() => router.back()}
-            className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 shadow-sm hover:bg-gray-100"
-          >
-            ← Kembali
-          </button>
-          <div className="mt-6 rounded-3xl border border-gray-200 bg-white p-8 shadow-sm">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-semibold text-gray-900">Daftar Laporan O&M</h1>
-                <p className="mt-2 text-sm text-gray-500">Halaman ini akan menampilkan semua laporan O&M.</p>
-              </div>
-              <div className="relative h-16 w-16">
-                <Image src="/BDG1.png" alt="Logo" fill className="object-contain" />
-              </div>
-            </div>
-            <div className="mt-10 rounded-3xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-gray-600">
-              <p className="text-lg font-medium text-gray-900">Halaman dalam pengembangan</p>
-              <p className="mt-3 text-sm">Fitur daftar laporan O&M akan tersedia segera.</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <OMPageShell
+        eyebrow="Monitoring Laporan"
+        title="Daftar laporan O&M dalam tampilan yang lebih rapi dan mudah dipantau."
+        description="Halaman ini disiapkan sebagai pusat monitoring laporan masuk, status tindak lanjut, dan pembacaan pekerjaan harian petugas O&M."
+        statusTitle="Monitoring dibuat lebih tenang dan fokus."
+        statusDescription="Ketika data daftar laporan dihubungkan nanti, struktur halaman ini sudah siap untuk tabel, filter, dan ringkasan status tanpa terasa seperti halaman transisi."
+        metaCards={[
+          { label: "Fungsi", value: "List", hint: "Pusat daftar laporan kerja", tone: "teal" },
+          { label: "Mode", value: "Read", hint: "Fokus pada monitoring data", tone: "cyan" },
+          { label: "Target", value: "Admin", hint: "Pantau status masuk dengan cepat", tone: "slate" },
+          { label: "Tahap", value: "Draft", hint: "Struktur siap untuk diisi fitur", tone: "emerald" },
+        ]}
+      >
+        <OMPlaceholderPanel
+          label="Daftar Laporan"
+          title="Workspace laporan akan ditempatkan di area ini."
+          description="Nantinya bagian ini cocok untuk tabel laporan, pencarian cepat, filter status, tanggal, dan ringkasan progres agar admin tidak perlu berpindah halaman terlalu sering."
+          note="Modul daftar laporan sedang disiapkan."
+        />
+      </OMPageShell>
     </ProtectedRoute>
   );
 }

@@ -27,15 +27,27 @@ interface UsersPagePayload {
 type UserRole = "super-admin" | "admin" | "petugas-existing" | "petugas-apj-propose" | "petugas-pra-existing" | "petugas-survey-cahaya" | "petugas-kontruksi" | "petugas-om" | "petugas-bmd-gudang";
 
 // Memoized UserCard component for better performance
-const UserCard = memo(({ user, classes, onViewDetail, onDelete, isSuperAdmin }: { user: User; classes: any; onViewDetail: (user: User) => void; onDelete: (user: User) => void; isSuperAdmin: boolean }) => (
+const UserCard = memo(({ user, classes, onViewDetail, onDelete, isSuperAdmin, isSelected, onToggleSelect }: { user: User; classes: any; onViewDetail: (user: User) => void; onDelete: (user: User) => void; isSuperAdmin: boolean; isSelected: boolean; onToggleSelect: (userId: string) => void }) => (
   <div
-    className={`group bg-gradient-to-br ${classes.cardBg} rounded-xl p-5 shadow-sm hover:shadow-xl transition-all duration-300 border-2 ${classes.border} hover:-translate-y-1`}
+    className={`group bg-gradient-to-br ${classes.cardBg} rounded-xl p-5 shadow-sm hover:shadow-xl transition-all duration-300 border-2 ${classes.border} hover:-translate-y-1 ${isSelected ? "ring-2 ring-red-400 ring-offset-2" : ""}`}
   >
     <div className="flex items-start justify-between mb-4">
-      <div className={`w-14 h-14 ${classes.icon} rounded-xl flex items-center justify-center shadow-md`}>
-        <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-        </svg>
+      <div className="flex items-start gap-3">
+        {isSuperAdmin && (
+          <label className="mt-1 inline-flex items-center">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => onToggleSelect(user.id)}
+              className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+            />
+          </label>
+        )}
+        <div className={`w-14 h-14 ${classes.icon} rounded-xl flex items-center justify-center shadow-md`}>
+          <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+          </svg>
+        </div>
       </div>
       {isSuperAdmin && (
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
@@ -125,18 +137,24 @@ function UserAdminContent() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [hasMoreUsers, setHasMoreUsers] = useState(false);
   const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
   const [supabaseOffset, setSupabaseOffset] = useState(0);
   const [searchInput, setSearchInput] = useState("");
   const [activeSearchQuery, setActiveSearchQuery] = useState("");
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
 
   const isSuperAdmin = user?.role === "super-admin";
 
   useEffect(() => {
     void fetchUsers(false, "");
   }, []);
+
+  useEffect(() => {
+    setSelectedUserIds((previous) => previous.filter((userId) => allUsers.some((item) => item.id === userId)));
+  }, [allUsers]);
 
   const applyUserBuckets = (users: User[]) => {
     setAllUsers(users);
@@ -165,6 +183,7 @@ function UserAdminContent() {
       setExpandedSections({});
       setHasMoreUsers(false);
       setSupabaseOffset(0);
+      setSelectedUserIds([]);
 
       const loadUsersPage = async () => {
         if (normalizedSearchQuery) {
@@ -361,6 +380,58 @@ function UserAdminContent() {
     await fetchUsers(true, "");
   };
 
+  const toggleUserSelection = (userId: string) => {
+    setSelectedUserIds((previous) =>
+      previous.includes(userId) ? previous.filter((id) => id !== userId) : [...previous, userId]
+    );
+  };
+
+  const toggleSelectAllLoadedUsers = () => {
+    const loadedIds = allUsers.map((item) => item.id);
+    const allLoadedSelected = loadedIds.length > 0 && loadedIds.every((userId) => selectedUserIds.includes(userId));
+    setSelectedUserIds(allLoadedSelected ? [] : loadedIds);
+  };
+
+  const handleBulkDeleteUsers = async () => {
+    if (!isSuperAdmin || selectedUserIds.length === 0) return;
+
+    const confirmed = confirm(
+      `Apakah Anda yakin ingin menghapus ${selectedUserIds.length} user yang dipilih? Akun auth juga akan ikut dihapus.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setBulkDeleting(true);
+    try {
+      const response = await fetch("/api/admin/user-admin/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedUserIds }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Gagal menghapus user secara massal.");
+      }
+
+      if (selectedUser && selectedUserIds.includes(selectedUser.id)) {
+        setShowDetailModal(false);
+        setShowDeleteModal(false);
+        setSelectedUser(null);
+      }
+
+      setSelectedUserIds([]);
+      alert("User terpilih berhasil dihapus.");
+      await fetchUsers(true, activeSearchQuery);
+    } catch (error: any) {
+      console.error("Error bulk deleting users:", error);
+      alert(`Gagal menghapus user secara massal: ${error.message}`);
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const formatDate = (timestamp: any) => {
     if (!timestamp) return "N/A";
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -509,6 +580,8 @@ function UserAdminContent() {
                   onViewDetail={handleViewDetail}
                   onDelete={handleDeleteClick}
                   isSuperAdmin={isSuperAdmin}
+                  isSelected={selectedUserIds.includes(user.id)}
+                  onToggleSelect={toggleUserSelection}
                 />
               ))}
             </div>
@@ -686,6 +759,40 @@ function UserAdminContent() {
                   : `Data dimuat bertahap per ${USER_FETCH_LIMIT} item.`}
               </p>
             </div>
+
+            {isSuperAdmin ? (
+              <div className="mb-6 rounded-2xl border border-red-100 bg-white p-4 shadow-sm">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <label className="inline-flex items-center gap-3 text-sm font-semibold text-gray-800">
+                      <input
+                        type="checkbox"
+                        checked={allUsers.length > 0 && selectedUserIds.length === allUsers.length}
+                        onChange={toggleSelectAllLoadedUsers}
+                        className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                      />
+                      <span>Pilih semua user yang sudah dimuat</span>
+                    </label>
+                    <span className="text-xs font-medium text-gray-500">
+                      {selectedUserIds.length > 0
+                        ? `${selectedUserIds.length} user dipilih`
+                        : "Belum ada user yang dipilih"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleBulkDeleteUsers()}
+                    disabled={selectedUserIds.length === 0 || bulkDeleting}
+                    className="rounded-xl bg-gradient-to-r from-red-600 to-red-700 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:from-red-700 hover:to-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {bulkDeleting ? "Menghapus..." : "Hapus User Terpilih"}
+                  </button>
+                </div>
+                <p className="mt-3 text-xs text-gray-500">
+                  Penghapusan massal ini ikut membersihkan data user di tabel sistem dan akun auth Supabase.
+                </p>
+              </div>
+            ) : null}
 
             <div className="space-y-6">
               {renderUserSection("Super Administrator", superAdmins, "red")}
