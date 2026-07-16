@@ -958,6 +958,8 @@ export function PreventiveOMTaskList() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
+  const workScannerVideoRef = useRef<HTMLVideoElement | null>(null);
+  const workScannerRef = useRef<{ stop: () => void; destroy: () => void } | null>(null);
   const isCorrective = isCorrectiveOmRole(user?.role);
   const [items, setItems] = useState<OMTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<OMTask | null>(null);
@@ -965,7 +967,11 @@ export function PreventiveOMTaskList() {
   const [selectedTaskPointId, setSelectedTaskPointId] = useState("");
   const [taskMapLoading, setTaskMapLoading] = useState(false);
   const [pointPreview, setPointPreview] = useState<ApjPoint | null>(null);
-  const [showPointDetail, setShowPointDetail] = useState(false);
+  const [pointPreviewLoading, setPointPreviewLoading] = useState(false);
+  const [pointPreviewError, setPointPreviewError] = useState("");
+  const [workScannerOpen, setWorkScannerOpen] = useState(false);
+  const [workScannerStatus, setWorkScannerStatus] = useState("Menyiapkan kamera...");
+  const [workPhotoScanning, setWorkPhotoScanning] = useState(false);
   const [workForm, setWorkForm] = useState({
     name: "",
     idTitik: "",
@@ -1084,27 +1090,112 @@ export function PreventiveOMTaskList() {
     setWorkError("");
     setWorkMessage("");
     setPointPreview(null);
-    setShowPointDetail(false);
+    setPointPreviewError("");
     setSelectedTask({ ...task, source: "work-form" } as OMTask);
+  };
+
+  const stopWorkScanner = () => {
+    workScannerRef.current?.stop();
+    workScannerRef.current?.destroy();
+    workScannerRef.current = null;
+  };
+
+  const applyWorkScanResult = (rawValue: string) => {
+    const idTitik = parseScanTarget(rawValue);
+    if (!idTitik) {
+      setWorkScannerStatus("QR tidak memuat ID titik APJ yang valid.");
+      return;
+    }
+    stopWorkScanner();
+    setWorkForm((current) => ({ ...current, idTitik }));
+    setWorkScannerOpen(false);
+    setWorkScannerStatus(`ID ${idTitik} berhasil dipindai.`);
+    setWorkError("");
+  };
+
+  useEffect(() => {
+    if (!workScannerOpen || !workScannerVideoRef.current) return;
+    let active = true;
+    const start = async () => {
+      setWorkScannerStatus("Mengaktifkan kamera belakang...");
+      try {
+        const { default: QrScanner } = await import("qr-scanner");
+        if (!active || !workScannerVideoRef.current) return;
+        const scanner = new QrScanner(
+          workScannerVideoRef.current,
+          (result) => applyWorkScanResult(result.data),
+          {
+            preferredCamera: "environment",
+            maxScansPerSecond: 10,
+            highlightScanRegion: true,
+            highlightCodeOutline: true,
+            returnDetailedScanResult: true,
+          }
+        );
+        workScannerRef.current = scanner;
+        await scanner.start();
+        if (active) setWorkScannerStatus("Arahkan kamera ke QR titik APJ.");
+      } catch (scanError) {
+        console.error(scanError);
+        if (active) setWorkScannerStatus("Kamera tidak dapat dibuka. Periksa izin kamera atau gunakan foto QR.");
+      }
+    };
+    void start();
+    return () => {
+      active = false;
+      stopWorkScanner();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workScannerOpen]);
+
+  const scanWorkPhoto = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    stopWorkScanner();
+    setWorkPhotoScanning(true);
+    setWorkScannerStatus("Membaca QR dari foto...");
+    try {
+      const { default: QrScanner } = await import("qr-scanner");
+      const result = await QrScanner.scanImage(file, { returnDetailedScanResult: true });
+      applyWorkScanResult(typeof result === "string" ? result : result.data);
+    } catch (scanError) {
+      console.error(scanError);
+      setWorkScannerStatus("QR tidak ditemukan. Coba foto lebih dekat dan lebih terang.");
+    } finally {
+      setWorkPhotoScanning(false);
+    }
   };
 
   useEffect(() => {
     if (!selectedTask || (selectedTask as any).source !== "work-form" || !workForm.idTitik.trim()) {
       setPointPreview(null);
+      setPointPreviewError("");
+      setPointPreviewLoading(false);
       return;
     }
     let active = true;
     const loadPoint = async () => {
+      setPointPreviewLoading(true);
+      setPointPreviewError("");
       try {
         const response = await fetch(`/api/om/apj-point/${encodeURIComponent(workForm.idTitik.trim())}`, { cache: "no-store" });
         const payload = (await response.json()) as { latest?: ApjPoint; error?: string };
         if (!response.ok || !payload.latest) {
-          if (active) setPointPreview(null);
+          if (active) {
+            setPointPreview(null);
+            setPointPreviewError(payload.error || "Data titik APJ tidak ditemukan.");
+          }
           return;
         }
         if (active) setPointPreview(payload.latest);
       } catch {
-        if (active) setPointPreview(null);
+        if (active) {
+          setPointPreview(null);
+          setPointPreviewError("Gagal mengambil data titik APJ.");
+        }
+      } finally {
+        if (active) setPointPreviewLoading(false);
       }
     };
     void loadPoint();
@@ -1198,28 +1289,28 @@ export function PreventiveOMTaskList() {
                   />
                   <button
                     type="button"
-                    onClick={() => {
-                      const taskId = selectedTask.taskId || selectedTask.id;
-                      router.push(`/om/scan?returnTo=${encodeURIComponent("/om/distribusi-tugas")}&workTaskId=${encodeURIComponent(taskId)}`);
-                    }}
+                    onClick={() => setWorkScannerOpen(true)}
                     className="text-xs font-semibold text-sky-700"
                   >
                     Scan
                   </button>
                 </div>
               </label>
+              {pointPreviewLoading ? (
+                <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-xs text-sky-700">Mengambil data titik APJ...</div>
+              ) : null}
+              {pointPreviewError ? (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">{pointPreviewError}</div>
+              ) : null}
               {pointPreview ? (
-                <button type="button" onClick={() => setShowPointDetail(true)} className="block w-full rounded-md border border-sky-200 bg-sky-50 p-3 text-left text-xs text-slate-700">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">Detail Titik Hasil Scan</div>
-                  <div className="mt-1 font-bold text-slate-950">{pointPreview.namaJalan || pointPreview.namaTitik || workForm.idTitik}</div>
-                  <div className="mt-1">ID: {pointPreview.idTitik || workForm.idTitik}</div>
-                  <div>Kabupaten: {pointPreview.kabupaten || "-"}</div>
-                  <div>Daya: {pointPreview.dayaLampu || "-"}</div>
-                  <div>Koordinat: {Number.isFinite(pointPreview.latitude) ? pointPreview.latitude.toFixed(5) : "-"}, {Number.isFinite(pointPreview.longitude) ? pointPreview.longitude.toFixed(5) : "-"}</div>
-                  <div className="mt-2 font-semibold text-sky-700">Klik untuk lihat semua data</div>
-                </button>
-              ) : workForm.idTitik.trim() ? (
-                <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-500">ID titik terisi. Detail titik akan muncul setelah validasi scan selesai.</div>
+                <section className="rounded-xl border border-sky-200 bg-sky-50/60 p-3">
+                  <div className="mb-3">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-sky-700">Data Titik APJ Hasil Scan</div>
+                    <div className="mt-1 text-sm font-bold text-slate-950">{pointPreview.namaJalan || pointPreview.namaTitik || workForm.idTitik}</div>
+                    <div className="text-[11px] text-slate-500">Data otomatis dimuat ke formulir tanpa membuka halaman lain.</div>
+                  </div>
+                  <PointDetailFields point={pointPreview} />
+                </section>
               ) : null}
               <label className="block">
                 <span className="text-[11px] leading-none text-gray-600">Lux Titik Api Lampu</span>
@@ -1299,20 +1390,35 @@ export function PreventiveOMTaskList() {
               {submittingWork ? "Mengirim..." : "Kirim"}
             </button>
           </div>
-          {showPointDetail && pointPreview ? (
+          {workScannerOpen ? (
             <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center">
-              <div className="max-h-[82vh] w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
                 <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                   <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">Semua Data Titik</div>
-                    <div className="text-sm font-bold text-slate-950">{pointPreview.idTitik || workForm.idTitik}</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">Scan Langsung di Form</div>
+                    <div className="text-sm font-bold text-slate-950">QR Titik APJ</div>
                   </div>
-                  <button type="button" onClick={() => setShowPointDetail(false)} className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopWorkScanner();
+                      setWorkScannerOpen(false);
+                    }}
+                    className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700"
+                  >
                     Tutup
                   </button>
                 </div>
-                <div className="max-h-[68vh] overflow-auto p-4">
-                  <PointDetailFields point={pointPreview} />
+                <div className="space-y-3 p-4">
+                  <div className="relative overflow-hidden rounded-xl border border-slate-300 bg-black">
+                    <video ref={workScannerVideoRef} className="aspect-[3/4] max-h-[55vh] w-full object-cover" muted playsInline />
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">{workScannerStatus}</div>
+                  <label className="block cursor-pointer rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-center text-xs font-bold text-sky-800">
+                    {workPhotoScanning ? "Membaca Foto..." : "Ambil Foto / Pilih Foto QR"}
+                    <input type="file" accept="image/*" capture="environment" onChange={(event) => void scanWorkPhoto(event)} disabled={workPhotoScanning} className="sr-only" />
+                  </label>
+                  <div className="text-center text-[11px] text-slate-500">Setelah QR terbaca, ID dan data titik otomatis masuk ke formulir ini.</div>
                 </div>
               </div>
             </div>
