@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
 
 let inMemoryTaskRows: TaskRow[] = [];
+const TASK_STORE_STAGE = "om_task_store";
 
 function createDocId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -70,6 +71,65 @@ function serializeTask(row: TaskRow) {
   };
 }
 
+function mapTaskStoreRow(row: Record<string, unknown>): TaskRow {
+  const rawPayload = row.raw_payload && typeof row.raw_payload === "object" ? (row.raw_payload as Record<string, unknown>) : {};
+  return {
+    fb_doc_id: normalizeString(row.fb_doc_id) || normalizeString(rawPayload.taskId) || normalizeString(rawPayload.id),
+    title: normalizeString(rawPayload.title) || normalizeString(row.nama_titik) || "Tugas O&M",
+    message: normalizeString(rawPayload.description) || normalizeString(rawPayload.message),
+    source: normalizeString(rawPayload.source) || (normalizeString(rawPayload.taskType) === "korektif" ? "om-task-corrective" : "om-task-preventive"),
+    report_id: normalizeString(rawPayload.reportId) || normalizeString(rawPayload.sourceReportId),
+    target_roles: extractArray(rawPayload.targetRoles),
+    raw_payload: rawPayload,
+    created_at: normalizeString(row.created_at) || normalizeString(rawPayload.createdAt),
+  };
+}
+
+async function loadTaskStoreRows(supabase: any, limit: number) {
+  const { data, error } = await supabase
+    .from("kontruksi_valid")
+    .select("fb_doc_id, nama_titik, stage, raw_payload, created_at, updated_at")
+    .eq("stage", TASK_STORE_STAGE)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (Array.isArray(data) ? (data as Record<string, unknown>[]) : []).map(mapTaskStoreRow);
+}
+
+async function upsertTaskStoreRow(supabase: any, taskId: string, title: string, message: string, rawPayload: Record<string, unknown>, targetRoles: string[], now: string) {
+  const { error } = await supabase.from("kontruksi_valid").upsert(
+    {
+      fb_doc_id: taskId,
+      source_submission_id: taskId,
+      source_task_id: taskId,
+      submitted_by_id: normalizeString(rawPayload.assignedUid) || "om-admin",
+      submitted_by_name: normalizeString(rawPayload.assignedName) || "Admin O&M",
+      nama_titik: title,
+      id_titik: taskId,
+      zona: normalizeString(rawPayload.groupName) || normalizeString(rawPayload.groupId) || "Tugas O&M",
+      stage: TASK_STORE_STAGE,
+      status: normalizeString(rawPayload.status) || "assigned",
+      raw_payload: {
+        ...rawPayload,
+        id: taskId,
+        taskId,
+        title,
+        message,
+        description: normalizeString(rawPayload.description) || message,
+        source: normalizeString(rawPayload.source) || (normalizeString(rawPayload.taskType) === "korektif" ? "om-task-corrective" : "om-task-preventive"),
+        targetRoles,
+        isOmTaskStore: true,
+        updatedAt: now,
+      },
+      created_at: normalizeString(rawPayload.createdAt) || now,
+      updated_at: now,
+      validated_at: now,
+    },
+    { onConflict: "fb_doc_id" }
+  );
+  if (error) throw new Error(error.message);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const role = normalizeRole(normalizeString(request.nextUrl.searchParams.get("role")));
@@ -92,6 +152,19 @@ export async function GET(request: NextRequest) {
       data = inMemoryTaskRows;
     } else {
       data = (dbResult.data || []) as TaskRow[];
+    }
+
+    try {
+      const storeRows = await loadTaskStoreRows(supabase, limit * 3);
+      const seen = new Set(data.map((item) => item.fb_doc_id).filter(Boolean));
+      for (const row of storeRows) {
+        if (!seen.has(row.fb_doc_id)) {
+          data.push(row);
+          seen.add(row.fb_doc_id);
+        }
+      }
+    } catch {
+      // app_notifications remains the primary source when the generic store is unavailable.
     }
 
     const tasks = data
@@ -187,6 +260,16 @@ export async function POST(request: NextRequest) {
       },
       created_at: now,
     };
+    const storePayload = {
+      ...rawPayload,
+      targetRoles,
+      targetUserUid: assignedUid,
+      source: taskType === "korektif" ? "om-task-corrective" : "om-task-preventive",
+      message,
+    };
+
+    await upsertTaskStoreRow(supabase, taskId, title, message, storePayload, targetRoles, now);
+
     const { error } = await supabase.from("app_notifications").insert(insertRow);
     if (error) {
       if (!isMissingNotificationsTable(error)) {
@@ -216,11 +299,26 @@ export async function PATCH(request: NextRequest) {
       .limit(1);
     if (error && !isMissingNotificationsTable(error)) throw new Error(error.message);
     const row = Array.isArray(data) ? (data[0] as { raw_payload?: Record<string, unknown> } | undefined) : undefined;
-    const fallbackRow = row || inMemoryTaskRows.find((item) => item.fb_doc_id === taskId);
+    let storeRow: TaskRow | undefined;
+    if (!row) {
+      try {
+        const { data: storeData } = await supabase
+          .from("kontruksi_valid")
+          .select("fb_doc_id, nama_titik, stage, raw_payload, created_at")
+          .eq("fb_doc_id", taskId)
+          .eq("stage", TASK_STORE_STAGE)
+          .limit(1);
+        const firstStoreRow = Array.isArray(storeData) ? (storeData[0] as Record<string, unknown> | undefined) : undefined;
+        storeRow = firstStoreRow ? mapTaskStoreRow(firstStoreRow) : undefined;
+      } catch {
+        storeRow = undefined;
+      }
+    }
+    const fallbackRow = row || storeRow || inMemoryTaskRows.find((item) => item.fb_doc_id === taskId);
     if (!fallbackRow) return NextResponse.json({ error: "Tugas tidak ditemukan." }, { status: 404 });
 
     const now = new Date().toISOString();
-    const nextRawPayload = {
+    const nextRawPayload: Record<string, unknown> = {
       ...((fallbackRow as { raw_payload?: Record<string, unknown> }).raw_payload || {}),
       status,
       lastReportId: normalizeString(payload.reportId),
@@ -238,6 +336,15 @@ export async function PATCH(request: NextRequest) {
         item.fb_doc_id === taskId ? ({ ...item, raw_payload: nextRawPayload } as TaskRow) : item
       );
     }
+    await upsertTaskStoreRow(
+      supabase,
+      taskId,
+      normalizeString(nextRawPayload.title) || "Tugas O&M",
+      normalizeString(nextRawPayload.description) || normalizeString(nextRawPayload.message),
+      nextRawPayload,
+      extractArray(nextRawPayload.targetRoles),
+      now
+    );
 
     return NextResponse.json({ ok: true, status });
   } catch (error) {

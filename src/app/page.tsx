@@ -65,7 +65,7 @@ export default function Home() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-dvh overflow-y-auto bg-gray-50">
       {/* Left Sidebar - Red Section with Logo and Info */}
       <div className={`hidden lg:flex lg:w-2/5 bg-gradient-to-br from-red-600 via-red-700 to-red-800 relative overflow-hidden transition-all duration-1000 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
         {/* Decorative Corners */}
@@ -115,19 +115,19 @@ export default function Home() {
       </div>
 
       {/* Right Section - Login Card */}
-      <div className="flex-1 flex items-center justify-center p-6">
+      <div className="flex-1 flex min-h-dvh items-center justify-center overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-6">
         <div className={`w-full max-w-md transition-all duration-1000 delay-500 ${isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
           {/* Login Card */}
-          <div className="bg-white rounded-2xl shadow-2xl p-10 border border-gray-100">
+          <div className="bg-white rounded-2xl shadow-2xl p-5 border border-gray-100 sm:p-10">
             {/* Logo and Header */}
-            <div className="text-center mb-8">
-              <div className="mb-6 flex justify-center">
+            <div className="text-center mb-5 sm:mb-8">
+              <div className="mb-4 flex justify-center sm:mb-6">
                 <Image
                   src="/Logo_BGD.png"
                   alt="Logo BGD"
-                  width={100}
-                  height={100}
-                  className="object-contain"
+                  width={88}
+                  height={88}
+                  className="h-16 w-16 object-contain sm:h-[100px] sm:w-[100px]"
                   priority
                 />
               </div>
@@ -140,7 +140,7 @@ export default function Home() {
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
               {/* Petugas Access Notice */}
               <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg">
                 <p className="text-sm font-semibold mb-1">👷 Login Petugas & Super Admin</p>

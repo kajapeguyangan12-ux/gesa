@@ -600,13 +600,6 @@ export function PreventiveOMScan() {
   const startCamera = async () => {
     setScanStatus("Mengaktifkan kamera...");
     try {
-      const BarcodeDetectorCtor = (window as any).BarcodeDetector;
-      if (!BarcodeDetectorCtor) {
-        setDetectorSupported(false);
-        setScanStatus("Browser belum mendukung scan barcode otomatis. Masukkan ID titik secara manual.");
-        return;
-      }
-
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" } },
         audio: false,
@@ -614,7 +607,15 @@ export function PreventiveOMScan() {
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+          await videoRef.current.play();
+      }
+
+      const BarcodeDetectorCtor = (window as any).BarcodeDetector;
+      if (!BarcodeDetectorCtor) {
+        setScanning(true);
+        setDetectorSupported(false);
+        setScanStatus("Kamera aktif, tetapi browser ini belum mendukung pembaca QR otomatis. Masukkan ID titik atau link QR di input manual.");
+        return;
       }
 
       const detector = new BarcodeDetectorCtor({ formats: ["qr_code", "code_128", "code_39", "ean_13"] });
@@ -785,6 +786,17 @@ export function PreventiveOMApjPoint({ idTitik }: { idTitik: string }) {
             >
               Generate QR
             </button>
+          </div>
+          <div className="rounded-lg border border-gray-300 bg-white p-4 shadow-sm">
+            <div className="mb-3 text-sm font-bold text-gray-950">Semua Data Titik</div>
+            <div className="space-y-2">
+              {flattenPointDetails(point).map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
+                  <div className="mt-1 break-words text-xs font-semibold text-slate-800">{formatDetailValue(value)}</div>
+                </div>
+              ))}
+            </div>
           </div>
           <div className="rounded-lg border border-gray-300 bg-white p-4 shadow-sm">
             <div className="mb-3 text-sm font-bold text-gray-950">Riwayat Data</div>

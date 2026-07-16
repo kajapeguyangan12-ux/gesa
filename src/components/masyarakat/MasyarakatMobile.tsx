@@ -572,7 +572,10 @@ export function PublicScanPage() {
     const start = async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        if (videoRef.current) videoRef.current.srcObject = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => undefined);
+        }
         const BarcodeDetectorCtor = (window as Window & {
           BarcodeDetector?: new (options?: { formats?: string[] }) => {
             detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>;
@@ -593,7 +596,7 @@ export function PublicScanPage() {
             }
           }, 700);
         } else {
-          setError("Browser ini belum mendukung pembaca QR otomatis. Kamera tetap aktif, tetapi untuk test tempel link QR atau ID titik di input manual.");
+          setError("Kamera aktif, tetapi browser ini belum mendukung pembaca QR otomatis. Masukkan ID titik atau link QR di input manual.");
         }
       } catch {
         setError("Kamera tidak bisa diakses. Izinkan akses kamera atau masukkan ID/link secara manual.");
