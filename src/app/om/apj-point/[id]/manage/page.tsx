@@ -18,6 +18,39 @@ type ApjPoint = {
   rawPayload?: Record<string, unknown>;
 };
 
+const emptyManageForm = {
+  namaTitik: "",
+  noSeriTiangArm: "",
+  noSeriLampu1: "",
+  noSeriLampu2: "",
+  kabupaten: "",
+  kecamatan: "",
+  namaJalan: "",
+  lebarJalan: "",
+  fungsiRuas: "",
+  group: "",
+  zona: "",
+  dayaLampu: "",
+  tiang: "",
+  lenganArm: "",
+  armAgExs: "",
+  presetIluminasi: "",
+  presetIluminasiAwal: "",
+  presetIluminasiBatas: "",
+  latitude: "",
+  longitude: "",
+  instalasi: "",
+  keteranganTitik: "",
+};
+
+function rawText(raw: Record<string, unknown> | undefined, ...keys: string[]) {
+  for (const key of keys) {
+    const value = raw?.[key];
+    if (value !== undefined && value !== null) return String(value);
+  }
+  return "";
+}
+
 function qrImageUrl(value: string) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=${encodeURIComponent(value)}`;
 }
@@ -25,7 +58,7 @@ function qrImageUrl(value: string) {
 function ManageApjPoint({ idTitik }: { idTitik: string }) {
   const router = useRouter();
   const [point, setPoint] = useState<ApjPoint | null>(null);
-  const [form, setForm] = useState({ namaTitik: "", namaJalan: "", kabupaten: "", dayaLampu: "", group: "", latitude: "", longitude: "" });
+  const [form, setForm] = useState(emptyManageForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -45,15 +78,31 @@ function ManageApjPoint({ idTitik }: { idTitik: string }) {
       const payload = (await response.json()) as { latest?: ApjPoint; error?: string };
       if (!response.ok || !payload.latest) throw new Error(payload.error || "Data APJ tidak ditemukan.");
       const next = payload.latest;
+      const raw = next.rawPayload;
       setPoint(next);
       setForm({
-        namaTitik: next.namaTitik || next.idTitik || idTitik,
-        namaJalan: next.namaJalan || "",
-        kabupaten: next.kabupaten || "",
-        dayaLampu: next.dayaLampu || "",
-        group: next.group || String(next.rawPayload?.grup || next.rawPayload?.group || ""),
+        namaTitik: next.namaTitik || rawText(raw, "namaTitik", "nama_titik") || next.idTitik || idTitik,
+        noSeriTiangArm: rawText(raw, "noSeriTiangArm", "no_seri_tiang_arm"),
+        noSeriLampu1: rawText(raw, "noSeriLampu1", "no_seri_lampu_1"),
+        noSeriLampu2: rawText(raw, "noSeriLampu2", "no_seri_lampu_2"),
+        kabupaten: next.kabupaten === "-" ? "" : next.kabupaten || rawText(raw, "kabupaten"),
+        kecamatan: rawText(raw, "kecamatan"),
+        namaJalan: next.namaJalan === "-" ? "" : next.namaJalan || rawText(raw, "namaJalan", "nama_jalan", "jalan"),
+        lebarJalan: rawText(raw, "lebarJalan", "lebar_jalan"),
+        fungsiRuas: rawText(raw, "fungsiRuas", "fungsi_ruas"),
+        group: next.group || rawText(raw, "grup", "group"),
+        zona: rawText(raw, "zona"),
+        dayaLampu: next.dayaLampu === "-" ? "" : next.dayaLampu || rawText(raw, "dayaLampu", "daya_lampu"),
+        tiang: rawText(raw, "tiang"),
+        lenganArm: rawText(raw, "lenganArm", "lengan_arm"),
+        armAgExs: rawText(raw, "armAgExs", "arm_ag_exs"),
+        presetIluminasi: rawText(raw, "presetIluminasi", "preset_iluminasi"),
+        presetIluminasiAwal: rawText(raw, "presetIluminasiAwal", "preset_iluminasi_awal"),
+        presetIluminasiBatas: rawText(raw, "presetIluminasiBatas", "preset_iluminasi_batas"),
         latitude: Number.isFinite(next.latitude) ? String(next.latitude) : "",
         longitude: Number.isFinite(next.longitude) ? String(next.longitude) : "",
+        instalasi: rawText(raw, "instalasi"),
+        keteranganTitik: rawText(raw, "keteranganTitik", "keterangan_titik"),
       });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Data APJ tidak ditemukan.");
@@ -145,12 +194,26 @@ function ManageApjPoint({ idTitik }: { idTitik: string }) {
               <form onSubmit={save} className="grid gap-4 md:grid-cols-2">
                 {[
                   ["Nama Titik", "namaTitik"],
-                  ["Nama Jalan", "namaJalan"],
+                  ["No Seri Tiang/Arm", "noSeriTiangArm"],
+                  ["No Seri Lampu 1", "noSeriLampu1"],
+                  ["No Seri Lampu 2", "noSeriLampu2"],
                   ["Kabupaten", "kabupaten"],
+                  ["Kecamatan", "kecamatan"],
+                  ["Nama Jalan", "namaJalan"],
+                  ["Lebar Jalan", "lebarJalan"],
+                  ["Fungsi Ruas", "fungsiRuas"],
+                  ["Grup APJ", "group"],
+                  ["Zona / Label Area", "zona"],
                   ["Daya Lampu", "dayaLampu"],
-                  ["Grup/Zona", "group"],
+                  ["Tiang", "tiang"],
+                  ["Lengan ARM", "lenganArm"],
+                  ["ARM AG/EXS", "armAgExs"],
+                  ["Preset Iluminasi", "presetIluminasi"],
+                  ["Preset Iluminasi Awal", "presetIluminasiAwal"],
+                  ["Batas Preset Iluminasi", "presetIluminasiBatas"],
                   ["Latitude", "latitude"],
                   ["Longitude", "longitude"],
+                  ["Instalasi", "instalasi"],
                 ].map(([label, key]) => (
                   <label key={key} className="block">
                     <span className="text-sm font-semibold text-slate-700">{label}</span>
@@ -161,6 +224,15 @@ function ManageApjPoint({ idTitik }: { idTitik: string }) {
                     />
                   </label>
                 ))}
+                <label className="block md:col-span-2">
+                  <span className="text-sm font-semibold text-slate-700">Keterangan Titik</span>
+                  <textarea
+                    value={form.keteranganTitik}
+                    onChange={(event) => update("keteranganTitik", event.target.value)}
+                    rows={3}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-teal-400"
+                  />
+                </label>
                 <div className="md:col-span-2">
                   {message ? <div className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{message}</div> : null}
                   <button type="submit" disabled={saving} className="rounded-2xl bg-teal-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-60">

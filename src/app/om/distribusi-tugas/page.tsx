@@ -13,6 +13,8 @@ type ApjPoint = {
   namaJalan: string;
   dayaLampu: string;
   group: string;
+  latitude: number;
+  longitude: number;
   operationalAt?: string;
   validatedAt?: string;
 };
@@ -211,6 +213,8 @@ function TaskDistributionWorkspace() {
                   namaTitik: point.namaTitik,
                   namaJalan: point.namaJalan,
                   dayaLampu: point.dayaLampu,
+                  latitude: point.latitude,
+                  longitude: point.longitude,
                   operationalAt: point.operationalAt || point.validatedAt || "",
                   nextDueAt: addMonths(point.operationalAt || point.validatedAt || "", 6),
                 }))
@@ -221,6 +225,8 @@ function TaskDistributionWorkspace() {
                       namaTitik: selectedPoint.namaTitik,
                       namaJalan: selectedPoint.namaJalan,
                       dayaLampu: selectedPoint.dayaLampu,
+                      latitude: selectedPoint.latitude,
+                      longitude: selectedPoint.longitude,
                       operationalAt: selectedPoint.operationalAt || selectedPoint.validatedAt || "",
                       nextDueAt: addMonths(selectedPoint.operationalAt || selectedPoint.validatedAt || "", 6),
                     },

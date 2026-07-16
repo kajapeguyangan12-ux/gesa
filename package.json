@@ -67,6 +67,7 @@
     "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
     "next": "^16.1.1",
+    "qr-scanner": "^1.4.2",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-leaflet": "^5.0.0",

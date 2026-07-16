@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -37,6 +38,7 @@ type OMTask = {
   pointName?: string;
   repeatMode?: string;
   luxTarget?: string;
+  targetPoints?: OMTaskPoint[];
   status?: string;
   createdAt: string | null;
 };
@@ -77,6 +79,22 @@ type ApjPoint = {
   rawPayload?: Record<string, unknown>;
 };
 
+type OMTaskPoint = {
+  idTitik: string;
+  namaTitik?: string;
+  namaJalan?: string;
+  dayaLampu?: string;
+  latitude?: number;
+  longitude?: number;
+  operationalAt?: string;
+  nextDueAt?: string;
+};
+
+const OMTaskPointMap = dynamic(() => import("@/components/om/OMTaskPointMap"), {
+  ssr: false,
+  loading: () => <div className="flex h-full items-center justify-center bg-slate-50 text-xs text-slate-500">Memuat peta titik...</div>,
+});
+
 function formatDetailValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
@@ -87,28 +105,100 @@ function formatDetailValue(value: unknown): string {
   }
 }
 
-function flattenPointDetails(point: ApjPoint) {
-  const baseEntries: Array<[string, unknown]> = [
-    ["ID Titik", point.idTitik],
-    ["Nama Titik", point.namaTitik],
-    ["Nama Jalan", point.namaJalan],
-    ["Kabupaten", point.kabupaten],
-    ["Daya Lampu", point.dayaLampu],
-    ["Grup/Zona", point.group],
+type PointDetailEntry = [string, unknown];
+
+const displayedRawPointKeys = new Set([
+  "id", "idTitik", "id_titik", "namaTitik", "nama_titik", "namaJalan", "nama_jalan", "jalan",
+  "kabupaten", "kecamatan", "dayaLampu", "daya_lampu", "grup", "group", "zona",
+  "noSeriTiangArm", "no_seri_tiang_arm", "noSeriLampu1", "no_seri_lampu_1", "noSeriLampu2", "no_seri_lampu_2",
+  "lebarJalan", "lebar_jalan", "fungsiRuas", "fungsi_ruas", "tiang", "lenganArm", "lengan_arm",
+  "armAgExs", "arm_ag_exs", "presetIluminasi", "preset_iluminasi", "presetIluminasiAwal",
+  "preset_iluminasi_awal", "presetIluminasiBatas", "preset_iluminasi_batas", "latitude", "lat",
+  "longitude", "lng", "lon", "instalasi", "keteranganTitik", "keterangan_titik", "status",
+  "kontruksiStatus", "stage", "tahap", "type", "source", "surveyorName", "surveyor_name",
+  "createdAt", "created_at", "validatedAt", "validated_at", "operationalAt", "operational_at",
+]);
+
+function pickRawPointValue(raw: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = raw[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return undefined;
+}
+
+function pointDetailSections(point: ApjPoint) {
+  const raw = point.rawPayload || {};
+  const primary: PointDetailEntry[] = [
+    ["ID Titik APJ", point.idTitik || pickRawPointValue(raw, "idTitik", "id_titik")],
+    ["Nama Titik", point.namaTitik || pickRawPointValue(raw, "namaTitik", "nama_titik")],
+    ["No Seri Tiang/Arm", pickRawPointValue(raw, "noSeriTiangArm", "no_seri_tiang_arm")],
+    ["No Seri Lampu 1", pickRawPointValue(raw, "noSeriLampu1", "no_seri_lampu_1")],
+    ["No Seri Lampu 2", pickRawPointValue(raw, "noSeriLampu2", "no_seri_lampu_2")],
+    ["Kabupaten", point.kabupaten || pickRawPointValue(raw, "kabupaten")],
+    ["Kecamatan", pickRawPointValue(raw, "kecamatan")],
+    ["Nama Jalan", point.namaJalan || pickRawPointValue(raw, "namaJalan", "nama_jalan", "jalan")],
+    ["Lebar Jalan", pickRawPointValue(raw, "lebarJalan", "lebar_jalan")],
+    ["Fungsi Ruas", pickRawPointValue(raw, "fungsiRuas", "fungsi_ruas")],
+    ["Grup APJ", point.group || pickRawPointValue(raw, "group", "grup")],
+    ["Zona / Label Area", pickRawPointValue(raw, "zona")],
+    ["Daya Lampu", point.dayaLampu || pickRawPointValue(raw, "dayaLampu", "daya_lampu")],
+    ["Tiang", pickRawPointValue(raw, "tiang")],
+    ["Lengan ARM", pickRawPointValue(raw, "lenganArm", "lengan_arm")],
+    ["ARM AG/EXS", pickRawPointValue(raw, "armAgExs", "arm_ag_exs")],
+    ["Preset Iluminasi", pickRawPointValue(raw, "presetIluminasi", "preset_iluminasi")],
+    ["Preset Iluminasi Awal", pickRawPointValue(raw, "presetIluminasiAwal", "preset_iluminasi_awal")],
+    ["Batas Preset Iluminasi", pickRawPointValue(raw, "presetIluminasiBatas", "preset_iluminasi_batas")],
+    ["Latitude", point.latitude || pickRawPointValue(raw, "latitude", "lat")],
+    ["Longitude", point.longitude || pickRawPointValue(raw, "longitude", "lng", "lon")],
+    ["Instalasi", pickRawPointValue(raw, "instalasi")],
+    ["Keterangan Titik", pickRawPointValue(raw, "keteranganTitik", "keterangan_titik")],
+  ];
+  const system: PointDetailEntry[] = [
     ["Status", point.status],
     ["Tahap", point.stage],
     ["Sumber", point.source],
     ["Surveyor", point.surveyorName],
-    ["Latitude", point.latitude],
-    ["Longitude", point.longitude],
     ["Tanggal Dibuat", formatDateTime(point.createdAt)],
     ["Tanggal Validasi", formatDateTime(point.validatedAt)],
     ["Tanggal Operasi", formatDateTime(point.operationalAt)],
   ];
-  const rawEntries = Object.entries(point.rawPayload || {})
-    .filter(([key]) => !["id", "idTitik", "id_titik", "namaJalan", "nama_jalan"].includes(key))
-    .map(([key, value]) => [`Raw: ${key}`, value] as [string, unknown]);
-  return [...baseEntries, ...rawEntries].filter(([, value]) => value !== undefined && value !== "");
+  const rawEntries = Object.entries(raw)
+    .filter(([key, value]) => !displayedRawPointKeys.has(key) && value !== undefined && value !== "")
+    .map(([key, value]) => [`Raw: ${key}`, value] as PointDetailEntry);
+  const hasValue = ([, value]: PointDetailEntry) => value !== undefined && value !== null && value !== "" && value !== "-";
+  return { primary, system: system.filter(hasValue), raw: rawEntries };
+}
+
+function PointDetailFields({ point }: { point: ApjPoint }) {
+  const sections = pointDetailSections(point);
+  const renderEntries = (entries: PointDetailEntry[]) => entries.map(([label, value]) => (
+    <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
+      <div className="mt-1 break-words text-xs font-semibold text-slate-800">{formatDetailValue(value)}</div>
+    </div>
+  ));
+
+  return (
+    <div className="space-y-5">
+      <section>
+        <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-sky-700">Data Utama</div>
+        <div className="space-y-2">{renderEntries(sections.primary)}</div>
+      </section>
+      {sections.system.length ? (
+        <section>
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Informasi Sistem</div>
+          <div className="space-y-2">{renderEntries(sections.system)}</div>
+        </section>
+      ) : null}
+      {sections.raw.length ? (
+        <section>
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Data Teknis Tambahan</div>
+          <div className="space-y-2">{renderEntries(sections.raw)}</div>
+        </section>
+      ) : null}
+    </div>
+  );
 }
 
 export function isPreventiveOmRole(role?: string | null) {
@@ -550,19 +640,20 @@ export function PreventiveOMScan() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const scannerRef = useRef<{ stop: () => void; destroy: () => void } | null>(null);
   const [manualValue, setManualValue] = useState("");
   const [scanStatus, setScanStatus] = useState("Kamera belum aktif.");
   const [scanning, setScanning] = useState(false);
-  const [detectorSupported, setDetectorSupported] = useState(true);
+  const [photoScanning, setPhotoScanning] = useState(false);
   const [scannedId, setScannedId] = useState("");
   const [scannedPoint, setScannedPoint] = useState<ApjPoint | null>(null);
   const [pointLoading, setPointLoading] = useState(false);
   const [pointError, setPointError] = useState("");
 
   const stopCamera = () => {
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
+    scannerRef.current?.stop();
+    scannerRef.current?.destroy();
+    scannerRef.current = null;
     setScanning(false);
   };
 
@@ -600,53 +691,59 @@ export function PreventiveOMScan() {
   const startCamera = async () => {
     setScanStatus("Mengaktifkan kamera...");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-      }
-
-      const BarcodeDetectorCtor = (window as any).BarcodeDetector;
-      if (!BarcodeDetectorCtor) {
-        setScanning(true);
-        setDetectorSupported(false);
-        setScanStatus("Kamera aktif, tetapi browser ini belum mendukung pembaca QR otomatis. Masukkan ID titik atau link QR di input manual.");
-        return;
-      }
-
-      const detector = new BarcodeDetectorCtor({ formats: ["qr_code", "code_128", "code_39", "ean_13"] });
-      setScanning(true);
-      setDetectorSupported(true);
-      setScanStatus("Arahkan kamera ke QR/barcode titik APJ.");
-
-      const scanLoop = async () => {
-        if (!streamRef.current || !videoRef.current) return;
-        try {
-          const results = await detector.detect(videoRef.current);
-          if (results?.length > 0) {
-            openPoint(results[0].rawValue || "");
-            return;
-          }
-        } catch {
-          setScanStatus("Kamera aktif, tetapi barcode belum terbaca.");
+      if (!videoRef.current) throw new Error("Elemen kamera belum siap.");
+      stopCamera();
+      const { default: QrScanner } = await import("qr-scanner");
+      const scanner = new QrScanner(
+        videoRef.current,
+        (result) => openPoint(result.data),
+        {
+          preferredCamera: "environment",
+          maxScansPerSecond: 10,
+          highlightScanRegion: true,
+          highlightCodeOutline: true,
+          returnDetailedScanResult: true,
         }
-        window.setTimeout(scanLoop, 500);
-      };
-      window.setTimeout(scanLoop, 600);
+      );
+      scannerRef.current = scanner;
+      await scanner.start();
+      setScanning(true);
+      setScanStatus("Arahkan kamera belakang ke QR titik APJ.");
     } catch (cameraError) {
       console.error(cameraError);
-      setScanStatus("Gagal membuka kamera. Pastikan izin kamera aktif dan akses lewat HTTPS atau localhost.");
+      stopCamera();
+      const errorName = cameraError instanceof DOMException ? cameraError.name : "";
+      setScanStatus(
+        errorName === "NotAllowedError"
+          ? "Izin kamera ditolak. Aktifkan izin kamera untuk situs ini di pengaturan Safari/browser."
+          : "Gagal membuka kamera. Pastikan akses melalui HTTPS dan kamera tidak sedang digunakan aplikasi lain."
+      );
+    }
+  };
+
+  const scanPhoto = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    stopCamera();
+    setPhotoScanning(true);
+    setScanStatus("Membaca QR dari foto...");
+    try {
+      const { default: QrScanner } = await import("qr-scanner");
+      const result = await QrScanner.scanImage(file, { returnDetailedScanResult: true });
+      openPoint(typeof result === "string" ? result : result.data);
+    } catch (scanError) {
+      console.error(scanError);
+      setScanStatus("QR tidak ditemukan pada foto. Coba foto lebih dekat, terang, dan tidak miring.");
+    } finally {
+      setPhotoScanning(false);
     }
   };
 
   useEffect(() => stopCamera, []);
 
   return (
-    <PreventiveLayout title="Scan Barcode" activeTab="scan" onBack={() => router.push("/om")}>
+    <PreventiveLayout title="Scan QR Titik" activeTab="scan" onBack={() => router.push("/om")}>
       <div className="space-y-4">
         <div className="overflow-hidden rounded-lg border border-gray-300 bg-black shadow-sm">
           <video ref={videoRef} className="aspect-[3/4] w-full object-cover" muted playsInline />
@@ -698,11 +795,13 @@ export function PreventiveOMScan() {
             Matikan
           </button>
         </div>
-        {!detectorSupported ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-            Scan otomatis bergantung dukungan browser. Chrome Android biasanya mendukung fitur ini.
-          </div>
-        ) : null}
+        <label className="block cursor-pointer rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-center text-sm font-semibold text-sky-800">
+          {photoScanning ? "Membaca Foto..." : "Ambil Foto / Pilih Foto QR"}
+          <input type="file" accept="image/*" capture="environment" onChange={(event) => void scanPhoto(event)} disabled={photoScanning} className="sr-only" />
+        </label>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+          Pada iPhone, pilih <b>Izinkan Kamera</b> saat diminta. Jika kamera sulit fokus, gunakan tombol ambil foto di atas.
+        </div>
         <div className="rounded-lg border border-gray-300 bg-white p-3 shadow-sm">
           <label className="text-xs font-semibold uppercase text-gray-500">Input manual ID/link titik</label>
           <div className="mt-2 flex gap-2">
@@ -789,14 +888,7 @@ export function PreventiveOMApjPoint({ idTitik }: { idTitik: string }) {
           </div>
           <div className="rounded-lg border border-gray-300 bg-white p-4 shadow-sm">
             <div className="mb-3 text-sm font-bold text-gray-950">Semua Data Titik</div>
-            <div className="space-y-2">
-              {flattenPointDetails(point).map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
-                  <div className="mt-1 break-words text-xs font-semibold text-slate-800">{formatDetailValue(value)}</div>
-                </div>
-              ))}
-            </div>
+            <PointDetailFields point={point} />
           </div>
           <div className="rounded-lg border border-gray-300 bg-white p-4 shadow-sm">
             <div className="mb-3 text-sm font-bold text-gray-950">Riwayat Data</div>
@@ -869,6 +961,9 @@ export function PreventiveOMTaskList() {
   const isCorrective = isCorrectiveOmRole(user?.role);
   const [items, setItems] = useState<OMTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<OMTask | null>(null);
+  const [taskMapPoints, setTaskMapPoints] = useState<OMTaskPoint[]>([]);
+  const [selectedTaskPointId, setSelectedTaskPointId] = useState("");
+  const [taskMapLoading, setTaskMapLoading] = useState(false);
   const [pointPreview, setPointPreview] = useState<ApjPoint | null>(null);
   const [showPointDetail, setShowPointDetail] = useState(false);
   const [workForm, setWorkForm] = useState({
@@ -932,6 +1027,44 @@ export function PreventiveOMTaskList() {
     router.replace("/om/distribusi-tugas");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, scanId, workTaskId]);
+
+  useEffect(() => {
+    if (!selectedTask || (selectedTask as OMTask & { source?: string }).source === "work-form") return;
+    const taskPoints = Array.isArray(selectedTask.targetPoints) ? selectedTask.targetPoints : [];
+    setSelectedTaskPointId(selectedTask.scope === "point" ? selectedTask.pointId || "" : "");
+    setTaskMapPoints(taskPoints);
+
+    const hasCoordinates = taskPoints.some((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude) && point.latitude !== 0 && point.longitude !== 0);
+    if (hasCoordinates) return;
+
+    let active = true;
+    const loadTaskCoordinates = async () => {
+      setTaskMapLoading(true);
+      try {
+        const response = await fetch("/api/om/apj-points", { cache: "no-store" });
+        const payload = (await response.json()) as {
+          groups?: Array<{ id: string; name: string; points: OMTaskPoint[] }>;
+          points?: OMTaskPoint[];
+        };
+        if (!response.ok || !active) return;
+        const allPoints = payload.points || payload.groups?.flatMap((group) => group.points || []) || [];
+        const targetIds = new Set(taskPoints.map((point) => point.idTitik).filter(Boolean));
+        const matchingGroup = payload.groups?.find(
+          (group) => group.id === selectedTask.groupId || group.name === selectedTask.groupName || group.name === selectedTask.groupId
+        );
+        const resolved = targetIds.size > 0 ? allPoints.filter((point) => targetIds.has(point.idTitik)) : matchingGroup?.points || [];
+        if (active) setTaskMapPoints(resolved.length ? resolved : taskPoints);
+      } catch {
+        if (active) setTaskMapPoints(taskPoints);
+      } finally {
+        if (active) setTaskMapLoading(false);
+      }
+    };
+    void loadTaskCoordinates();
+    return () => {
+      active = false;
+    };
+  }, [selectedTask?.id, selectedTask?.scope]);
 
   const openWorkForm = (task: OMTask, presetIdTitik = "") => {
     const initialIdTitik = presetIdTitik || (task.scope === "point" ? task.pointId || "" : "");
@@ -1178,13 +1311,8 @@ export function PreventiveOMTaskList() {
                     Tutup
                   </button>
                 </div>
-                <div className="max-h-[68vh] space-y-2 overflow-auto p-4">
-                  {flattenPointDetails(pointPreview).map(([label, value]) => (
-                    <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
-                      <div className="mt-1 break-words text-xs font-semibold text-slate-800">{formatDetailValue(value)}</div>
-                    </div>
-                  ))}
+                <div className="max-h-[68vh] overflow-auto p-4">
+                  <PointDetailFields point={pointPreview} />
                 </div>
               </div>
             </div>
@@ -1206,9 +1334,55 @@ export function PreventiveOMTaskList() {
             <DataField label="Target Lux" value={selectedTask.luxTarget || "-"} />
             <DataField label="Jadwal" value={selectedTask.repeatMode || "-"} />
           </div>
+          {selectedTask.scope === "group" || selectedTask.scope === "point" ? (
+            <section className="mt-5 border-t border-slate-200 pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-bold text-slate-950">Peta Lokasi Tugas</div>
+                  <div className="mt-0.5 text-[11px] text-slate-500">Pilih marker untuk menentukan titik yang akan dikerjakan.</div>
+                </div>
+                <span className="rounded-full bg-sky-50 px-2 py-1 text-[10px] font-bold text-sky-700">{taskMapPoints.length} titik</span>
+              </div>
+              <div className="mt-3 h-72 overflow-hidden rounded-xl border border-slate-200">
+                {taskMapLoading ? (
+                  <div className="flex h-full items-center justify-center bg-slate-50 text-xs text-slate-500">Mengambil koordinat titik...</div>
+                ) : (
+                  <OMTaskPointMap points={taskMapPoints} selectedPointId={selectedTaskPointId} onSelectPoint={setSelectedTaskPointId} />
+                )}
+              </div>
+              {taskMapPoints.length ? (
+                <div className="mt-3 max-h-48 space-y-2 overflow-auto">
+                  {taskMapPoints.map((point, index) => {
+                    const selected = selectedTaskPointId === point.idTitik;
+                    const hasCoordinate = Number.isFinite(point.latitude) && Number.isFinite(point.longitude) && point.latitude !== 0 && point.longitude !== 0;
+                    return (
+                      <button
+                        key={point.idTitik}
+                        type="button"
+                        onClick={() => setSelectedTaskPointId(point.idTitik)}
+                        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left ${selected ? "border-red-300 bg-red-50" : "border-slate-200 bg-white"}`}
+                      >
+                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-black text-white ${selected ? "bg-red-600" : "bg-sky-600"}`}>{index + 1}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-xs font-bold text-slate-950">{point.idTitik}</span>
+                          <span className="block truncate text-[11px] text-slate-500">{point.namaJalan || point.namaTitik || "Titik APJ"}</span>
+                        </span>
+                        <span className={`text-[10px] font-semibold ${hasCoordinate ? "text-emerald-600" : "text-slate-400"}`}>{hasCoordinate ? "Ada lokasi" : "Tanpa lokasi"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+              {selectedTaskPointId ? (
+                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+                  Titik dipilih: <b>{selectedTaskPointId}</b>. ID ini akan masuk ke form pengerjaan.
+                </div>
+              ) : null}
+            </section>
+          ) : null}
           <button
             type="button"
-            onClick={() => openWorkForm(selectedTask)}
+            onClick={() => openWorkForm(selectedTask, selectedTaskPointId)}
             className="mx-auto mt-9 block rounded-md border border-gray-400 bg-sky-50 px-8 py-2 text-xs font-semibold text-gray-900"
           >
             Kerjakan
