@@ -9,6 +9,9 @@ type ZoneItem = {
   id?: string;
   idTitik?: string;
   grup?: string;
+  status?: string;
+  kontruksiStatus?: string;
+  submittedStage?: string;
 };
 
 type ActiveTask = {
@@ -16,6 +19,22 @@ type ActiveTask = {
   designUploadId?: string;
   zones?: ZoneItem[];
 };
+
+function getStatusLabel(zone: ZoneItem) {
+  const status = String(zone.status || zone.kontruksiStatus || "").toLowerCase();
+  if (status === "submitted") return "Terkirim";
+  if (status === "valid") return "Valid";
+  if (status === "rejected") return "Ditolak";
+  return "Belum Dikirim";
+}
+
+function getStatusClass(zone: ZoneItem) {
+  const status = String(zone.status || zone.kontruksiStatus || "").toLowerCase();
+  if (status === "submitted") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "valid") return "border-blue-200 bg-blue-50 text-blue-700";
+  if (status === "rejected") return "border-red-200 bg-red-50 text-red-700";
+  return "border-gray-200 bg-gray-50 text-gray-600";
+}
 
 function DaftarTitikContent() {
   const router = useRouter();
@@ -132,6 +151,10 @@ function DaftarTitikContent() {
                     <div className="text-sm font-semibold text-gray-900 truncate">{zone.idTitik || "-"}</div>
                     <div className="text-[11px] text-gray-500">Grup</div>
                     <div className="text-xs text-gray-700 truncate">{zone.grup || "-"}</div>
+                    <div className={`mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getStatusClass(zone)}`}>
+                      {getStatusLabel(zone)}
+                      {zone.submittedStage ? ` - ${zone.submittedStage}` : ""}
+                    </div>
                   </div>
                   <div className="w-7 h-7 rounded-full border border-gray-400 flex items-center justify-center text-gray-600">
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

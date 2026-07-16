@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
+import { KABUPATEN_OPTIONS } from "@/utils/constants";
 
-type MaterialCategory = "TIANG" | "LAMPU" | "ARM";
+type MaterialCategory = "TIANG" | "LAMPU" | "ARM" | "KABEL";
 type InventoryTransactionType = "MASUK" | "KELUAR" | "MUTASI" | "RETUR" | "BOOKED";
 type BmdCondition = "Baik" | "Rusak Ringan" | "Rusak Berat";
 type BmdStatus = "Di Gudang" | "Dipinjam" | "Dihapuskan";
@@ -19,6 +21,7 @@ type MaterialBase = {
   stokMinimum: number;
   lokasiGudang: string;
   fotoLabel: string;
+  fotoUrl?: string;
 };
 
 type TiangDetail = {
@@ -40,10 +43,17 @@ type ArmDetail = {
   sudutKemiringan: string;
 };
 
+type KabelDetail = {
+  jenisKabel: string;
+  ukuranKabel: string;
+  panjangRoll: string;
+};
+
 type MaterialItem =
   | (MaterialBase & { kategori: "TIANG"; detail: TiangDetail })
   | (MaterialBase & { kategori: "LAMPU"; detail: LampuDetail })
-  | (MaterialBase & { kategori: "ARM"; detail: ArmDetail });
+  | (MaterialBase & { kategori: "ARM"; detail: ArmDetail })
+  | (MaterialBase & { kategori: "KABEL"; detail: KabelDetail });
 
 type InventoryTransaction = {
   id: string;
@@ -66,9 +76,18 @@ type MaterialRequest = {
   requesterName: string;
   requesterId?: string;
   note: string;
-  status: "Diajukan" | "Diproses" | "Disetujui" | "Ditolak";
+  status: "Diajukan" | "Diproses" | "Disetujui" | "Dikeluarkan" | "Selesai" | "Ditolak";
   locationHint: string;
   timeLabel: string;
+  workType?: string;
+  sourceModule?: "Gudang" | "Konstruksi" | "O&M";
+  auditTrail?: Array<{
+    status: string;
+    actorId: string;
+    actorName: string;
+    note: string;
+    at: string;
+  }>;
 };
 
 type BmdAsset = {
@@ -81,18 +100,55 @@ type BmdAsset = {
   lokasi: string;
   peminjam: string;
   estimasiKembali: string;
+  fotoUrl?: string;
 };
 
 const INITIAL_MATERIALS: MaterialItem[] = [];
 const INITIAL_TRANSACTIONS: InventoryTransaction[] = [];
 const INITIAL_BMD_ASSETS: BmdAsset[] = [];
 const INITIAL_REQUESTS: MaterialRequest[] = [];
-const MATERIAL_CATEGORY_ORDER: MaterialCategory[] = ["LAMPU", "TIANG", "ARM"];
+const MATERIAL_CATEGORY_ORDER: MaterialCategory[] = ["LAMPU", "TIANG", "ARM", "KABEL"];
 const MATERIAL_CATEGORY_LABEL: Record<MaterialCategory, string> = {
   LAMPU: "Lampu",
   TIANG: "Tiang",
   ARM: "Arm",
+  KABEL: "Kabel",
 };
+const WORK_TYPE_OPTIONS: Array<{
+  value: string;
+  label: string;
+  sourceModule: "Konstruksi" | "O&M";
+  allowedCategories: MaterialCategory[];
+}> = [
+  {
+    value: "konstruksi-pemasangan-tiang",
+    label: "Konstruksi - Pemasangan Tiang",
+    sourceModule: "Konstruksi",
+    allowedCategories: ["TIANG", "ARM", "LAMPU"],
+  },
+  {
+    value: "konstruksi-pemasangan-kabel",
+    label: "Konstruksi - Pemasangan Kabel",
+    sourceModule: "Konstruksi",
+    allowedCategories: ["KABEL"],
+  },
+  {
+    value: "om-preventive",
+    label: "O&M Preventive",
+    sourceModule: "O&M",
+    allowedCategories: ["LAMPU", "ARM", "KABEL"],
+  },
+  {
+    value: "om-corrective",
+    label: "O&M Corrective",
+    sourceModule: "O&M",
+    allowedCategories: ["TIANG", "LAMPU", "ARM", "KABEL"],
+  },
+];
+
+function getWorkTypeOption(value: string) {
+  return WORK_TYPE_OPTIONS.find((option) => option.value === value) || WORK_TYPE_OPTIONS[0];
+}
 
 function createDefaultMaterialDetail(category: MaterialCategory) {
   if (category === "TIANG") {
@@ -109,6 +165,14 @@ function createDefaultMaterialDetail(category: MaterialCategory) {
       jenisLed: "",
       merk: "",
       lumen: "",
+    };
+  }
+
+  if (category === "KABEL") {
+    return {
+      jenisKabel: "",
+      ukuranKabel: "",
+      panjangRoll: "",
     };
   }
 
@@ -133,6 +197,14 @@ function getCategoryAccent(category: MaterialCategory) {
       badge: "bg-amber-100 text-amber-800 border-amber-200",
       chip: "from-amber-400 via-orange-400 to-rose-500",
       surface: "from-amber-50 to-orange-50",
+    };
+  }
+
+  if (category === "KABEL") {
+    return {
+      badge: "bg-emerald-100 text-emerald-700 border-emerald-200",
+      chip: "from-emerald-500 via-teal-500 to-cyan-600",
+      surface: "from-emerald-50 to-teal-50",
     };
   }
 
@@ -244,6 +316,16 @@ function MaterialDetailSummary({ item }: { item: MaterialItem }) {
     );
   }
 
+  if (item.kategori === "KABEL") {
+    return (
+      <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+        <span className="rounded-full bg-white px-3 py-1">{item.detail.jenisKabel}</span>
+        <span className="rounded-full bg-white px-3 py-1">{item.detail.ukuranKabel}</span>
+        <span className="rounded-full bg-white px-3 py-1">{item.detail.panjangRoll}</span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-wrap gap-2 text-xs text-slate-600">
       <span className="rounded-full bg-white px-3 py-1">{item.detail.panjangMeter}</span>
@@ -273,9 +355,13 @@ function MaterialCard({
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-start gap-4">
-          <div className={`flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br ${accent.surface} text-base font-bold text-slate-700 shadow-sm`}>
-            {item.fotoLabel}
-          </div>
+          {item.fotoUrl ? (
+            <div className="h-16 w-16 rounded-3xl bg-cover bg-center shadow-sm" style={{ backgroundImage: `url("${item.fotoUrl}")` }} />
+          ) : (
+            <div className={`flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br ${accent.surface} text-base font-bold text-slate-700 shadow-sm`}>
+              {item.fotoLabel}
+            </div>
+          )}
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${accent.badge}`}>
@@ -317,7 +403,11 @@ function BmdAssetCard({
       className={`w-full rounded-[28px] border p-4 text-left transition-all ${active ? "border-slate-900 bg-slate-50 shadow-md" : "border-slate-200 bg-white hover:border-slate-300"}`}
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
+        <div className="flex items-start gap-4">
+          {asset.fotoUrl ? (
+            <div className="h-16 w-16 shrink-0 rounded-3xl bg-cover bg-center shadow-sm" style={{ backgroundImage: `url("${asset.fotoUrl}")` }} />
+          ) : null}
+          <div>
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${getBmdStatusTone(asset.status)}`}>
               {asset.status}
@@ -326,6 +416,7 @@ function BmdAssetCard({
           </div>
           <div className="mt-2 text-lg font-bold text-slate-900">{asset.namaAset}</div>
           <div className="mt-1 text-sm text-slate-600">{asset.kategori}</div>
+          </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl bg-slate-50 px-4 py-3">
@@ -343,6 +434,8 @@ function BmdAssetCard({
 export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: boolean }) {
   const router = useRouter();
   const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super-admin";
+  const [activeKabupaten, setActiveKabupaten] = useState("tabanan");
   const [activeTab, setActiveTab] = useState<"gudang" | "bmd">("gudang");
   const [activeGudangPatch, setActiveGudangPatch] = useState<"tambah" | "database" | "operasional" | "antrian">(
     adminMode ? "database" : "operasional"
@@ -367,17 +460,35 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
   const [materialCodeDraft, setMaterialCodeDraft] = useState<string>("");
   const [materialNameDraft, setMaterialNameDraft] = useState<string>("");
   const [materialPhotoLabelDraft, setMaterialPhotoLabelDraft] = useState<string>("");
+  const [materialPhotoFile, setMaterialPhotoFile] = useState<File | null>(null);
   const [materialLocationDraft, setMaterialLocationDraft] = useState<string>("Gudang Utama");
   const [materialStockDraft, setMaterialStockDraft] = useState<string>("0");
   const [materialMinimumDraft, setMaterialMinimumDraft] = useState<string>("0");
-  const [materialDetailDraft, setMaterialDetailDraft] = useState<TiangDetail | LampuDetail | ArmDetail>(createDefaultMaterialDetail("LAMPU"));
+  const [materialDetailDraft, setMaterialDetailDraft] = useState<TiangDetail | LampuDetail | ArmDetail | KabelDetail>(createDefaultMaterialDetail("LAMPU"));
   const [requestQuantity, setRequestQuantity] = useState<string>("1");
   const [requestNote, setRequestNote] = useState<string>("");
+  const [requestWorkType, setRequestWorkType] = useState<string>(WORK_TYPE_OPTIONS[0].value);
   const [bmdRegisterDraft, setBmdRegisterDraft] = useState<string>("");
   const [bmdNameDraft, setBmdNameDraft] = useState<string>("");
   const [bmdCategoryDraft, setBmdCategoryDraft] = useState<string>("Perangkat Lapangan");
   const [bmdLocationDraft, setBmdLocationDraft] = useState<string>("Rak BMD A-01");
   const [bmdConditionDraft, setBmdConditionDraft] = useState<BmdCondition>("Baik");
+  const [bmdPhotoFile, setBmdPhotoFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const nextKabupaten = isSuperAdmin
+      ? getActiveKabupatenFromStorage(user.uid || "") || "tabanan"
+      : user.kabupaten?.trim().toLowerCase() || "tabanan";
+    setActiveKabupaten(nextKabupaten);
+    setActiveKabupatenToStorage(user.uid || "", nextKabupaten);
+  }, [isSuperAdmin, user]);
+
+  const handleKabupatenChange = (kabupaten: string) => {
+    if (!isSuperAdmin || !user) return;
+    setActiveKabupaten(kabupaten);
+    setActiveKabupatenToStorage(user.uid || "", kabupaten);
+  };
 
   const totalItems = materials.length;
   const lampuReady = materials.filter((item) => item.kategori === "LAMPU" && item.stokTersedia > item.stokMinimum).length;
@@ -390,6 +501,8 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
 
   const selectedMaterial = materials.find((item) => item.id === selectedMaterialId) || materials[0] || null;
   const selectedBmdAsset = bmdAssets.find((item) => item.id === selectedBmdId) || bmdAssets[0] || null;
+  const selectedWorkType = getWorkTypeOption(requestWorkType);
+  const selectedMaterialAllowed = selectedMaterial ? selectedWorkType.allowedCategories.includes(selectedMaterial.kategori) : false;
   const groupedMaterials = MATERIAL_CATEGORY_ORDER.map((category) => ({
     category,
     label: MATERIAL_CATEGORY_LABEL[category],
@@ -421,6 +534,22 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
     }
     return payload;
   }, []);
+
+  const uploadGudangPhoto = async (file: File, folder: string) => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("folder", folder);
+    body.append("filename", file.name);
+    const response = await fetch("/api/storage/survey-attachments", {
+      method: "POST",
+      body,
+    });
+    const payload = (await response.json().catch(() => ({}))) as { url?: string; error?: string };
+    if (!response.ok || !payload.url) {
+      throw new Error(payload.error || "Gagal mengunggah foto.");
+    }
+    return payload.url;
+  };
 
   const loadDashboardData = useCallback(async () => {
     try {
@@ -483,6 +612,9 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
     if (!materialCodeDraft.trim() || !materialNameDraft.trim()) return;
     try {
       setActionBusy(true);
+      const fotoUrl = materialPhotoFile
+        ? await uploadGudangPhoto(materialPhotoFile, `bmd-gudang/materials/${materialCodeDraft.trim() || "material"}`)
+        : "";
       await fetchJson(endpoint, {
         method: "POST",
         body: JSON.stringify({
@@ -494,12 +626,14 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
           stokMinimum: materialMinimumDraft,
           lokasiGudang: materialLocationDraft.trim() || "Gudang Utama",
           fotoLabel: materialPhotoLabelDraft.trim() || materialCategoryDraft,
+          fotoUrl,
           detail: materialDetailDraft,
         }),
       });
       setMaterialCodeDraft("");
       setMaterialNameDraft("");
       setMaterialPhotoLabelDraft("");
+      setMaterialPhotoFile(null);
       setMaterialLocationDraft("Gudang Utama");
       setMaterialStockDraft("0");
       setMaterialMinimumDraft("0");
@@ -514,6 +648,9 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
     if (!bmdRegisterDraft.trim() || !bmdNameDraft.trim()) return;
     try {
       setActionBusy(true);
+      const fotoUrl = bmdPhotoFile
+        ? await uploadGudangPhoto(bmdPhotoFile, `bmd-gudang/assets/${bmdRegisterDraft.trim() || "asset"}`)
+        : "";
       await fetchJson(endpoint, {
         method: "POST",
         body: JSON.stringify({
@@ -526,6 +663,7 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
           lokasi: bmdLocationDraft.trim() || "Rak BMD A-01",
           peminjam: "-",
           estimasiKembali: "-",
+          fotoUrl,
         }),
       });
       setBmdRegisterDraft("");
@@ -533,6 +671,7 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
       setBmdCategoryDraft("Perangkat Lapangan");
       setBmdLocationDraft("Rak BMD A-01");
       setBmdConditionDraft("Baik");
+      setBmdPhotoFile(null);
       await loadDashboardData();
     } finally {
       setActionBusy(false);
@@ -541,10 +680,15 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
 
   const handleSubmitMaterialRequest = async () => {
     if (!selectedMaterial) return;
+    if (!selectedMaterialAllowed) {
+      setLoadError(`Barang kategori ${MATERIAL_CATEGORY_LABEL[selectedMaterial.kategori]} tidak cocok untuk ${selectedWorkType.label}.`);
+      return;
+    }
     const qty = Number.parseInt(requestQuantity, 10);
     if (!Number.isFinite(qty) || qty <= 0) return;
     try {
       setActionBusy(true);
+      setLoadError("");
       await fetchJson(endpoint, {
         method: "POST",
         body: JSON.stringify({
@@ -557,6 +701,9 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
           requesterName: user?.displayName || user?.email || "Petugas",
           note: requestNote.trim() || "Tanpa catatan tambahan",
           locationHint: selectedMaterial.lokasiGudang,
+          workType: selectedWorkType.value,
+          sourceModule: selectedWorkType.sourceModule,
+          allowedCategories: selectedWorkType.allowedCategories,
         }),
       });
       setRequestQuantity("1");
@@ -715,6 +862,89 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
           action: "update-request-status",
           requestId,
           status,
+          actorId: user?.uid || "",
+          actorName: user?.displayName || user?.email || "Admin Gudang",
+          note: `Status diubah menjadi ${status}`,
+        }),
+      });
+      await loadDashboardData();
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const handleCheckoutApprovedRequest = async (request: MaterialRequest) => {
+    if (request.status !== "Disetujui") return;
+    try {
+      setActionBusy(true);
+      if (request.requestType === "Peminjaman BMD") {
+        await fetchJson(endpoint, {
+          method: "POST",
+          body: JSON.stringify({
+            action: "update-bmd-status",
+            assetId: request.materialId,
+            status: "Dipinjam",
+            lokasi: request.note || "Dipakai peminjam",
+            peminjam: request.requesterName || "Peminjam",
+            estimasiKembali: "-",
+          }),
+        });
+      } else {
+        await fetchJson(endpoint, {
+          method: "POST",
+          body: JSON.stringify({
+            action: "create-transaction",
+            materialId: request.materialId,
+            materialName: request.materialName,
+            type: "KELUAR",
+            jumlah: request.quantity,
+            referensi: request.id,
+            sourceModule: "Konstruksi",
+            status: "Posted",
+          }),
+        });
+      }
+      await fetchJson(endpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "update-request-status",
+          requestId: request.id,
+          status: "Dikeluarkan",
+          actorId: user?.uid || "",
+          actorName: user?.displayName || user?.email || "Admin Gudang",
+          note: request.requestType === "Peminjaman BMD" ? "Aset BMD sudah dicatat dipinjam." : "Barang sudah dicatat keluar dari gudang.",
+        }),
+      });
+      await loadDashboardData();
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const handleReturnApprovedBmdRequest = async (request: MaterialRequest) => {
+    if (request.requestType !== "Peminjaman BMD" || request.status !== "Dikeluarkan") return;
+    try {
+      setActionBusy(true);
+      await fetchJson(endpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "update-bmd-status",
+          assetId: request.materialId,
+          status: "Di Gudang",
+          lokasi: request.locationHint || "Rak BMD A-01",
+          peminjam: "-",
+          estimasiKembali: "-",
+        }),
+      });
+      await fetchJson(endpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "update-request-status",
+          requestId: request.id,
+          status: "Selesai",
+          actorId: user?.uid || "",
+          actorName: user?.displayName || user?.email || "Admin Gudang",
+          note: "Aset BMD sudah dikembalikan dan diterima gudang.",
         }),
       });
       await loadDashboardData();
@@ -777,6 +1007,32 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                   <div className="text-[11px] uppercase tracking-[0.18em] text-slate-300">Hak Akses</div>
                   <div className="mt-1 text-sm font-semibold text-white sm:text-base">{adminMode ? "Full akses data & transaksi" : "Lihat stok & ajukan kebutuhan"}</div>
                 </div>
+                <div className="min-w-[160px] rounded-2xl border border-white/12 bg-white/10 px-4 py-3 backdrop-blur">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-slate-300">Kabupaten</div>
+                  {isSuperAdmin ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {KABUPATEN_OPTIONS.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleKabupatenChange(item.id)}
+                          className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                            activeKabupaten === item.id
+                              ? "bg-white text-slate-950 shadow-sm"
+                              : "bg-white/10 text-white hover:bg-white/20"
+                          }`}
+                        >
+                          {item.name}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-1 text-sm font-semibold text-white sm:text-base">{activeKabupaten}</div>
+                      <div className="mt-1 text-[11px] text-slate-200">Terkunci dari akun</div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -831,7 +1087,7 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
           <>
             <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {adminMode ? <PatchButton active={activeGudangPatch === "tambah"} label="Patch Tambah Data" note="Form khusus input master barang." onClick={() => setActiveGudangPatch("tambah")} /> : null}
-              <PatchButton active={activeGudangPatch === "database"} label="Patch Database Barang" note="Barang dibagi per jenis: Lampu, Tiang, Arm." onClick={() => setActiveGudangPatch("database")} />
+              <PatchButton active={activeGudangPatch === "database"} label="Patch Database Barang" note="Barang dibagi per jenis: Lampu, Tiang, Arm, Kabel." onClick={() => setActiveGudangPatch("database")} />
               <PatchButton active={activeGudangPatch === "operasional"} label={adminMode ? "Patch Operasional" : "Patch Pengajuan"} note={adminMode ? "Tambah stok, booking, dan log keluar." : "Ajukan kebutuhan barang ke admin."} onClick={() => setActiveGudangPatch("operasional")} />
               <PatchButton active={activeGudangPatch === "antrian"} label={adminMode ? "Patch Antrian" : "Patch Riwayat"} note={adminMode ? "Approve dan tindak lanjuti pengajuan." : "Lihat riwayat pengajuan barang."} onClick={() => setActiveGudangPatch("antrian")} />
             </section>
@@ -849,6 +1105,7 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                         <option value="LAMPU">Lampu</option>
                         <option value="TIANG">Tiang</option>
                         <option value="ARM">Arm</option>
+                        <option value="KABEL">Kabel</option>
                       </select>
                     </label>
                     <label className="text-sm font-semibold text-slate-700">
@@ -862,6 +1119,16 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                     <label className="text-sm font-semibold text-slate-700">
                       Label Foto/Icon
                       <input value={materialPhotoLabelDraft} onChange={(event) => setMaterialPhotoLabelDraft(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="90W / 9M / 1.5M" />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      Foto Barang
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => setMaterialPhotoFile(event.target.files?.[0] || null)}
+                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                      />
+                      <span className="mt-1 block text-xs font-normal text-slate-500">{materialPhotoFile?.name || "Opsional, akan tampil sebagai foto asli barang."}</span>
                     </label>
                     <label className="text-sm font-semibold text-slate-700">
                       Lokasi Gudang
@@ -933,6 +1200,22 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                         <label className="text-sm font-semibold text-slate-700">
                           Sudut Kemiringan
                           <input value={(materialDetailDraft as ArmDetail).sudutKemiringan} onChange={(event) => handleMaterialDetailChange("sudutKemiringan", event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="15 derajat" />
+                        </label>
+                      </>
+                    ) : null}
+                    {materialCategoryDraft === "KABEL" ? (
+                      <>
+                        <label className="text-sm font-semibold text-slate-700">
+                          Jenis Kabel
+                          <input value={(materialDetailDraft as KabelDetail).jenisKabel} onChange={(event) => handleMaterialDetailChange("jenisKabel", event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="NYY / NYM / Twisted" />
+                        </label>
+                        <label className="text-sm font-semibold text-slate-700">
+                          Ukuran Kabel
+                          <input value={(materialDetailDraft as KabelDetail).ukuranKabel} onChange={(event) => handleMaterialDetailChange("ukuranKabel", event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="2x2.5 mm" />
+                        </label>
+                        <label className="text-sm font-semibold text-slate-700">
+                          Panjang Roll
+                          <input value={(materialDetailDraft as KabelDetail).panjangRoll} onChange={(event) => handleMaterialDetailChange("panjangRoll", event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="100 m" />
                         </label>
                       </>
                     ) : null}
@@ -1022,6 +1305,13 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                               <DetailField label="Sudut" value={selectedMaterial.detail.sudutKemiringan} />
                             </>
                           ) : null}
+                          {selectedMaterial.kategori === "KABEL" ? (
+                            <>
+                              <DetailField label="Jenis Kabel" value={selectedMaterial.detail.jenisKabel} />
+                              <DetailField label="Ukuran Kabel" value={selectedMaterial.detail.ukuranKabel} />
+                              <DetailField label="Panjang Roll" value={selectedMaterial.detail.panjangRoll} />
+                            </>
+                          ) : null}
                         </div>
                       </div>
                     </>
@@ -1068,8 +1358,30 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                         </div>
                       ) : (
                         <div className="mt-4 grid gap-3">
+                          <label className="text-sm font-semibold text-slate-700">
+                            Jenis Pekerjaan
+                            <select
+                              value={requestWorkType}
+                              onChange={(event) => setRequestWorkType(event.target.value)}
+                              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                            >
+                              {WORK_TYPE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <div className={`rounded-2xl px-4 py-3 text-sm ${selectedMaterialAllowed ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                            {selectedMaterialAllowed
+                              ? `Barang ini cocok untuk ${selectedWorkType.label}.`
+                              : `Kategori ${selectedMaterial ? MATERIAL_CATEGORY_LABEL[selectedMaterial.kategori] : "-"} tidak cocok untuk ${selectedWorkType.label}.`}
+                            <div className="mt-1 text-xs">
+                              Kategori boleh: {selectedWorkType.allowedCategories.map((category) => MATERIAL_CATEGORY_LABEL[category]).join(", ")}
+                            </div>
+                          </div>
                           <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Lokasi barang saat ini: <span className="font-semibold text-slate-900">{selectedMaterial.lokasiGudang}</span></div>
-                          <button onClick={handleSubmitMaterialRequest} disabled={actionBusy} className="rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:shadow-lg">Ajukan Barang ke Admin Gudang</button>
+                          <button onClick={handleSubmitMaterialRequest} disabled={actionBusy || !selectedMaterialAllowed} className="rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60">Ajukan Barang ke Admin Gudang</button>
                         </div>
                       )}
                     </>
@@ -1143,12 +1455,40 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                           <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700">{request.status}</span>
                         </div>
                         <div className="mt-3 text-sm text-slate-700">Qty {request.quantity}</div>
+                        {request.workType ? (
+                          <div className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            {getWorkTypeOption(request.workType).label}
+                          </div>
+                        ) : null}
                         <div className="mt-2 text-sm text-slate-600">{request.note}</div>
+                        {request.auditTrail && request.auditTrail.length > 0 ? (
+                          <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Audit Status</div>
+                            <div className="mt-2 space-y-2">
+                              {request.auditTrail.slice(-3).reverse().map((audit, index) => (
+                                <div key={`${request.id}-audit-${index}`} className="text-xs leading-5 text-slate-600">
+                                  <span className="font-semibold text-slate-900">{audit.status}</span> oleh {audit.actorName || "-"}
+                                  {audit.note ? <span> - {audit.note}</span> : null}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
                         <div className="mt-2 text-xs text-slate-500">Lokasi acuan: {request.locationHint} • {request.timeLabel}</div>
                         {adminMode ? (
                           <div className="mt-4 flex flex-wrap gap-2">
                             <button onClick={() => handleUpdateRequestStatus(request.id, "Diproses")} disabled={actionBusy} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Tandai Diproses</button>
                             <button onClick={() => handleUpdateRequestStatus(request.id, "Disetujui")} disabled={actionBusy} className="rounded-2xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white">Setujui</button>
+                            {request.status === "Disetujui" ? (
+                              <button onClick={() => handleCheckoutApprovedRequest(request)} disabled={actionBusy} className="rounded-2xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white">Log Keluar</button>
+                            ) : null}
+                            {request.status === "Dikeluarkan" ? (
+                              request.requestType === "Peminjaman BMD" ? (
+                                <button onClick={() => handleReturnApprovedBmdRequest(request)} disabled={actionBusy} className="rounded-2xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Kembalikan Aset</button>
+                              ) : (
+                                <button onClick={() => handleUpdateRequestStatus(request.id, "Selesai")} disabled={actionBusy} className="rounded-2xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Selesaikan</button>
+                              )
+                            ) : null}
                             <button onClick={() => handleUpdateRequestStatus(request.id, "Ditolak")} disabled={actionBusy} className="rounded-2xl bg-rose-500 px-3 py-2 text-xs font-semibold text-white">Tolak</button>
                           </div>
                         ) : null}
@@ -1190,6 +1530,16 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                     <label className="text-sm font-semibold text-slate-700">
                       Lokasi Simpan
                       <input value={bmdLocationDraft} onChange={(event) => setBmdLocationDraft(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="Rak BMD A-01" />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      Foto Aset
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => setBmdPhotoFile(event.target.files?.[0] || null)}
+                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                      />
+                      <span className="mt-1 block text-xs font-normal text-slate-500">{bmdPhotoFile?.name || "Opsional, akan tampil di kartu aset."}</span>
                     </label>
                     <label className="text-sm font-semibold text-slate-700 md:col-span-2">
                       Kondisi Awal

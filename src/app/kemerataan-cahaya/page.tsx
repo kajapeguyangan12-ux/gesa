@@ -40,6 +40,23 @@ interface CachedReportEntry {
 
 type JenisJalan = "arterial" | "kolektor" | "lokal" | "lingkungan" | "";
 type KabupatenOption = { id: string; name: string; description: string };
+type LoadDirection = "top" | "middle" | "bottom";
+type LoadMode = "2" | "3" | "group";
+type LampPlacementMode = "sejajar" | "zigzag" | "berhadapan";
+type LampSide = "left" | "right";
+type GroupLoadConfig = {
+  uid: string;
+  index: number;
+  row: number;
+  width: string;
+  reportId?: string | null;
+  label?: string | null;
+  data?: any | null;
+  layer?: Map<string, GridCell>;
+  dimming?: number;
+  open?: boolean;
+};
+const TITIK_API_COL_INDEX = 2;
 
 const normalizeKabupatenList = (value: any): string[] => {
   if (Array.isArray(value)) {
@@ -86,7 +103,14 @@ export function KemeratanCahayaContent() {
   const [jenisJalan, setJenisJalan] = useState<JenisJalan>("");
   const [jarakTiang, setJarakTiang] = useState("");
   const [lebarJalan, setLebarJalan] = useState("");
-  const [loadMode, setLoadMode] = useState<"2" | "3">("3");
+  const [lebarJalanTop, setLebarJalanTop] = useState("");
+  const [lebarJalanMiddle, setLebarJalanMiddle] = useState("");
+  const [lebarJalanBottom, setLebarJalanBottom] = useState("");
+  const [loadMode, setLoadMode] = useState<LoadMode>("3");
+  const [placementMode, setPlacementMode] = useState<LampPlacementMode>("sejajar");
+  const [groupLoadCount, setGroupLoadCount] = useState("4");
+  const [groupDefaultWidth, setGroupDefaultWidth] = useState("");
+  const [groupLoads, setGroupLoads] = useState<GroupLoadConfig[]>([]);
   const [middleUpRows, setMiddleUpRows] = useState("");
   const [middleDownRows, setMiddleDownRows] = useState("");
   const [gridData, setGridData] = useState<Map<string, GridCell>>(new Map());
@@ -175,6 +199,38 @@ export function KemeratanCahayaContent() {
     setShowBottomList(false);
   }, [activeKabupaten]);
 
+  const clearLoadedGridData = useCallback((options?: { resetGroupReports?: boolean }) => {
+    setGridData(new Map());
+    setTopGridData(new Map());
+    setMiddleGridData(new Map());
+    setBottomGridData(new Map());
+    setSelectedReportTopId(null);
+    setSelectedReportTopData(null);
+    setSelectedReportTopLabel(null);
+    setSelectedReportMiddleId(null);
+    setSelectedReportMiddleData(null);
+    setSelectedReportMiddleLabel(null);
+    setSelectedReportBottomId(null);
+    setSelectedReportBottomData(null);
+    setSelectedReportBottomLabel(null);
+    setLastLoadedTopId(null);
+    setLastLoadedMiddleId(null);
+    setLastLoadedBottomId(null);
+    setShowTopList(false);
+    setShowMiddleList(false);
+    setShowBottomList(false);
+    setGroupLoads((current) =>
+      current.map((item) => ({
+        ...item,
+        reportId: options?.resetGroupReports ? null : item.reportId,
+        label: options?.resetGroupReports ? null : item.label,
+        data: options?.resetGroupReports ? null : item.data,
+        layer: new Map<string, GridCell>(),
+        open: false,
+      }))
+    );
+  }, []);
+
   // Jenis jalan options
   const jenisJalanOptions = [
     {
@@ -205,12 +261,66 @@ export function KemeratanCahayaContent() {
 
   // Calculate statistics
   const calculateStats = useCallback(() => {
-    const values = Array.from(gridData.values())
-      .map(cell => parseFloat(cell.value))
-      .filter(val => !isNaN(val) && isFinite(val) && val > 0);
+    const parseWidth = (value: string) => {
+      const parsed = parseFloat(value);
+      return isFinite(parsed) && parsed > 0 ? parsed : 0;
+    };
+    const fallbackWidth = parseWidth(lebarJalan);
+    const topCols = Math.max(0, Math.min(cols, Math.ceil(parseWidth(lebarJalanTop) || fallbackWidth)));
+    const middleCols = Math.max(0, Math.min(cols, Math.ceil(parseWidth(lebarJalanMiddle) || fallbackWidth)));
+    const bottomCols = Math.max(0, Math.min(cols, Math.ceil(parseWidth(lebarJalanBottom) || fallbackWidth)));
+    const middleRow = (() => {
+      const upValue = Math.ceil(parseFloat(middleUpRows));
+      if (isFinite(upValue) && upValue > 0) return Math.max(0, Math.min(rows - 1, upValue - 1));
+      return Math.max(0, Math.min(rows - 1, Math.floor((rows - 1) / 2)));
+    })();
+    const splitRow = Math.ceil(rows / 2);
+    const getActiveColsForRow = (row: number) => {
+      if (!isGridReady || rows <= 0 || cols <= 0) return 0;
+      if (loadMode === "group") {
+        const nearest = groupLoads.reduce<GroupLoadConfig | null>((best, item) => {
+          if (!best) return item;
+          return Math.abs((item.row || 1) - 1 - row) < Math.abs((best.row || 1) - 1 - row) ? item : best;
+        }, null);
+        const width = nearest ? parseWidth(nearest.width) || parseWidth(groupDefaultWidth) : parseWidth(groupDefaultWidth);
+        return Math.max(0, Math.min(cols, Math.ceil(width)));
+      }
+      if (loadMode === "3") {
+        const topMiddleBoundary = Math.ceil((0 + middleRow) / 2);
+        const middleBottomBoundary = Math.floor((middleRow + (rows - 1)) / 2);
+        if (row < topMiddleBoundary) return topCols;
+        if (row <= middleBottomBoundary) return middleCols;
+        return bottomCols;
+      }
+      return row < splitRow ? topCols : bottomCols;
+    };
+
+    const values: number[] = [];
+    let activeCellCount = 0;
+    let measuredCount = 0;
+    let minCell: { row: number; col: number } | null = null;
+    let minValue = Number.POSITIVE_INFINITY;
+    for (let row = 0; row < rows; row++) {
+      const activeCols = getActiveColsForRow(row);
+      for (let col = 0; col < activeCols; col++) {
+        activeCellCount += 1;
+        const cell = gridData.get(`${row}-${col}`);
+        if (!cell || cell.value.trim() === "") continue;
+        const raw = parseFloat(cell.value);
+        const val = !isNaN(raw) && isFinite(raw) ? raw : 0;
+        if (val > 0) {
+          values.push(val);
+          measuredCount += 1;
+          if (val < minValue) {
+            minValue = val;
+            minCell = { row, col };
+          }
+        }
+      }
+    }
 
     if (values.length === 0) {
-      return { min: 0, max: 0, avg: 0, uniformity: 0 };
+      return { min: 0, max: 0, avg: 0, uniformity: 0, count: activeCellCount, measuredCount: 0, minRow: 0, minCol: 0 };
     }
 
     const min = Math.min(...values);
@@ -218,16 +328,16 @@ export function KemeratanCahayaContent() {
     const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
     const uniformity = min > 0 ? (avg / min) : 0;
 
-    return { min, max, avg, uniformity };
-  }, [gridData]);
+    return { min, max, avg, uniformity, count: activeCellCount, measuredCount, minRow: minCell ? minCell.row + 1 : 0, minCol: minCell ? minCell.col + 1 : 0 };
+  }, [gridData, rows, cols, isGridReady, loadMode, middleUpRows, lebarJalan, lebarJalanTop, lebarJalanMiddle, lebarJalanBottom, groupDefaultWidth, groupLoads]);
 
   const stats = useMemo(() => calculateStats(), [calculateStats]);
 
   const ROAD_STANDARDS: Record<string, { avgMin: number; ratioMax: number }> = {
-    arterial: { avgMin: 17, ratioMax: 2.99 },
-    kolektor: { avgMin: 12, ratioMax: 3.99 },
-    lokal: { avgMin: 9, ratioMax: 5.99 },
-    lingkungan: { avgMin: 6, ratioMax: 5.99 },
+    arterial: { avgMin: 17, ratioMax: 3.99 },
+    kolektor: { avgMin: 12, ratioMax: 5.99 },
+    lokal: { avgMin: 9, ratioMax: 6.99 },
+    lingkungan: { avgMin: 6, ratioMax: 6.99 },
   };
 
   const activeStandard = jenisJalan ? ROAD_STANDARDS[jenisJalan] : null;
@@ -250,6 +360,11 @@ export function KemeratanCahayaContent() {
     return isFinite(n) && n > 0 ? n : 0;
   };
 
+  const parsePositiveFloat = (value: string) => {
+    const n = parseFloat(value);
+    return isFinite(n) && n > 0 ? n : 0;
+  };
+
   const computeRowsForMode = (jarakValue: number, upValue: number, downValue: number) => {
     if (loadMode === "3" && upValue > 0 && downValue > 0) {
       return upValue + downValue;
@@ -261,10 +376,68 @@ export function KemeratanCahayaContent() {
     return baseRows;
   };
 
+  const getRoadWidthForLoad = (direction: "top" | "middle" | "bottom") => {
+    const fallback = parsePositiveFloat(lebarJalan);
+    if (direction === "top") return parsePositiveFloat(lebarJalanTop) || fallback;
+    if (direction === "middle") return parsePositiveFloat(lebarJalanMiddle) || fallback;
+    return parsePositiveFloat(lebarJalanBottom) || fallback;
+  };
+
+  const getRoadColsForLoad = (direction: "top" | "middle" | "bottom") => {
+    return Math.ceil(getRoadWidthForLoad(direction));
+  };
+
+  const getEffectiveRoadWidth = () => {
+    if (loadMode === "group") {
+      const widths = groupLoads.length > 0
+        ? groupLoads.map((item) => parsePositiveFloat(item.width) || parsePositiveFloat(groupDefaultWidth))
+        : [parsePositiveFloat(groupDefaultWidth)];
+      return Math.max(...widths, 0);
+    }
+    const widths = [getRoadWidthForLoad("top"), getRoadWidthForLoad("bottom")];
+    if (loadMode === "3") widths.push(getRoadWidthForLoad("middle"));
+    return Math.max(...widths, 0);
+  };
+
+  const isRoadWidthReady = () => {
+    if (loadMode === "group") {
+      const count = parsePositiveInt(groupLoadCount);
+      if (count < 2) return false;
+      if (groupLoads.length > 0) {
+        return groupLoads.every((item) => (parsePositiveFloat(item.width) || parsePositiveFloat(groupDefaultWidth)) > 0);
+      }
+      return parsePositiveFloat(groupDefaultWidth) > 0;
+    }
+    const topReady = getRoadWidthForLoad("top") > 0;
+    const bottomReady = getRoadWidthForLoad("bottom") > 0;
+    const middleReady = loadMode === "2" || getRoadWidthForLoad("middle") > 0;
+    return topReady && bottomReady && middleReady;
+  };
+
+  const createGroupLoads = (count: number, rowsCount: number, defaultWidth: string) => {
+    const safeCount = Math.max(2, Math.min(30, count));
+    return Array.from({ length: safeCount }, (_, index) => {
+      const row = safeCount === 1 ? 1 : Math.round((index * Math.max(0, rowsCount - 1)) / (safeCount - 1)) + 1;
+      const existing = groupLoads[index];
+      return {
+        uid: existing?.uid || `group-${index + 1}`,
+        index,
+        row,
+        width: existing?.width || defaultWidth,
+        reportId: existing?.reportId || null,
+        label: existing?.label || null,
+        data: existing?.data || null,
+        layer: existing?.layer || new Map<string, GridCell>(),
+        dimming: existing?.dimming ?? 100,
+        open: existing?.open || false,
+      };
+    });
+  };
+
   // Generate grid based on dimensions
   const handleGenerateGrid = useCallback(() => {
     const jarakValue = parseFloat(jarakTiang);
-    const lebarValue = parseFloat(lebarJalan);
+    const lebarValue = getEffectiveRoadWidth();
     const upValue = parsePositiveInt(middleUpRows);
     const downValue = parsePositiveInt(middleDownRows);
 
@@ -273,12 +446,12 @@ export function KemeratanCahayaContent() {
       return;
     }
 
-    if (!isFinite(jarakValue) || !isFinite(lebarValue) || jarakValue <= 0 || lebarValue <= 0) {
-      alert("Masukkan jarak tiang dan lebar jalan yang valid!");
+    if (!isFinite(jarakValue) || jarakValue <= 0 || !isRoadWidthReady() || lebarValue <= 0) {
+      alert("Masukkan jarak tiang dan lebar jalan setiap load yang valid!");
       return;
     }
 
-    // Lebar jalan = columns (horizontal/ke kanan)
+    // Lebar jalan terbesar = columns total. Setiap load tetap dibatasi oleh lebar jalannya sendiri.
     // Jarak tiang = rows (vertical/ke bawah)
     const newRows = computeRowsForMode(jarakValue, upValue, downValue);
     const newCols = Math.ceil(lebarValue);
@@ -289,6 +462,11 @@ export function KemeratanCahayaContent() {
     setTopGridData(new Map());
     setMiddleGridData(new Map());
     setBottomGridData(new Map());
+    if (loadMode === "group") {
+      setGroupLoads(createGroupLoads(parsePositiveInt(groupLoadCount), newRows, groupDefaultWidth));
+    } else {
+      setGroupLoads([]);
+    }
     setIsGridReady(true);
     // Autoload reports list so petugas can pick immediately
     try {
@@ -297,7 +475,7 @@ export function KemeratanCahayaContent() {
       // eslint-disable-next-line no-console
       console.warn("Autofetch reports failed:", e);
     }
-  }, [jenisJalan, jarakTiang, lebarJalan, loadMode, middleUpRows, middleDownRows, activeKabupaten]);
+  }, [jenisJalan, jarakTiang, lebarJalan, lebarJalanTop, lebarJalanMiddle, lebarJalanBottom, loadMode, groupLoadCount, groupDefaultWidth, groupLoads, middleUpRows, middleDownRows, activeKabupaten]);
 
   const getCellKey = (row: number, col: number) => `${row}-${col}`;
 
@@ -644,20 +822,44 @@ export function KemeratanCahayaContent() {
     return 0;
   };
 
-  const mirrorColsPattern32123 = (grid: any[][]) => {
+  const getTitikApiColForLayerCols = (layerCols: number, side: LampSide) => {
+    const safeCols = Math.max(1, layerCols);
+    if (side === "right") {
+      return Math.max(0, Math.min(safeCols - 1, safeCols - 1 - TITIK_API_COL_INDEX));
+    }
+    return Math.max(0, Math.min(safeCols - 1, safeCols > TITIK_API_COL_INDEX ? TITIK_API_COL_INDEX : safeCols - 1));
+  };
+
+  const getLampSideForLoad = (direction: LoadDirection): LampSide => {
+    if (placementMode !== "zigzag") return "left";
+    if (direction === "middle") return "right";
+    if (direction === "bottom" && loadMode === "2") return "right";
+    return "left";
+  };
+
+  const getLampSidesForPlacement = (side: LampSide): LampSide[] => {
+    if (placementMode === "berhadapan") return ["left", "right"];
+    return [side];
+  };
+
+  const mirrorColsForLampSide = (grid: any[][], side: LampSide) => {
     if (!Array.isArray(grid)) return grid;
     return grid.map((row) => {
-      if (!Array.isArray(row) || row.length < 5) return row;
+      if (!Array.isArray(row) || row.length < 3) return row;
       const next = row.slice();
-      // Mirror pattern for cols 1..5: [3,2,1,2,3] from original [1,2,3]
-      next[0] = row[2];
-      next[1] = row[1];
-      next[2] = row[0];
-      next[3] = row[1];
-      next[4] = row[2];
-      // Shift the rest to continue from original col4
-      for (let c = 5; c < next.length; c++) {
-        next[c] = row[c - 2] ?? next[c];
+      const fireCol = getTitikApiColForLayerCols(row.length, side);
+      if (side === "right") {
+        for (let offset = 1; fireCol + offset < next.length; offset++) {
+          const sourceCol = fireCol - offset;
+          if (sourceCol < 0) break;
+          next[fireCol + offset] = row[sourceCol] ?? next[fireCol + offset];
+        }
+      } else {
+        for (let offset = 1; fireCol - offset >= 0; offset++) {
+          const sourceCol = fireCol + offset;
+          if (sourceCol >= row.length) break;
+          next[fireCol - offset] = row[sourceCol] ?? next[fireCol - offset];
+        }
       }
       return next;
     });
@@ -693,27 +895,30 @@ export function KemeratanCahayaContent() {
     return null;
   };
 
-  const alignGridToSize = (incoming: number[][], rowsCount: number, colsCount: number, direction: "top" | "bottom") => {
+  const alignGridToSize = (incoming: number[][], rowsCount: number, colsCount: number, direction: "top" | "bottom", side: LampSide) => {
     const aligned: number[][] = Array.from({ length: rowsCount }, () => Array.from({ length: colsCount }, () => 0));
     if (!incoming || incoming.length === 0) return aligned;
     const rowsIn = incoming.length;
-    for (let r = 0; r < Math.min(rowsIn, rowsCount); r++) {
+    const fireCol = getTitikApiColForLayerCols(colsCount, side);
+    for (let r = 0; r < rowsIn; r++) {
       const rowArr = incoming[r];
       if (!Array.isArray(rowArr)) continue;
-      const targetRow = direction === "bottom"
-        ? (rowsCount - 1 - r)
-        : r;
+      const targetRow = direction === "bottom" ? (rowsCount - 1 - r) : r;
+      if (targetRow < 0 || targetRow >= rowsCount) continue;
       for (let c = 0; c < Math.min(rowArr.length, colsCount); c++) {
-        aligned[targetRow][c] = extractNumericFromCell(rowArr[c]);
+        const targetCol = side === "right" ? fireCol - c : fireCol + c;
+        if (targetCol < 0 || targetCol >= colsCount) break;
+        aligned[targetRow][targetCol] = extractNumericFromCell(rowArr[c]);
       }
     }
     return aligned;
   };
 
-  const alignGridMiddleMirror = (incoming: number[][], rowsCount: number, colsCount: number, centerRow: number) => {
+  const alignGridMiddleMirror = (incoming: number[][], rowsCount: number, colsCount: number, centerRow: number, side: LampSide) => {
     const aligned: number[][] = Array.from({ length: rowsCount }, () => Array.from({ length: colsCount }, () => 0));
     if (!incoming || incoming.length === 0) return aligned;
     const rowsIn = incoming.length;
+    const fireCol = getTitikApiColForLayerCols(colsCount, side);
     for (let r = 0; r < rowsIn; r++) {
       const rowArr = incoming[r];
       if (!Array.isArray(rowArr)) continue;
@@ -721,12 +926,16 @@ export function KemeratanCahayaContent() {
       const targetUp = centerRow - r;
       if (targetDown >= 0 && targetDown < rowsCount) {
         for (let c = 0; c < Math.min(rowArr.length, colsCount); c++) {
-          aligned[targetDown][c] = extractNumericFromCell(rowArr[c]);
+          const targetCol = side === "right" ? fireCol - c : fireCol + c;
+          if (targetCol < 0 || targetCol >= colsCount) break;
+          aligned[targetDown][targetCol] = extractNumericFromCell(rowArr[c]);
         }
       }
       if (r !== 0 && targetUp >= 0 && targetUp < rowsCount) {
         for (let c = 0; c < Math.min(rowArr.length, colsCount); c++) {
-          aligned[targetUp][c] = extractNumericFromCell(rowArr[c]);
+          const targetCol = side === "right" ? fireCol - c : fireCol + c;
+          if (targetCol < 0 || targetCol >= colsCount) break;
+          aligned[targetUp][targetCol] = extractNumericFromCell(rowArr[c]);
         }
       }
     }
@@ -794,6 +1003,39 @@ export function KemeratanCahayaContent() {
     return nextMap;
   };
 
+  const sumLayerMaps = (layers: Map<string, GridCell>[], rowsCount: number, colsCount: number) => {
+    const nextMap = new Map<string, GridCell>();
+    for (let r = 0; r < rowsCount; r++) {
+      for (let c = 0; c < colsCount; c++) {
+        const key = getCellKey(r, c);
+        const sum = layers.reduce((total, layer) => {
+          const raw = parseFloat(layer.get(key)?.value || "0");
+          return total + (isFinite(raw) && !isNaN(raw) && raw > 0 ? raw : 0);
+        }, 0);
+        if (sum > 0) nextMap.set(key, { value: String(sum) });
+      }
+    }
+    return nextMap;
+  };
+
+  const combineGroupLayerMaps = (loads: GroupLoadConfig[], rowsCount: number, colsCount: number) => {
+    const nextMap = new Map<string, GridCell>();
+    if (rowsCount <= 0 || colsCount <= 0) return nextMap;
+    for (let r = 0; r < rowsCount; r++) {
+      for (let c = 0; c < colsCount; c++) {
+        const key = getCellKey(r, c);
+        let sum = 0;
+        for (const load of loads) {
+          const raw = parseFloat(load.layer?.get(key)?.value || "0");
+          const factor = isFinite(load.dimming || 100) ? (load.dimming || 100) / 100 : 1;
+          if (isFinite(raw) && !isNaN(raw) && raw > 0) sum += raw * factor;
+        }
+        if (sum > 0) nextMap.set(key, { value: String(sum) });
+      }
+    }
+    return nextMap;
+  };
+
   const mirrorMapCols1And2To4And5 = (map: Map<string, GridCell>, rowsCount: number, colsCount: number) => {
     if (colsCount < 5) return map;
     const next = new Map(map);
@@ -813,20 +1055,27 @@ export function KemeratanCahayaContent() {
   const applyReportToGrid = (reportData: any, direction: "top" | "bottom" | "middle", reportId?: string) => {
     const incoming = normalizeReportGrid(reportData, direction);
     if (!incoming) return false;
-    let aligned: number[][] = [];
-    if (direction === "top") {
-      aligned = alignGridToSize(incoming, rows, cols, "top");
-    } else if (direction === "bottom") {
-      aligned = alignGridToSize(incoming, rows, cols, "bottom");
-    } else {
-      const upValue = parsePositiveInt(middleUpRows);
-      const middleStart = upValue > 0
-        ? Math.max(0, Math.min(rows - 1, upValue - 1))
-        : Math.max(0, Math.min(rows - 1, Math.floor((rows - 1) / 2)));
-      aligned = alignGridMiddleMirror(incoming, rows, cols, middleStart);
-    }
-    const mirrored = mirrorColsPattern32123(aligned);
-    const nextLayer = gridArrayToMap(mirrored, rows, cols);
+    const layerCols = Math.max(1, Math.min(cols, getRoadColsForLoad(direction) || cols));
+    const side = getLampSideForLoad(direction);
+    const nextLayer = sumLayerMaps(
+      getLampSidesForPlacement(side).map((lampSide) => {
+        let aligned: number[][] = [];
+        if (direction === "top") {
+          aligned = alignGridToSize(incoming, rows, layerCols, "top", lampSide);
+        } else if (direction === "bottom") {
+          aligned = alignGridToSize(incoming, rows, layerCols, "bottom", lampSide);
+        } else {
+          const upValue = parsePositiveInt(middleUpRows);
+          const middleStart = upValue > 0
+            ? Math.max(0, Math.min(rows - 1, upValue - 1))
+            : Math.max(0, Math.min(rows - 1, Math.floor((rows - 1) / 2)));
+          aligned = alignGridMiddleMirror(incoming, rows, layerCols, middleStart, lampSide);
+        }
+        return gridArrayToMap(mirrorColsForLampSide(aligned, lampSide), rows, layerCols);
+      }),
+      rows,
+      layerCols
+    );
     let nextTop = topGridData;
     let nextMiddle = middleGridData;
     let nextBottom = bottomGridData;
@@ -840,6 +1089,44 @@ export function KemeratanCahayaContent() {
     if (direction === "top" && reportId) setLastLoadedTopId(reportId);
     if (direction === "middle" && reportId) setLastLoadedMiddleId(reportId);
     if (direction === "bottom" && reportId) setLastLoadedBottomId(reportId);
+    return true;
+  };
+
+  const getLampSideForGroupIndex = (index: number): LampSide => {
+    if (placementMode !== "zigzag") return "left";
+    return index % 2 === 0 ? "left" : "right";
+  };
+
+  const applyReportToGroupLoad = (loadIndex: number, report: ReportOption) => {
+    const targetLoad = groupLoads[loadIndex];
+    if (!targetLoad) return false;
+    const incoming = normalizeReportGrid(report.data, "middle");
+    if (!incoming) return false;
+    const layerCols = Math.max(1, Math.min(cols, Math.ceil(parsePositiveFloat(targetLoad.width) || parsePositiveFloat(groupDefaultWidth) || cols)));
+    const side = getLampSideForGroupIndex(loadIndex);
+    const centerRow = Math.max(0, Math.min(rows - 1, (targetLoad.row || 1) - 1));
+    const nextLayer = sumLayerMaps(
+      getLampSidesForPlacement(side).map((lampSide) => {
+        const aligned = alignGridMiddleMirror(incoming, rows, layerCols, centerRow, lampSide);
+        return gridArrayToMap(mirrorColsForLampSide(aligned, lampSide), rows, layerCols);
+      }),
+      rows,
+      layerCols
+    );
+    const nextLoads = groupLoads.map((item, index) =>
+      index === loadIndex
+        ? {
+            ...item,
+            reportId: report.id,
+            label: report.label,
+            data: report.data,
+            layer: nextLayer,
+            open: false,
+          }
+        : item
+    );
+    setGroupLoads(nextLoads);
+    setGridData(combineGroupLayerMaps(nextLoads, rows, cols));
     return true;
   };
 
@@ -886,7 +1173,11 @@ export function KemeratanCahayaContent() {
     setJenisJalan("");
     setJarakTiang("");
     setLebarJalan("");
+    setLebarJalanTop("");
+    setLebarJalanMiddle("");
+    setLebarJalanBottom("");
     setLoadMode("3");
+    setPlacementMode("sejajar");
     setMiddleUpRows("");
     setMiddleDownRows("");
     setGridData(new Map());
@@ -909,8 +1200,12 @@ export function KemeratanCahayaContent() {
       setGridData(new Map());
       return;
     }
+    if (loadMode === "group") {
+      setGridData(combineGroupLayerMaps(groupLoads, rows, cols));
+      return;
+    }
     setGridData(combineLayerMaps(topGridData, middleGridData, bottomGridData, rows, cols));
-  }, [isGridReady, rows, cols, loadMode, topGridData, middleGridData, bottomGridData, dimmingTop, dimmingMiddle, dimmingBottom]);
+  }, [isGridReady, rows, cols, loadMode, groupLoads, topGridData, middleGridData, bottomGridData, dimmingTop, dimmingMiddle, dimmingBottom]);
 
   const formatLuxNumber = (num: number, preferDecimal: boolean) => {
     if (!isFinite(num) || isNaN(num)) return "0";
@@ -972,6 +1267,14 @@ export function KemeratanCahayaContent() {
 
   const presetRows = useMemo(() => {
     if (!isGridReady) return [];
+    if (loadMode === "group") {
+      return groupLoads
+        .filter((item) => item.layer && item.layer.size > 0)
+        .map((item, index) => {
+          const side = placementMode === "berhadapan" ? "Berhadapan" : getLampSideForGroupIndex(index) === "left" ? "Kiri" : "Kanan";
+          return buildPreset(`G${index + 1} (${side})`, Math.max(0, Math.min(rows - 1, (item.row || 1) - 1)));
+        });
+    }
     const presets = [
       buildPreset("Lampu 1", 0),
       buildPreset("Lampu 2", rows - 1),
@@ -980,19 +1283,53 @@ export function KemeratanCahayaContent() {
       presets.splice(1, 0, buildPreset("Lampu 3", getMiddleRowIndex()));
     }
     return presets;
-  }, [isGridReady, rows, cols, gridData, jenisJalan, loadMode, middleUpRows]);
+  }, [isGridReady, rows, cols, gridData, jenisJalan, loadMode, placementMode, middleUpRows, groupLoads]);
+
+  const getTitikApiColForLoad = (direction: "top" | "middle" | "bottom") => {
+    const layerCols = Math.max(1, Math.min(cols, getRoadColsForLoad(direction) || cols));
+    const side = getLampSideForLoad(direction);
+    return Math.max(0, Math.min(cols - 1, getTitikApiColForLayerCols(layerCols, side)));
+  };
+
+  const getTitikApiColsForPlacement = (layerCols: number, side: LampSide) => {
+    const uniqueCols = new Set<number>();
+    getLampSidesForPlacement(side).forEach((lampSide) => {
+      uniqueCols.add(Math.max(0, Math.min(cols - 1, getTitikApiColForLayerCols(layerCols, lampSide))));
+    });
+    return Array.from(uniqueCols);
+  };
 
   const titikApiCells = useMemo(() => {
     if (!isGridReady) return new Set<string>();
     const positions: Array<{ row: number; col: number; label: string }> = [];
+    if (loadMode === "group") {
+      groupLoads.forEach((item, index) => {
+        if (!item.layer || item.layer.size === 0) return;
+        const layerCols = Math.max(1, Math.min(cols, Math.ceil(parsePositiveFloat(item.width) || parsePositiveFloat(groupDefaultWidth) || cols)));
+        const row = Math.max(0, Math.min(rows - 1, (item.row || 1) - 1));
+        getTitikApiColsForPlacement(layerCols, getLampSideForGroupIndex(index)).forEach((col) => {
+          positions.push({ row, col, label: `Titik Api G${index + 1}` });
+        });
+      });
+    } else {
     if (topGridData.size > 0) {
-      positions.push({ row: 0, col: 2, label: "Titik Api Lampu 1" });
+      const layerCols = Math.max(1, Math.min(cols, getRoadColsForLoad("top") || cols));
+      getTitikApiColsForPlacement(layerCols, getLampSideForLoad("top")).forEach((col) => {
+        positions.push({ row: 0, col, label: "Titik Api Lampu 1" });
+      });
     }
     if (loadMode === "3" && middleGridData.size > 0) {
-      positions.push({ row: getMiddleRowIndex(), col: 2, label: "Titik Api Lampu 3" });
+      const layerCols = Math.max(1, Math.min(cols, getRoadColsForLoad("middle") || cols));
+      getTitikApiColsForPlacement(layerCols, getLampSideForLoad("middle")).forEach((col) => {
+        positions.push({ row: getMiddleRowIndex(), col, label: "Titik Api Lampu 3" });
+      });
     }
     if (bottomGridData.size > 0) {
-      positions.push({ row: Math.max(0, rows - 1), col: 2, label: "Titik Api Lampu 2" });
+      const layerCols = Math.max(1, Math.min(cols, getRoadColsForLoad("bottom") || cols));
+      getTitikApiColsForPlacement(layerCols, getLampSideForLoad("bottom")).forEach((col) => {
+        positions.push({ row: Math.max(0, rows - 1), col, label: "Titik Api Lampu 2" });
+      });
+    }
     }
     const set = new Set<string>();
     positions.forEach((p) => {
@@ -1001,21 +1338,61 @@ export function KemeratanCahayaContent() {
       }
     });
     return set;
-  }, [isGridReady, rows, cols, loadMode, middleUpRows, middleDownRows, topGridData, middleGridData, bottomGridData]);
+  }, [isGridReady, rows, cols, loadMode, placementMode, middleUpRows, middleDownRows, topGridData, middleGridData, bottomGridData, lebarJalan, lebarJalanTop, lebarJalanMiddle, lebarJalanBottom, groupDefaultWidth, groupLoads]);
 
   const getTitikApiLabel = useCallback((row: number, col: number) => {
-    if (col !== 2) return null;
-    if (row === 0 && topGridData.size > 0) return "Titik Api Lampu 1";
-    if (row === Math.max(0, rows - 1) && bottomGridData.size > 0) return "Titik Api Lampu 2";
-    if (loadMode === "3" && row === getMiddleRowIndex() && middleGridData.size > 0) return "Titik Api Lampu 3";
+    if (loadMode === "group") {
+      const found = groupLoads.find((item, index) => {
+        if (!item.layer || item.layer.size === 0) return false;
+        const layerCols = Math.max(1, Math.min(cols, Math.ceil(parsePositiveFloat(item.width) || parsePositiveFloat(groupDefaultWidth) || cols)));
+        const fireCols = getTitikApiColsForPlacement(layerCols, getLampSideForGroupIndex(index));
+        return row === Math.max(0, Math.min(rows - 1, (item.row || 1) - 1)) && fireCols.includes(col);
+      });
+      return found ? `Titik Api G${found.index + 1}` : null;
+    }
+    if (topGridData.size > 0) {
+      const layerCols = Math.max(1, Math.min(cols, getRoadColsForLoad("top") || cols));
+      if (row === 0 && getTitikApiColsForPlacement(layerCols, getLampSideForLoad("top")).includes(col)) return "Titik Api Lampu 1";
+    }
+    if (bottomGridData.size > 0) {
+      const layerCols = Math.max(1, Math.min(cols, getRoadColsForLoad("bottom") || cols));
+      if (row === Math.max(0, rows - 1) && getTitikApiColsForPlacement(layerCols, getLampSideForLoad("bottom")).includes(col)) return "Titik Api Lampu 2";
+    }
+    if (loadMode === "3" && middleGridData.size > 0) {
+      const layerCols = Math.max(1, Math.min(cols, getRoadColsForLoad("middle") || cols));
+      if (row === getMiddleRowIndex() && getTitikApiColsForPlacement(layerCols, getLampSideForLoad("middle")).includes(col)) return "Titik Api Lampu 3";
+    }
     return null;
-  }, [rows, loadMode, middleUpRows, middleDownRows, topGridData, middleGridData, bottomGridData]);
+  }, [rows, cols, loadMode, placementMode, middleUpRows, middleDownRows, topGridData, middleGridData, bottomGridData, lebarJalan, lebarJalanTop, lebarJalanMiddle, lebarJalanBottom, groupDefaultWidth, groupLoads]);
+
+  const getActiveRoadColsForRow = useCallback((row: number) => {
+    if (!isGridReady || rows <= 0 || cols <= 0) return 0;
+    if (loadMode === "group") {
+      const nearest = groupLoads.reduce<GroupLoadConfig | null>((best, item) => {
+        if (!best) return item;
+        return Math.abs((item.row || 1) - 1 - row) < Math.abs((best.row || 1) - 1 - row) ? item : best;
+      }, null);
+      const width = nearest ? parsePositiveFloat(nearest.width) || parsePositiveFloat(groupDefaultWidth) : parsePositiveFloat(groupDefaultWidth);
+      return Math.max(0, Math.min(cols, Math.ceil(width)));
+    }
+    if (loadMode === "3") {
+      const middleRow = getMiddleRowIndex();
+      const topMiddleBoundary = Math.ceil((0 + middleRow) / 2);
+      const middleBottomBoundary = Math.floor((middleRow + (rows - 1)) / 2);
+      if (row < topMiddleBoundary) return Math.max(0, Math.min(cols, getRoadColsForLoad("top")));
+      if (row <= middleBottomBoundary) return Math.max(0, Math.min(cols, getRoadColsForLoad("middle")));
+      return Math.max(0, Math.min(cols, getRoadColsForLoad("bottom")));
+    }
+    const splitRow = Math.ceil(rows / 2);
+    return row < splitRow ? Math.max(0, Math.min(cols, getRoadColsForLoad("top"))) : Math.max(0, Math.min(cols, getRoadColsForLoad("bottom")));
+  }, [isGridReady, rows, cols, loadMode, middleUpRows, middleDownRows, lebarJalan, lebarJalanTop, lebarJalanMiddle, lebarJalanBottom, groupDefaultWidth, groupLoads]);
 
   const activeKabupatenName = useMemo(
     () => kabupatenOptions.find((k) => k.id === activeKabupaten)?.name ?? "-",
     [kabupatenOptions, activeKabupaten]
   );
   const isKabupatenReady = !useKabupatenFilter || Boolean(activeKabupaten);
+  const compactGrid = rows >= 200 || (loadMode === "group" && groupLoads.length >= 12);
 
   const pendingKabupatenName = useMemo(
     () => kabupatenOptions.find((k) => k.id === pendingKabupaten)?.name ?? "-",
@@ -1193,6 +1570,12 @@ export function KemeratanCahayaContent() {
                 <span className="text-red-700">L-Min:</span>
                 <span className="font-bold text-gray-900">{stats.min.toFixed(2)}</span>
               </div>
+              {stats.minRow > 0 && stats.minCol > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-red-700">Posisi L-Min:</span>
+                  <span className="font-bold text-gray-900">Baris {stats.minRow}, Kolom {stats.minCol}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-red-700">L-Max:</span>
                 <span className="font-bold text-gray-900">{stats.max.toFixed(2)}</span>
@@ -1206,8 +1589,12 @@ export function KemeratanCahayaContent() {
                 <span className="font-bold text-gray-900">{stats.uniformity.toFixed(3)}</span>
               </div>
               <div className="flex justify-between pt-2 border-t border-red-200">
-                <span className="text-red-700">Data:</span>
-                <span className="font-bold text-gray-900">{gridData.size} sel</span>
+                <span className="text-red-700">Data dihitung:</span>
+                <span className="font-bold text-gray-900">{stats.count} sel</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-red-700">Terisi:</span>
+                <span className="font-bold text-gray-900">{stats.measuredCount} sel</span>
               </div>
             </div>
           </div>
@@ -1265,18 +1652,14 @@ export function KemeratanCahayaContent() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-gray-800 mb-1.5">Mode Load Data</label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => {
+                      if (loadMode !== "2") clearLoadedGridData({ resetGroupReports: true });
                       setLoadMode("2");
-                      setSelectedReportMiddleId(null);
-                      setSelectedReportMiddleData(null);
-                      setSelectedReportMiddleLabel(null);
-                      setLastLoadedMiddleId(null);
                       setMiddleUpRows("");
                       setMiddleDownRows("");
-                      setShowMiddleList(false);
                     }}
                     className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all ${loadMode === "2" ? "border-green-500 bg-green-50 text-green-700" : "border-gray-200 text-gray-700 hover:bg-gray-50"}`}
                   >
@@ -1284,12 +1667,63 @@ export function KemeratanCahayaContent() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setLoadMode("3")}
+                    onClick={() => {
+                      if (loadMode !== "3") clearLoadedGridData({ resetGroupReports: true });
+                      setLoadMode("3");
+                    }}
                     className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all ${loadMode === "3" ? "border-green-500 bg-green-50 text-green-700" : "border-gray-200 text-gray-700 hover:bg-gray-50"}`}
                   >
                     3 Load
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (loadMode !== "group") clearLoadedGridData({ resetGroupReports: true });
+                      setLoadMode("group");
+                    }}
+                    className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all ${loadMode === "group" ? "border-green-500 bg-green-50 text-green-700" : "border-gray-200 text-gray-700 hover:bg-gray-50"}`}
+                  >
+                    Grup
+                  </button>
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-800 mb-1.5">Pola Penempatan Lampu</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (placementMode !== "sejajar") clearLoadedGridData({ resetGroupReports: true });
+                      setPlacementMode("sejajar");
+                    }}
+                    className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all ${placementMode === "sejajar" ? "border-green-500 bg-green-50 text-green-700" : "border-gray-200 text-gray-700 hover:bg-gray-50"}`}
+                  >
+                    Sejajar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (placementMode !== "zigzag") clearLoadedGridData({ resetGroupReports: true });
+                      setPlacementMode("zigzag");
+                    }}
+                    className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all ${placementMode === "zigzag" ? "border-green-500 bg-green-50 text-green-700" : "border-gray-200 text-gray-700 hover:bg-gray-50"}`}
+                  >
+                    Zigzag
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (placementMode !== "berhadapan") clearLoadedGridData({ resetGroupReports: true });
+                      setPlacementMode("berhadapan");
+                    }}
+                    className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all ${placementMode === "berhadapan" ? "border-green-500 bg-green-50 text-green-700" : "border-gray-200 text-gray-700 hover:bg-gray-50"}`}
+                  >
+                    Berhadapan
+                  </button>
+                </div>
+                <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+                  Sejajar: semua di satu sisi. Zigzag: bergantian kiri-kanan. Berhadapan: tiap load dihitung dari kiri dan kanan pada baris yang sama.
+                </p>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-800 mb-1.5">Jarak Tiang</label>
@@ -1297,20 +1731,95 @@ export function KemeratanCahayaContent() {
                   type="number"
                   placeholder="Masukkan jarak"
                   value={jarakTiang}
-                  onChange={(e) => setJarakTiang(e.target.value)}
+                  onChange={(e) => {
+                    if (gridData.size > 0 || groupLoads.some((item) => item.layer && item.layer.size > 0)) {
+                      clearLoadedGridData({ resetGroupReports: true });
+                    }
+                    setJarakTiang(e.target.value);
+                  }}
                   className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-sm font-semibold text-gray-900 placeholder:text-gray-500 bg-white"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-800 mb-1.5">Lebar Jalan</label>
-                <input
-                  type="number"
-                  placeholder="Masukkan lebar"
-                  value={lebarJalan}
-                  onChange={(e) => setLebarJalan(e.target.value)}
-                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-sm font-semibold text-gray-900 placeholder:text-gray-500 bg-white"
-                />
+              {loadMode === "group" && (
+                <div className="rounded-xl border border-green-200 bg-green-50/50 p-3">
+                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-green-700">Grup Lampu</div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-800 mb-1.5">Jumlah Lampu</label>
+                      <input
+                        type="number"
+                        min={2}
+                        max={30}
+                        placeholder="Contoh: 5"
+                        value={groupLoadCount}
+                        onChange={(e) => {
+                          if (groupLoads.some((item) => item.layer && item.layer.size > 0)) clearLoadedGridData({ resetGroupReports: true });
+                          setGroupLoadCount(e.target.value);
+                        }}
+                        className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-sm font-semibold text-gray-900 placeholder:text-gray-500 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-800 mb-1.5">Lebar Jalan Default Grup</label>
+                      <input
+                        type="number"
+                        placeholder="Contoh: 8"
+                        value={groupDefaultWidth}
+                        onChange={(e) => {
+                          if (groupLoads.some((item) => item.layer && item.layer.size > 0)) clearLoadedGridData({ resetGroupReports: true });
+                          setGroupDefaultWidth(e.target.value);
+                        }}
+                        className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-sm font-semibold text-gray-900 placeholder:text-gray-500 bg-white"
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-[11px] leading-relaxed text-green-800">
+                    Posisi lampu dibuat merata dari baris 1 sampai baris terakhir. Zigzag akan bergantian kiri-kanan.
+                  </p>
+                </div>
+              )}
+              {loadMode !== "group" && (
+              <div className="rounded-xl border border-green-200 bg-green-50/50 p-3">
+                <div className="mb-2 text-xs font-bold uppercase tracking-wide text-green-700">Lebar Jalan Per Load</div>
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-800 mb-1.5">Lebar Jalan Lampu 1 / Atas</label>
+                    <input
+                      type="number"
+                      placeholder="Contoh: 5"
+                      value={lebarJalanTop}
+                      onChange={(e) => setLebarJalanTop(e.target.value)}
+                      className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-sm font-semibold text-gray-900 placeholder:text-gray-500 bg-white"
+                    />
+                  </div>
+                  {loadMode === "3" && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-800 mb-1.5">Lebar Jalan Lampu 3 / Tengah</label>
+                      <input
+                        type="number"
+                        placeholder="Contoh: 7"
+                        value={lebarJalanMiddle}
+                        onChange={(e) => setLebarJalanMiddle(e.target.value)}
+                        className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-sm font-semibold text-gray-900 placeholder:text-gray-500 bg-white"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-800 mb-1.5">Lebar Jalan Lampu 2 / Bawah</label>
+                    <input
+                      type="number"
+                      placeholder="Contoh: 6"
+                      value={lebarJalanBottom}
+                      onChange={(e) => setLebarJalanBottom(e.target.value)}
+                      className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-sm font-semibold text-gray-900 placeholder:text-gray-500 bg-white"
+                    />
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-green-800">
+                  Grid memakai lebar terbesar sebagai kanvas. Mode 3 membagi lebar berdasarkan zona tengah antar lampu: L1 untuk setengah atas, L3 untuk area tengah, L2 untuk setengah bawah.
+                </p>
               </div>
+              )}
               {loadMode === "3" && (
                 <>
                   <div>
@@ -1339,13 +1848,15 @@ export function KemeratanCahayaContent() {
                 </>
               )}
             </div>
-            {jarakTiang && lebarJalan && (
+            {jarakTiang && isRoadWidthReady() && (
               <div className="mt-3 p-3 bg-green-100 rounded-lg border-2 border-green-400">
                 <p className="text-sm text-green-900 font-bold">
-                  Jarak Tiang {jarakTiang} Lebar Jalan {lebarJalan}
+                  {loadMode === "group"
+                    ? `Jarak Tiang ${jarakTiang} | Grup ${parsePositiveInt(groupLoadCount)} lampu | Lebar default ${groupDefaultWidth} m`
+                    : `Jarak Tiang ${jarakTiang} | Lebar: L1 ${getRoadWidthForLoad("top")} m${loadMode === "3" ? `, L3 ${getRoadWidthForLoad("middle")} m` : ""}, L2 ${getRoadWidthForLoad("bottom")} m`}
                 </p>
                 <p className="text-sm text-green-800 font-semibold mt-1">
-                  Total sel: {computeRowsForMode(parseFloat(jarakTiang) || 0, parsePositiveInt(middleUpRows), parsePositiveInt(middleDownRows)) * Math.ceil(parseFloat(lebarJalan) || 0)} sel
+                  Kanvas total: {computeRowsForMode(parseFloat(jarakTiang) || 0, parsePositiveInt(middleUpRows), parsePositiveInt(middleDownRows))} baris x {Math.ceil(getEffectiveRoadWidth())} kolom
                 </p>
               </div>
             )}
@@ -1354,7 +1865,7 @@ export function KemeratanCahayaContent() {
           {/* Action Button */}
           <button
             onClick={handleGenerateGrid}
-            disabled={!jenisJalan || !jarakTiang || !lebarJalan}
+            disabled={!jenisJalan || !jarakTiang || !isRoadWidthReady()}
             className="w-full py-3 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-all shadow-sm active:scale-95 text-sm flex items-center justify-center gap-2"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1379,6 +1890,91 @@ export function KemeratanCahayaContent() {
               </div>
             )}
             <div className="space-y-2">
+              {loadMode === "group" && (
+                <div className="space-y-2">
+                  {groupLoads.map((item, index) => {
+                    const side = getLampSideForGroupIndex(index);
+                    return (
+                      <div key={item.uid} className="overflow-hidden rounded-lg border-2 border-green-200">
+                        <button
+                          type="button"
+                          onClick={() => setGroupLoads((current) => current.map((load, loadIndex) => loadIndex === index ? { ...load, open: !load.open } : load))}
+                          className="flex w-full items-center justify-between bg-white px-3 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-green-50"
+                        >
+                          <span>G{index + 1} - Baris {item.row} - {side === "left" ? "Kiri" : "Kanan"}</span>
+                          <span className="text-xs text-gray-500">{item.label || "Belum pilih"}</span>
+                        </button>
+                        {item.open && (
+                          <div className="border-t border-green-200 bg-white">
+                            <div className="grid grid-cols-2 gap-2 p-3">
+                              <label className="block">
+                                <span className="text-[11px] font-semibold text-gray-700">Baris</span>
+                                <input
+                                  type="number"
+                                  value={item.row}
+                                  onChange={(e) => setGroupLoads((current) => {
+                                    const nextLoads = current.map((load, loadIndex) => loadIndex === index ? { ...load, row: parsePositiveInt(e.target.value) || 1, reportId: null, label: null, data: null, layer: new Map<string, GridCell>() } : load);
+                                    setGridData(combineGroupLayerMaps(nextLoads, rows, cols));
+                                    return nextLoads;
+                                  })}
+                                  className="mt-1 w-full rounded-lg border-2 border-gray-200 px-2 py-2 text-sm font-semibold"
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="text-[11px] font-semibold text-gray-700">Lebar</span>
+                                <input
+                                  type="number"
+                                  value={item.width}
+                                  onChange={(e) => setGroupLoads((current) => {
+                                    const nextLoads = current.map((load, loadIndex) => loadIndex === index ? { ...load, width: e.target.value, reportId: null, label: null, data: null, layer: new Map<string, GridCell>() } : load);
+                                    setGridData(combineGroupLayerMaps(nextLoads, rows, cols));
+                                    return nextLoads;
+                                  })}
+                                  className="mt-1 w-full rounded-lg border-2 border-gray-200 px-2 py-2 text-sm font-semibold"
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="text-[11px] font-semibold text-gray-700">Dimming</span>
+                                <select
+                                  value={item.dimming ?? 100}
+                                  onChange={(e) => {
+                                    const nextDimming = parseInt(e.target.value, 10) || 100;
+                                    setGroupLoads((current) => {
+                                      const nextLoads = current.map((load, loadIndex) => loadIndex === index ? { ...load, dimming: nextDimming } : load);
+                                      setGridData(combineGroupLayerMaps(nextLoads, rows, cols));
+                                      return nextLoads;
+                                    });
+                                  }}
+                                  className="mt-1 w-full rounded-lg border-2 border-gray-200 px-2 py-2 text-sm font-semibold"
+                                >
+                                  {dimmingOptions.map((p) => (
+                                    <option key={`group-${index}-dim-${p}`} value={p}>{p}%</option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                            <div className="max-h-44 overflow-auto">
+                              {reportsList.map((report) => (
+                                <button
+                                  key={`group-${index}-${report.id}`}
+                                  type="button"
+                                  onClick={() => applyReportToGroupLoad(index, report)}
+                                  className={`w-full border-t border-gray-100 px-3 py-2 text-left transition-all ${item.reportId === report.id ? "bg-green-50" : "hover:bg-gray-50"}`}
+                                >
+                                  <div className="text-sm font-semibold text-gray-800">{report.meta?.primary || report.label}</div>
+                                  <div className="text-xs text-gray-500">{report.meta?.secondary || ""}</div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {loadMode !== "group" && (
+              <>
               <div className="border-2 border-red-200 rounded-lg overflow-hidden">
                 <button
                   onClick={() => setShowTopList((v) => !v)}
@@ -1576,6 +2172,8 @@ export function KemeratanCahayaContent() {
                   </div>
                 )}
               </div>
+              </>
+              )}
               {/* Muat daftar report dan pilih ? untuk petugas */}
               <div className="mt-2">
                 <button
@@ -1677,6 +2275,7 @@ export function KemeratanCahayaContent() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
+                    {loadMode !== "group" && (
                     <div className="flex items-center gap-2 bg-white/20 rounded-lg px-2 py-1.5">
                       <span className="text-xs font-semibold text-white">Dimming</span>
                       <div className="flex items-center gap-2">
@@ -1720,6 +2319,7 @@ export function KemeratanCahayaContent() {
                         </div>
                       </div>
                     </div>
+                    )}
                     <button
                       onClick={handleReset}
                       className="px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white font-semibold text-sm rounded-lg transition-all flex items-center gap-2"
@@ -1739,7 +2339,7 @@ export function KemeratanCahayaContent() {
                   <div
                     className="grid gap-2 p-4 bg-gradient-to-br from-gray-50 to-red-50 rounded-xl shadow-inner"
                     style={{
-                      gridTemplateColumns: `80px repeat(${cols}, minmax(70px, 1fr))`,
+                      gridTemplateColumns: `${compactGrid ? 58 : 80}px repeat(${cols}, minmax(${compactGrid ? 46 : 70}px, 1fr))`,
                       contain: 'layout style paint'
                     }}
                   >
@@ -1752,11 +2352,14 @@ export function KemeratanCahayaContent() {
                     </div>
                     
                     {/* Column Headers */}
-                    {Array.from({ length: cols }, (_, i) => (
-                      <div key={`header-${i}`} className="bg-gradient-to-b from-red-500 to-red-600 flex items-center justify-center font-bold text-sm text-white p-3 rounded-lg shadow-md">
+                    {Array.from({ length: cols }, (_, i) => {
+                      const isTitikApiColumn = i === TITIK_API_COL_INDEX;
+                      return (
+                      <div key={`header-${i}`} className={`${isTitikApiColumn ? "bg-red-700 ring-4 ring-red-300 text-white scale-[1.03]" : "bg-gradient-to-b from-red-500 to-red-600 text-white"} flex items-center justify-center font-bold text-sm p-3 rounded-lg shadow-md`}>
                         {i + 1}
                       </div>
-                    ))}
+                      );
+                    })}
 
                     {/* Grid Rows */}
                     {Array.from({ length: rows }, (_, row) => (
@@ -1769,14 +2372,15 @@ export function KemeratanCahayaContent() {
                         {/* Row Cells - Read Only */}
                         {Array.from({ length: cols }, (_, col) => {
                           const cellKey = getCellKey(row, col);
+                          const isOutsideRoad = col >= getActiveRoadColsForRow(row);
                           const cellData = gridData.get(cellKey);
                           const value = cellData?.value || "0";
                           const numValue = parseFloat(value);
                           const dimmedValue = isNaN(numValue) ? 0 : numValue;
                           
                           // Color coding based on value (similar to measurement grid)
-                          let cellColor = "bg-white text-gray-500"; // Default empty
-                          if (dimmedValue > 0) {
+                          let cellColor = isOutsideRoad ? "bg-slate-100 text-slate-300 border-dashed opacity-60" : "bg-white text-gray-500"; // Default empty
+                          if (!isOutsideRoad && dimmedValue > 0) {
                             if (dimmedValue >= 50) cellColor = "bg-red-400 text-white shadow-sm";
                             else if (dimmedValue >= 40) cellColor = "bg-orange-400 text-white";
                             else if (dimmedValue >= 30) cellColor = "bg-yellow-300 text-gray-900";
@@ -1789,19 +2393,24 @@ export function KemeratanCahayaContent() {
                           const cellKeyStr = `${row}-${col}`;
                           const isTitikApiCell = titikApiCells.has(cellKeyStr);
                           const titikApiLabel = isTitikApiCell ? getTitikApiLabel(row, col) : null;
+                          if (isTitikApiCell && !isOutsideRoad) {
+                            cellColor = "bg-red-600 text-white shadow-lg ring-4 ring-red-200";
+                          }
                           return (
                             <div
                               key={cellKey}
-                              className={`relative h-14 px-2 flex items-center justify-center border-2 border-gray-200 rounded-lg text-sm font-bold transition-all ${cellColor}`}
+                              className={`relative ${compactGrid ? "h-9 px-1 text-[11px]" : "h-14 px-2 text-sm"} flex items-center justify-center border-2 border-gray-200 rounded-lg font-bold transition-all ${cellColor}`}
                               style={{ contain: 'layout style paint' }}
-                              title={`Row ${row + 1}, Col ${col + 1}: ${formatLuxNumber(dimmedValue, !Number.isInteger(dimmedValue))}`}
+                              title={isOutsideRoad ? `Row ${row + 1}, Col ${col + 1}: luar lebar jalan, tidak dihitung` : `Row ${row + 1}, Col ${col + 1}: ${formatLuxNumber(dimmedValue, !Number.isInteger(dimmedValue))}`}
                             >
-                              {titikApiLabel && (
+                              {isOutsideRoad ? (
+                                <span className="text-[10px] font-semibold uppercase tracking-wide">Luar Jalan</span>
+                              ) : titikApiLabel ? (
                                 <span className="absolute top-1 right-1 bg-white/90 text-red-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow">
                                   {titikApiLabel}
                                 </span>
-                              )}
-                              {formatLuxNumber(dimmedValue, !Number.isInteger(dimmedValue))}
+                              ) : null}
+                              {!isOutsideRoad ? formatLuxNumber(dimmedValue, !Number.isInteger(dimmedValue)) : null}
                             </div>
                           );
                         })}
@@ -2001,7 +2610,7 @@ export function KemeratanCahayaContent() {
                 </div>
                 <div className="bg-white rounded-lg border border-gray-200 p-3 text-center">
                   <div className="text-xs text-gray-500">Total Data</div>
-                  <div className="text-lg font-bold text-gray-900">{gridData.size} sel</div>
+                  <div className="text-lg font-bold text-gray-900">{stats.count} sel</div>
                 </div>
               </div>
             </div>

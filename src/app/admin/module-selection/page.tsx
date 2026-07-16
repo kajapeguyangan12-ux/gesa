@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
 
 interface ModuleCard {
   id: string;
@@ -87,10 +88,24 @@ function AdminModuleSelectionContent() {
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const isSuperAdmin = user?.role === "super-admin";
 
   useEffect(() => {
     setIsLoaded(true);
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    if (isSuperAdmin) {
+      const stored = getActiveKabupatenFromStorage(user.uid || "") || "tabanan";
+      setActiveKabupatenToStorage(user.uid || "", stored);
+      return;
+    }
+
+    const assignedKabupaten = user.kabupaten?.trim().toLowerCase() || "tabanan";
+    setActiveKabupatenToStorage(user.uid || "", assignedKabupaten);
+  }, [isSuperAdmin, user]);
 
   // Redirect non-admin users (kecuali super-admin)
   useEffect(() => {

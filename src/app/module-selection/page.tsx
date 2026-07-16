@@ -71,6 +71,24 @@ const modules: ModuleCard[] = [
     bgGradient: "bg-gradient-to-br from-purple-50 to-indigo-50",
     route: "/bmd-gudang",
   },
+  {
+    id: "masyarakat",
+    title: "Masyarakat Umum",
+    description: "Laporan kerusakan APJ, peta titik, dan riwayat laporan",
+    icon: "MU",
+    color: "from-red-400 to-rose-600",
+    bgGradient: "bg-gradient-to-br from-red-50 to-rose-50",
+    route: "/masyarakat",
+  },
+  {
+    id: "pemkab",
+    title: "Pemkab Monitoring",
+    description: "Pantau data konstruksi, O&M, maps, dan laporan APJ",
+    icon: "PK",
+    color: "from-cyan-400 to-teal-600",
+    bgGradient: "bg-gradient-to-br from-cyan-50 to-teal-50",
+    route: "/pemkab",
+  },
 ];
 
 function ModuleSelectionContent() {
@@ -109,12 +127,20 @@ function ModuleSelectionContent() {
         return modules.filter(m => m.id === "kontruksi");
       
       case "petugas-om":
+      case "petugas-om-correctif":
+      case "petugas-om-preventif":
         // Hanya tampilkan O&M
         return modules.filter(m => m.id === "om");
       
       case "petugas-bmd-gudang":
         // Hanya tampilkan BMD & Gudang
         return modules.filter(m => m.id === "bmd-gudang");
+
+      case "masyarakat-umum":
+        return modules.filter(m => m.id === "masyarakat");
+
+      case "pemkab-gesa":
+        return modules.filter(m => m.id === "pemkab");
       
       default:
         return [];

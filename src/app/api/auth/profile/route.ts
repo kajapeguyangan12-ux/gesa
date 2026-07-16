@@ -9,6 +9,14 @@ interface UserAdminProfileRow {
   email: string | null;
   role: string | null;
   phone_number: string | null;
+  kabupaten: string | null;
+}
+
+function isMissingKabupatenColumnError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const message = "message" in error && typeof error.message === "string" ? error.message : "";
+  const normalized = message.toLowerCase();
+  return normalized.includes("kabupaten") && (normalized.includes("does not exist") || normalized.includes("schema cache"));
 }
 
 export async function GET(request: NextRequest) {
@@ -21,25 +29,43 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdminClient();
-    let query = supabase
-      .from("user_admin")
-      .select("fb_doc_id, uid, name, username, email, role, phone_number")
-      .limit(1);
+    const applyFilters = (query: any) => {
+      if (uid && email) {
+        return query.or(`uid.eq.${uid},fb_doc_id.eq.${uid},email.eq.${email}`);
+      }
+      if (uid) {
+        return query.or(`uid.eq.${uid},fb_doc_id.eq.${uid}`);
+      }
+      return query.eq("email", email);
+    };
 
-    if (uid && email) {
-      query = query.or(`uid.eq.${uid},fb_doc_id.eq.${uid},email.eq.${email}`);
-    } else if (uid) {
-      query = query.or(`uid.eq.${uid},fb_doc_id.eq.${uid}`);
+    let data: UserAdminProfileRow[] | null = null;
+    const withKabupaten = await applyFilters(
+      supabase
+        .from("user_admin")
+        .select("fb_doc_id, uid, name, username, email, role, phone_number, kabupaten")
+        .limit(1)
+    );
+    if (withKabupaten.error && !isMissingKabupatenColumnError(withKabupaten.error)) {
+      throw new Error(withKabupaten.error.message);
+    }
+
+    if (withKabupaten.error && isMissingKabupatenColumnError(withKabupaten.error)) {
+      const fallback = await applyFilters(
+        supabase
+          .from("user_admin")
+          .select("fb_doc_id, uid, name, username, email, role, phone_number")
+          .limit(1)
+      );
+      if (fallback.error) {
+        throw new Error(fallback.error.message);
+      }
+      data = (fallback.data || []) as UserAdminProfileRow[];
     } else {
-      query = query.eq("email", email);
+      data = (withKabupaten.data || []) as UserAdminProfileRow[];
     }
 
-    const { data, error } = await query;
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    const row = ((data || []) as UserAdminProfileRow[])[0];
+    const row = (data || [])[0];
     if (!row) {
       return NextResponse.json({ error: "Profil user tidak ditemukan." }, { status: 404 });
     }
@@ -52,6 +78,7 @@ export async function GET(request: NextRequest) {
         name: row.name || "",
         role: row.role || "",
         phoneNumber: row.phone_number || "",
+        kabupaten: row.role === "super-admin" ? "" : row.kabupaten || "tabanan",
       },
     });
   } catch (error) {

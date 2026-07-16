@@ -73,6 +73,7 @@ const DynamicUnifiedMap = dynamic(
 function SurveyExistingContent() {
   const router = useRouter();
   const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super-admin";
   const [activeKabupaten, setActiveKabupaten] = useState<string | null>(null);
   const [pendingKabupaten, setPendingKabupaten] = useState<string | null>(null);
   const [showKabupatenPicker, setShowKabupatenPicker] = useState(false);
@@ -331,6 +332,17 @@ function SurveyExistingContent() {
       setShowKabupatenPicker(false);
       return;
     }
+
+    const assignedKabupaten = user?.kabupaten?.trim().toLowerCase() || "tabanan";
+    if (!isSuperAdmin) {
+      setActiveKabupaten(assignedKabupaten);
+      setActiveKabupatenToStorage(user?.uid || "", assignedKabupaten);
+      setShowKabupatenPicker(false);
+      setShowKabupatenConfirm(false);
+      setPendingKabupaten(null);
+      return;
+    }
+
     const stored = getActiveKabupatenFromStorage(user?.uid || "");
     if (stored) {
       setActiveKabupaten(stored);
@@ -339,7 +351,7 @@ function SurveyExistingContent() {
       setActiveKabupaten(null);
       setShowKabupatenPicker(true);
     }
-  }, [taskKabupaten, user?.uid]);
+  }, [isSuperAdmin, taskKabupaten, user?.kabupaten, user?.uid]);
 
   // Handle kepemilikan selection
   const handleKepemilikanSelect = (kepemilikan: string) => {
@@ -1307,13 +1319,17 @@ function SurveyExistingContent() {
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
                       Dikunci dari tugas admin
                     </span>
-                  ) : (
+                  ) : isSuperAdmin ? (
                     <button
                       onClick={() => setShowKabupatenPicker(true)}
                       className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-gray-700 transition-all hover:border-green-200 hover:text-green-700"
                     >
                       Ganti kabupaten
                     </button>
+                  ) : (
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                      Dikunci dari akun user
+                    </span>
                   )}
                 </div>
               </div>
@@ -2055,7 +2071,7 @@ function SurveyExistingContent() {
         </button>
       </main>
 
-      {showKabupatenPicker && (
+      {isSuperAdmin && showKabupatenPicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="p-5 border-b border-gray-200">
@@ -2094,7 +2110,7 @@ function SurveyExistingContent() {
         </div>
       )}
 
-      {showKabupatenConfirm && pendingKabupaten && (
+      {isSuperAdmin && showKabupatenConfirm && pendingKabupaten && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="p-5 border-b border-gray-200">

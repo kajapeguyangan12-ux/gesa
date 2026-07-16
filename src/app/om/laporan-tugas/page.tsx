@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
 import { OMPageShell } from "@/components/om/OMPageShell";
+import { isMobileOmRole, PreventiveOMReportForm } from "@/components/om/PreventiveOMMobile";
 
 export default function OMLaporanTugasPage() {
   const { user } = useAuth();
+  const isMobileRole = isMobileOmRole(user?.role);
   const [reportType, setReportType] = useState("preventif");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -14,6 +16,12 @@ export default function OMLaporanTugasPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (isMobileRole) {
+      setReportType("preventif");
+    }
+  }, [isMobileRole]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -40,7 +48,7 @@ export default function OMLaporanTugasPage() {
         location: location.trim() || "-",
         reporterUid: user.uid,
         reporterName: user.displayName || user.email || "Petugas O&M",
-        reporterRole: user.role || "petugas-om",
+        reporterRole: user.role || "petugas-om-preventif",
       };
 
       const response = await fetch("/api/om/reports", {
@@ -67,6 +75,9 @@ export default function OMLaporanTugasPage() {
 
   return (
     <ProtectedRoute>
+      {isMobileRole ? (
+        <PreventiveOMReportForm />
+      ) : (
       <OMPageShell
         eyebrow="Pelaporan Tugas"
         title="Input laporan O&M dalam workspace yang lebih bersih dan siap dipakai harian."
@@ -84,17 +95,26 @@ export default function OMLaporanTugasPage() {
           <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1.3fr)_320px] xl:p-6">
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="space-y-2">
-                  <span className="text-sm font-semibold text-slate-700">Tipe Laporan</span>
-                  <select
-                    value={reportType}
-                    onChange={(e) => setReportType(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-teal-400 focus:ring-4 focus:ring-teal-100"
-                  >
-                    <option value="preventif">Preventif</option>
-                    <option value="korektif">Korektif</option>
-                  </select>
-                </label>
+                {isMobileRole ? (
+                  <div className="space-y-2">
+                    <span className="text-sm font-semibold text-slate-700">Tipe Laporan</span>
+                    <div className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-sm">
+                      Preventif
+                    </div>
+                  </div>
+                ) : (
+                  <label className="space-y-2">
+                    <span className="text-sm font-semibold text-slate-700">Tipe Laporan</span>
+                    <select
+                      value={reportType}
+                      onChange={(e) => setReportType(e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-teal-400 focus:ring-4 focus:ring-teal-100"
+                    >
+                      <option value="preventif">Preventif</option>
+                      <option value="korektif">Korektif</option>
+                    </select>
+                  </label>
+                )}
 
                 <label className="space-y-2">
                   <span className="text-sm font-semibold text-slate-700">Lokasi</span>
@@ -167,6 +187,7 @@ export default function OMLaporanTugasPage() {
           </div>
         </div>
       </OMPageShell>
+      )}
     </ProtectedRoute>
   );
 }

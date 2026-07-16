@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
+import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
+import { KABUPATEN_OPTIONS } from "@/utils/constants";
 
 type MenuCard = {
   id: string;
@@ -90,6 +92,20 @@ function RouteIcon() {
   );
 }
 
+function MapPinIcon() {
+  return (
+    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+        d="M9 18l-6 3V6l6-3 6 3 6-3v15l-6 3-6-3z"
+      />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 3v15M15 6v15" />
+    </svg>
+  );
+}
+
 function UsersIcon() {
   return (
     <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -106,6 +122,8 @@ function UsersIcon() {
 export default function OMDashboard() {
   const router = useRouter();
   const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super-admin";
+  const [activeKabupaten, setActiveKabupaten] = useState("tabanan");
 
   const menuCards: MenuCard[] = useMemo(
     () => [
@@ -146,6 +164,15 @@ export default function OMDashboard() {
         icon: <RouteIcon />,
       },
       {
+        id: "maps-apj",
+        title: "Maps APJ O&M",
+        description: "Lihat master titik APJ yang sudah menyala dari konstruksi valid, lengkap per grup dan status laporan.",
+        route: "/om/maps",
+        eyebrow: "Peta Titik",
+        accent: "from-lime-500 via-emerald-500 to-teal-600",
+        icon: <MapPinIcon />,
+      },
+      {
         id: "manajemen-pengguna",
         title: "Manajemen Pengguna",
         description: "Atur akun, akses, dan peran petugas yang terhubung ke modul O&M.",
@@ -169,7 +196,32 @@ export default function OMDashboard() {
       ? user.email.slice(0, 2).toUpperCase()
       : "OM";
 
-  const roleLabel = user?.role === "super-admin" ? "Super Admin" : user?.role === "admin" ? "Administrator" : "Petugas";
+  const roleLabel =
+    user?.role === "super-admin"
+      ? "Super Admin"
+        : user?.role === "admin"
+          ? "Administrator"
+          : user?.role === "petugas-om"
+            ? "Petugas O&M Preventif"
+        : user?.role === "petugas-om-correctif"
+          ? "Petugas O&M Correctif"
+          : user?.role === "petugas-om-preventif"
+            ? "Petugas O&M Preventif"
+            : "Petugas";
+  useEffect(() => {
+    if (!user) return;
+    const nextKabupaten = isSuperAdmin
+      ? getActiveKabupatenFromStorage(user.uid || "") || "tabanan"
+      : user.kabupaten?.trim().toLowerCase() || "tabanan";
+    setActiveKabupaten(nextKabupaten);
+    setActiveKabupatenToStorage(user.uid || "", nextKabupaten);
+  }, [isSuperAdmin, user]);
+
+  const handleKabupatenChange = (kabupaten: string) => {
+    if (!isSuperAdmin || !user) return;
+    setActiveKabupaten(kabupaten);
+    setActiveKabupatenToStorage(user.uid || "", kabupaten);
+  };
 
   return (
     <div className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(13,148,136,0.18),_transparent_26%),radial-gradient(circle_at_top_right,_rgba(8,145,178,0.14),_transparent_24%),linear-gradient(180deg,_#f6fdfa_0%,_#eef8f7_48%,_#f8fafc_100%)]">
@@ -207,6 +259,32 @@ export default function OMDashboard() {
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
                   <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Peran</div>
                   <div className="mt-1 text-sm font-semibold text-slate-900">{roleLabel}</div>
+                </div>
+                <div className="rounded-2xl border border-teal-200 bg-teal-50 px-4 py-2 shadow-sm">
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-teal-700">Kabupaten</div>
+                  {isSuperAdmin ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {KABUPATEN_OPTIONS.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleKabupatenChange(item.id)}
+                          className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                            activeKabupaten === item.id
+                              ? "bg-teal-600 text-white shadow-sm"
+                              : "bg-white text-teal-700 hover:bg-teal-100"
+                          }`}
+                        >
+                          {item.name}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-1 text-sm font-semibold text-slate-900">{activeKabupaten}</div>
+                      <div className="mt-1 text-[11px] text-teal-700">Terkunci dari akun</div>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-900 via-teal-700 to-cyan-600 text-sm font-bold text-white">

@@ -6,6 +6,8 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/hooks/useAuth";
 import * as XLSX from "xlsx";
 import MapsKontruksiValid from "./components/MapsKontruksiValid";
+import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
+import { KABUPATEN_OPTIONS } from "@/utils/constants";
 
 type MenuItem = {
   id: string;
@@ -43,7 +45,100 @@ type KontruksiData = {
   validatedAt?: any;
   submittedByName?: string;
   submittedById?: string;
+  stage?: string;
+  tahap?: string;
+  type?: string;
+  kategori?: string;
+  [key: string]: any;
 };
+
+const KONTRUKSI_STAGE_LABELS: Record<string, string> = {
+  "pemasangan-tiang": "Pemasangan Tiang, Arm & Lampu",
+  "pemasangan-kabel": "Pemasangan Kabel",
+  comissioning: "Comissioning",
+  penggalian: "Penggalian",
+  pembesian: "Pembesian & Grounding",
+  pengecoran: "Pengecoran",
+  "uji-beton": "Uji Beton",
+};
+
+const KONTRUKSI_STAGE_FIELDS: Record<string, Array<{ key: string; label: string }>> = {
+  "pemasangan-tiang": [
+    { key: "fotoPerakitanDibawah", label: "Foto Perakitan Di Bawah" },
+    { key: "fotoHasilPemasangan", label: "Foto Hasil Pemasangan" },
+  ],
+  "pemasangan-kabel": [
+    { key: "fotoJalurKabel", label: "Foto Jalur Kabel" },
+    { key: "fotoInstalasiPerTitik", label: "Foto Instalasi Per Titik" },
+  ],
+  comissioning: [
+    { key: "fotoJalurKabel", label: "Foto Jalur Kabel" },
+    { key: "fotoInstalasiPerTitik", label: "Foto Instalasi Per Titik" },
+  ],
+  penggalian: [
+    { key: "kedalamanGalian", label: "Kedalaman Galian" },
+    { key: "fotoKedalaman", label: "Foto Kedalaman" },
+    { key: "fotoTitikLokasi", label: "Foto Titik Lokasi" },
+  ],
+  pembesian: [
+    { key: "fotoPemasanganBesi", label: "Foto Pemasangan Besi" },
+    { key: "fotoGrounding", label: "Foto Grounding" },
+  ],
+  pengecoran: [
+    { key: "fotoUjiSlumpTest", label: "Foto Uji Slump Test" },
+    { key: "fotoHasilPengecoran", label: "Foto Hasil Pengecoran" },
+  ],
+  "uji-beton": [
+    { key: "fotoUjiKekuatanBeton", label: "Foto Uji Kekuatan Beton" },
+    { key: "fotoTitikLokasi", label: "Foto Titik Lokasi" },
+  ],
+};
+
+const KONTRUKSI_STAGE_FILTER_OPTIONS = Object.entries(KONTRUKSI_STAGE_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}));
+
+function getKontruksiStage(item: KontruksiData) {
+  return String(item.stage || item.tahap || item.type || item.kategori || "").trim();
+}
+
+function getKontruksiStatus(item: KontruksiData) {
+  return String(item.kontruksiStatus || item.status || item.source || "").trim();
+}
+
+function getKontruksiStageLabel(item: KontruksiData) {
+  const stage = getKontruksiStage(item);
+  return KONTRUKSI_STAGE_LABELS[stage] || stage || "Tahap Kontruksi";
+}
+
+function getKontruksiStageFields(item: KontruksiData) {
+  const stage = getKontruksiStage(item);
+  return KONTRUKSI_STAGE_FIELDS[stage] || [];
+}
+
+function isPhotoLikeValue(value: unknown) {
+  return typeof value === "string" && value.startsWith("http");
+}
+
+function getKontruksiPreviewPhoto(item: KontruksiData) {
+  const previewField = getKontruksiStageFields(item).find((field) => isPhotoLikeValue(item[field.key]));
+  return previewField ? String(item[previewField.key]) : "";
+}
+
+function KontruksiPhotoPreview({ item, tone }: { item: KontruksiData; tone: "amber" | "emerald" }) {
+  const photoUrl = getKontruksiPreviewPhoto(item);
+  if (!photoUrl) return null;
+
+  const borderClass = tone === "emerald" ? "border-emerald-100" : "border-amber-100";
+  return (
+    <div
+      className={`h-20 w-full shrink-0 rounded-2xl border ${borderClass} bg-cover bg-center bg-slate-100 lg:w-28`}
+      style={{ backgroundImage: `url("${photoUrl}")` }}
+      aria-label="Preview foto konstruksi"
+    />
+  );
+}
 
 const menuItems: MenuItem[] = [
   { id: "home", label: "Home", icon: "🏠" },
@@ -127,6 +222,8 @@ const menuTheme: Record<
 export default function AdminKontruksiPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super-admin";
+  const [activeKabupaten, setActiveKabupaten] = useState("tabanan");
   const [active, setActive] = useState<MenuItem["id"]>("home");
   const [showNotif, setShowNotif] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -156,6 +253,8 @@ export default function AdminKontruksiPage() {
   const [submissions, setSubmissions] = useState<KontruksiData[]>([]);
   const [loadingValid, setLoadingValid] = useState(false);
   const [validItems, setValidItems] = useState<KontruksiData[]>([]);
+  const [stageFilter, setStageFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [validatingId, setValidatingId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [detailItem, setDetailItem] = useState<KontruksiData | null>(null);
@@ -168,6 +267,21 @@ export default function AdminKontruksiPage() {
       router.push("/dashboard-pengukuran");
     }
   }, [user, router]);
+
+  useEffect(() => {
+    if (!user) return;
+    const nextKabupaten = isSuperAdmin
+      ? getActiveKabupatenFromStorage(user.uid || "") || "tabanan"
+      : user.kabupaten?.trim().toLowerCase() || "tabanan";
+    setActiveKabupaten(nextKabupaten);
+    setActiveKabupatenToStorage(user.uid || "", nextKabupaten);
+  }, [isSuperAdmin, user]);
+
+  const handleKabupatenChange = (kabupaten: string) => {
+    if (!isSuperAdmin || !user) return;
+    setActiveKabupaten(kabupaten);
+    setActiveKabupatenToStorage(user.uid || "", kabupaten);
+  };
 
   useEffect(() => {
     if (active === "manajemen" && kontruksiUsers.length === 0) {
@@ -477,6 +591,7 @@ export default function AdminKontruksiPage() {
           email: userForm.email,
           password: userForm.password,
           role: "petugas-kontruksi",
+          kabupaten: activeKabupaten,
         }),
       });
       const payload = (await response.json()) as { error?: string };
@@ -565,6 +680,20 @@ export default function AdminKontruksiPage() {
       width: `${Math.max(18, Math.round((item.total / maxTotal) * 100))}%`,
     }));
   }, [submissions, validItems]);
+  const filteredSubmissions = useMemo(() => {
+    return submissions.filter((item) => {
+      const stageMatch = stageFilter === "all" || getKontruksiStage(item) === stageFilter;
+      const statusMatch = statusFilter === "all" || getKontruksiStatus(item) === statusFilter;
+      return stageMatch && statusMatch;
+    });
+  }, [stageFilter, statusFilter, submissions]);
+  const filteredValidItems = useMemo(() => {
+    return validItems.filter((item) => {
+      const stageMatch = stageFilter === "all" || getKontruksiStage(item) === stageFilter;
+      const statusMatch = statusFilter === "all" || getKontruksiStatus(item) === statusFilter;
+      return stageMatch && statusMatch;
+    });
+  }, [stageFilter, statusFilter, validItems]);
   const dashboardTimeline = useMemo(() => {
     const designEvents = designUploads.map((item: any) => ({
       id: `design-${item.id}`,
@@ -615,6 +744,31 @@ export default function AdminKontruksiPage() {
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">Dashboard</div>
                   <div className="text-lg font-bold text-slate-900">Gesa Kontruksi</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    {isSuperAdmin ? (
+                      <div className="flex flex-wrap items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 p-1">
+                        <span className="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Kabupaten</span>
+                        {KABUPATEN_OPTIONS.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => handleKabupatenChange(item.id)}
+                            className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                              activeKabupaten === item.id
+                                ? "bg-emerald-600 text-white shadow-sm"
+                                : "text-emerald-700 hover:bg-white"
+                            }`}
+                          >
+                            {item.name}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                        Kabupaten aktif: {activeKabupaten} - dikunci dari akun user
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -832,6 +986,41 @@ export default function AdminKontruksiPage() {
                     </button>
                   </div>
 
+                  <div className="grid grid-cols-1 gap-3 rounded-[22px] border border-amber-100 bg-amber-50/40 p-4 md:grid-cols-3">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-700">Filter Tahap</label>
+                      <select
+                        value={stageFilter}
+                        onChange={(event) => setStageFilter(event.target.value)}
+                        className="w-full rounded-xl border border-amber-100 bg-white px-3 py-2 text-sm outline-none focus:border-amber-300"
+                      >
+                        <option value="all">Semua tahap</option>
+                        {KONTRUKSI_STAGE_FILTER_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-700">Filter Status</label>
+                      <select
+                        value={statusFilter}
+                        onChange={(event) => setStatusFilter(event.target.value)}
+                        className="w-full rounded-xl border border-amber-100 bg-white px-3 py-2 text-sm outline-none focus:border-amber-300"
+                      >
+                        <option value="all">Semua status</option>
+                        <option value="submitted">Perlu validasi</option>
+                        <option value="valid">Valid</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <div className="w-full rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                        Tampil {filteredSubmissions.length} dari {submissions.length} data
+                      </div>
+                    </div>
+                  </div>
+
                   {loadingSubmissions ? (
                     <div className="text-sm text-gray-500">Memuat data kontruksi...</div>
                   ) : submissions.length === 0 ? (
@@ -841,13 +1030,19 @@ export default function AdminKontruksiPage() {
                         Data akan muncul setelah petugas mengirim laporan kontruksi.
                       </div>
                     </div>
+                  ) : filteredSubmissions.length === 0 ? (
+                    <div className="rounded-[24px] border-2 border-dashed border-amber-100 bg-white p-12 text-center">
+                      <div className="text-sm font-semibold text-gray-600">Tidak ada data sesuai filter</div>
+                      <div className="text-xs text-gray-500 mt-1">Ubah filter tahap atau status untuk melihat data lain.</div>
+                    </div>
                   ) : (
                     <div className="grid gap-4">
-                      {submissions.map((item) => (
+                      {filteredSubmissions.map((item) => (
                         <div
                           key={item.id}
                           className="flex flex-col gap-4 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between"
                         >
+                          <KontruksiPhotoPreview item={item} tone="amber" />
                           <div className="min-w-0">
                             <div className="text-sm font-bold text-gray-900 truncate">
                               {item.namaTitik || item.idTitik || "Titik Kontruksi"}
@@ -858,6 +1053,14 @@ export default function AdminKontruksiPage() {
                             <div className="text-xs text-gray-400">
                               Dikirim oleh {item.submittedByName || "Petugas"} â€¢{" "}
                               {formatDate(item.createdAt)}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                                {getKontruksiStageLabel(item)}
+                              </span>
+                              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                                {getKontruksiStatus(item) || "submitted"}
+                              </span>
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
@@ -909,6 +1112,41 @@ export default function AdminKontruksiPage() {
                     </button>
                   </div>
 
+                  <div className="grid grid-cols-1 gap-3 rounded-[22px] border border-emerald-100 bg-emerald-50/40 p-4 md:grid-cols-3">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-700">Filter Tahap</label>
+                      <select
+                        value={stageFilter}
+                        onChange={(event) => setStageFilter(event.target.value)}
+                        className="w-full rounded-xl border border-emerald-100 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-300"
+                      >
+                        <option value="all">Semua tahap</option>
+                        {KONTRUKSI_STAGE_FILTER_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-700">Filter Status</label>
+                      <select
+                        value={statusFilter}
+                        onChange={(event) => setStatusFilter(event.target.value)}
+                        className="w-full rounded-xl border border-emerald-100 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-300"
+                      >
+                        <option value="all">Semua status</option>
+                        <option value="submitted">Perlu validasi</option>
+                        <option value="valid">Valid</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <div className="w-full rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                        Tampil {filteredValidItems.length} dari {validItems.length} data
+                      </div>
+                    </div>
+                  </div>
+
                   {loadingValid ? (
                     <div className="text-sm text-gray-500">Memuat data valid...</div>
                   ) : validItems.length === 0 ? (
@@ -918,10 +1156,16 @@ export default function AdminKontruksiPage() {
                         Data valid akan muncul setelah proses validasi selesai.
                       </div>
                     </div>
+                  ) : filteredValidItems.length === 0 ? (
+                    <div className="rounded-[24px] border-2 border-dashed border-green-100 bg-white p-12 text-center">
+                      <div className="text-sm font-semibold text-gray-600">Tidak ada data sesuai filter</div>
+                      <div className="text-xs text-gray-500 mt-1">Ubah filter tahap atau status untuk melihat data lain.</div>
+                    </div>
                   ) : (
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
-                      {validItems.map((item) => (
+                      {filteredValidItems.map((item) => (
                         <div key={item.id} className="rounded-[22px] border border-emerald-100 bg-white p-5 shadow-sm">
+                          <KontruksiPhotoPreview item={item} tone="emerald" />
                           <div className="text-sm font-bold text-gray-900 truncate">
                             {item.namaTitik || item.idTitik || "Titik Kontruksi"}
                           </div>
@@ -933,6 +1177,14 @@ export default function AdminKontruksiPage() {
                           </div>
                           <div className="text-xs text-gray-400 mt-1">
                             Validasi: {formatDate(item.validatedAt)}
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                              {getKontruksiStageLabel(item)}
+                            </span>
+                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                              {getKontruksiStatus(item) || "valid"}
+                            </span>
                           </div>
                           <div className="mt-3">
                             <button
@@ -1384,6 +1636,7 @@ export default function AdminKontruksiPage() {
                   <div className="text-lg font-bold text-gray-900">
                     {detailItem.namaTitik || detailItem.idTitik || "Titik Kontruksi"}
                   </div>
+                  <div className="mt-1 text-xs font-semibold text-emerald-700">{getKontruksiStageLabel(detailItem)}</div>
                 </div>
               </div>
 
@@ -1423,6 +1676,36 @@ export default function AdminKontruksiPage() {
                 <div>
                   <div className="text-xs text-gray-500">Pengirim</div>
                   <div className="font-semibold text-gray-900">{detailItem.submittedByName || "-"}</div>
+                </div>
+              </div>
+              <div className="border-t border-gray-100 p-5">
+                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Data Tahap</div>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  {getKontruksiStageFields(detailItem).length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+                      Belum ada field khusus untuk tahap ini.
+                    </div>
+                  ) : (
+                    getKontruksiStageFields(detailItem).map((field) => {
+                      const value = detailItem[field.key];
+                      const nameValue = detailItem[`${field.key}Name`];
+                      return (
+                        <div key={field.key} className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                          <div className="text-xs text-gray-500">{field.label}</div>
+                          {isPhotoLikeValue(value) ? (
+                            <div className="mt-2 space-y-2">
+                              <a href={value} target="_blank" rel="noreferrer" className="inline-flex rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
+                                Buka Foto
+                              </a>
+                              <div className="truncate text-xs text-gray-500">{nameValue || value}</div>
+                            </div>
+                          ) : (
+                            <div className="mt-1 font-semibold text-gray-900">{value || "-"}</div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>

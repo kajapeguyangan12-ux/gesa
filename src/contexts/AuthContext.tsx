@@ -11,16 +11,21 @@ interface User {
   role:
     | "admin"
     | "super-admin"
+    | "masyarakat-umum"
+    | "pemkab-gesa"
     | "petugas-existing"
     | "petugas-apj-propose"
     | "petugas-pra-existing"
     | "petugas-survey-cahaya"
     | "petugas-kontruksi"
     | "petugas-om"
+    | "petugas-om-correctif"
+    | "petugas-om-preventif"
     | "petugas-bmd-gudang";
   uid: string;
   name: string;
   phoneNumber?: string;
+  kabupaten?: string;
 }
 
 interface AuthContextType {
@@ -103,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role?: User["role"];
         uid?: string;
         phoneNumber?: string;
+        kabupaten?: string;
       };
     };
 
@@ -119,6 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       role: (profile.role || "petugas-existing") as User["role"],
       uid: profile.uid || "",
       phoneNumber: profile.phoneNumber || "",
+      kabupaten: profile.role === "super-admin" ? "" : profile.kabupaten || "tabanan",
     } satisfies User;
   };
 

@@ -17,6 +17,13 @@ const TABLES = {
 
 type MutationResult = Promise<{ error: { message: string } | null }>;
 
+const WORK_TYPE_ALLOWED_CATEGORIES: Record<string, string[]> = {
+  "konstruksi-pemasangan-tiang": ["TIANG", "ARM", "LAMPU"],
+  "konstruksi-pemasangan-kabel": ["KABEL"],
+  "om-preventive": ["LAMPU", "ARM", "KABEL"],
+  "om-corrective": ["TIANG", "LAMPU", "ARM", "KABEL"],
+};
+
 export async function GET(request: NextRequest) {
   try {
     const resource = normalizeString(request.nextUrl.searchParams.get("resource")) || "materials";
@@ -67,9 +74,32 @@ export async function POST(request: NextRequest) {
       const requesterId = normalizeString(payload.requesterId);
       const requesterName = normalizeString(payload.requesterName);
       const quantity = normalizeNumber(payload.quantity, 1);
+      const workType = normalizeString(payload.workType);
 
       if (!requestType || !materialId || !materialName || !requesterId || !requesterName || quantity <= 0) {
         return NextResponse.json({ error: "Data pengajuan belum lengkap." }, { status: 400 });
+      }
+
+      if (requestType === "Pengajuan Barang") {
+        const allowedCategories = WORK_TYPE_ALLOWED_CATEGORIES[workType] || [];
+        if (allowedCategories.length === 0) {
+          return NextResponse.json({ error: "Jenis pekerjaan wajib dipilih untuk pengajuan barang." }, { status: 400 });
+        }
+
+        const { data: materialRows, error: materialError } = await supabase
+          .from(TABLES.materials)
+          .select("kategori")
+          .eq("fb_doc_id", materialId)
+          .limit(1);
+        if (materialError) throw new Error(materialError.message);
+        const material = (Array.isArray(materialRows) ? materialRows[0] : null) as Record<string, unknown> | null;
+        const materialCategory = normalizeString(material?.kategori);
+        if (!material || !allowedCategories.includes(materialCategory)) {
+          return NextResponse.json(
+            { error: "Kategori barang tidak sesuai dengan jenis pekerjaan yang dipilih." },
+            { status: 400 }
+          );
+        }
       }
 
       const now = new Date().toISOString();
@@ -90,6 +120,15 @@ export async function POST(request: NextRequest) {
           id,
           quantity,
           status: "Diajukan",
+          auditTrail: [
+            {
+              status: "Diajukan",
+              actorId: requesterId,
+              actorName: requesterName,
+              note: normalizeString(payload.note) || "Pengajuan dibuat.",
+              at: now,
+            },
+          ],
           createdAt: now,
           updatedAt: now,
         },

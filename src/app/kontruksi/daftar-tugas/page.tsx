@@ -12,11 +12,18 @@ type DesignTask = {
   designUploadId?: string;
   assigneeId?: string;
   assigneeName?: string;
-  zones?: Array<{ id?: string; idTitik?: string; grup?: string }>;
+  zones?: Array<{ id?: string; idTitik?: string; grup?: string; status?: string; kontruksiStatus?: string }>;
   status?: string;
   createdAt?: any;
   createdByName?: string;
 };
+
+function getSubmittedZoneCount(zones: DesignTask["zones"]) {
+  return (zones || []).filter((zone) => {
+    const status = String(zone.status || zone.kontruksiStatus || "").toLowerCase();
+    return status === "submitted" || status === "valid";
+  }).length;
+}
 
 const formatDate = (value: any) => {
   if (!value) return "-";
@@ -78,6 +85,7 @@ function DaftarTugasContent() {
         ...task,
         groupCount: groups.size,
         zoneCount: zones.length,
+        submittedZoneCount: getSubmittedZoneCount(zones),
       };
     });
   }, [tasks]);
@@ -141,7 +149,12 @@ function DaftarTugasContent() {
                       Jumlah Grup: {task.groupCount} • Titik: {task.zoneCount}
                     </div>
                   </div>
-                  <div className="text-[11px] text-gray-500">{formatDate(task.createdAt)}</div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <div className="text-[11px] text-gray-500">{formatDate(task.createdAt)}</div>
+                    <div className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                      {task.submittedZoneCount}/{task.zoneCount}
+                    </div>
+                  </div>
                 </div>
               </button>
             ))

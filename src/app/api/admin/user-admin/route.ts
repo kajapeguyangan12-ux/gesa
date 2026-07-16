@@ -9,7 +9,15 @@ interface UserAdminRow {
   email: string | null;
   role: string | null;
   phone_number: string | null;
+  kabupaten: string | null;
   created_at: string | null;
+}
+
+function isMissingKabupatenColumnError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const message = "message" in error && typeof error.message === "string" ? error.message : "";
+  const normalized = message.toLowerCase();
+  return normalized.includes("kabupaten") && (normalized.includes("does not exist") || normalized.includes("schema cache"));
 }
 
 export async function GET(request: NextRequest) {
@@ -21,28 +29,51 @@ export async function GET(request: NextRequest) {
     const safeOffset = Number.isFinite(offsetParam) ? Math.max(0, offsetParam) : 0;
     const supabase = getSupabaseAdminClient() as any;
 
-    let query = supabase
-      .from("user_admin")
-      .select("fb_doc_id, uid, name, username, email, role, phone_number, created_at", {
-        count: "exact",
-      })
-      .order("created_at", { ascending: false })
-      .range(safeOffset, safeOffset + safeLimit - 1);
-
-    if (searchParam) {
-      const escapedSearch = searchParam
-        .replace(/\\/g, "\\\\")
-        .replace(/%/g, "\\%")
-        .replace(/_/g, "\\_");
-      query = query.or(
-        `name.ilike.%${escapedSearch}%,username.ilike.%${escapedSearch}%,email.ilike.%${escapedSearch}%,role.ilike.%${escapedSearch}%`
+    const escapedSearch = searchParam
+      ? searchParam.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")
+      : "";
+    const applySearch = (query: any, includeKabupaten: boolean) => {
+      if (!searchParam) return query;
+      return query.or(
+        includeKabupaten
+          ? `name.ilike.%${escapedSearch}%,username.ilike.%${escapedSearch}%,email.ilike.%${escapedSearch}%,role.ilike.%${escapedSearch}%,kabupaten.ilike.%${escapedSearch}%`
+          : `name.ilike.%${escapedSearch}%,username.ilike.%${escapedSearch}%,email.ilike.%${escapedSearch}%,role.ilike.%${escapedSearch}%`
       );
+    };
+
+    const withKabupaten = await applySearch(
+      supabase
+        .from("user_admin")
+        .select("fb_doc_id, uid, name, username, email, role, phone_number, kabupaten, created_at", {
+          count: "exact",
+        })
+        .order("created_at", { ascending: false })
+        .range(safeOffset, safeOffset + safeLimit - 1),
+      true
+    );
+
+    let data = withKabupaten.data;
+    let count = withKabupaten.count;
+    if (withKabupaten.error && !isMissingKabupatenColumnError(withKabupaten.error)) {
+      throw new Error(withKabupaten.error.message);
     }
 
-    const { data, error, count } = await query;
-
-    if (error) {
-      throw new Error(error.message);
+    if (withKabupaten.error && isMissingKabupatenColumnError(withKabupaten.error)) {
+      const fallback = await applySearch(
+        supabase
+          .from("user_admin")
+          .select("fb_doc_id, uid, name, username, email, role, phone_number, created_at", {
+            count: "exact",
+          })
+          .order("created_at", { ascending: false })
+          .range(safeOffset, safeOffset + safeLimit - 1),
+        false
+      );
+      if (fallback.error) {
+        throw new Error(fallback.error.message);
+      }
+      data = fallback.data;
+      count = fallback.count;
     }
 
     const users = ((data || []) as UserAdminRow[]).map((row) => ({
@@ -53,6 +84,7 @@ export async function GET(request: NextRequest) {
       email: row.email || "",
       role: row.role || "",
       phoneNumber: row.phone_number || "",
+      kabupaten: row.role === "super-admin" ? "" : row.kabupaten || "tabanan",
       createdAt: row.created_at,
     }));
 
@@ -80,6 +112,8 @@ export async function POST(request: NextRequest) {
       email?: string;
       password?: string;
       role?: string;
+      kabupaten?: string;
+      phoneNumber?: string;
     };
 
     const name = payload.name?.trim() || "";
@@ -87,9 +121,16 @@ export async function POST(request: NextRequest) {
     const email = payload.email?.trim().toLowerCase() || "";
     const password = payload.password || "";
     const role = payload.role?.trim() || "";
+    const phoneNumber = payload.phoneNumber?.trim() || "";
+    const isSuperAdminRole = role === "super-admin";
+    const kabupaten = isSuperAdminRole ? "" : payload.kabupaten?.trim().toLowerCase() || "tabanan";
 
-    if (!name || !username || !email || !password || !role) {
+    if (!name || !username || !email || !password || !role || (!isSuperAdminRole && !kabupaten)) {
       return NextResponse.json({ error: "Data user belum lengkap." }, { status: 400 });
+    }
+
+    if (!isSuperAdminRole && !["tabanan", "denpasar"].includes(kabupaten)) {
+      return NextResponse.json({ error: "Kabupaten user tidak valid." }, { status: 400 });
     }
 
     const supabase = getSupabaseAdminClient() as any;
@@ -115,6 +156,8 @@ export async function POST(request: NextRequest) {
         name,
         username,
         role,
+        phone_number: phoneNumber,
+        ...(isSuperAdminRole ? {} : { kabupaten }),
       },
     });
 
@@ -125,18 +168,37 @@ export async function POST(request: NextRequest) {
     const authUserId = authData.user.id;
     const createdAt = new Date().toISOString();
 
-    const { error: profileError } = await supabase.from("user_admin").upsert(
-      {
-        fb_doc_id: authUserId,
-        uid: authUserId,
-        name,
-        username,
-        email,
-        role,
-        created_at: createdAt,
-      },
-      { onConflict: "fb_doc_id" }
-    );
+    const profilePayload = {
+      fb_doc_id: authUserId,
+      uid: authUserId,
+      name,
+      username,
+      email,
+      role,
+      phone_number: phoneNumber,
+      kabupaten: isSuperAdminRole ? null : kabupaten,
+      created_at: createdAt,
+    };
+    let profileError: { message: string } | null = null;
+    const firstUpsert = await supabase.from("user_admin").upsert(profilePayload, { onConflict: "fb_doc_id" });
+    if (firstUpsert.error && !isMissingKabupatenColumnError(firstUpsert.error)) {
+      profileError = firstUpsert.error;
+    } else if (firstUpsert.error && isMissingKabupatenColumnError(firstUpsert.error)) {
+      const fallbackUpsert = await supabase.from("user_admin").upsert(
+        {
+          fb_doc_id: authUserId,
+          uid: authUserId,
+          name,
+          username,
+          email,
+          role,
+          phone_number: phoneNumber,
+          created_at: createdAt,
+        },
+        { onConflict: "fb_doc_id" }
+      );
+      profileError = fallbackUpsert.error;
+    }
 
     if (profileError) {
       await supabase.auth.admin.deleteUser(authUserId);
@@ -152,6 +214,8 @@ export async function POST(request: NextRequest) {
         username,
         email,
         role,
+        phoneNumber,
+        kabupaten: isSuperAdminRole ? "" : kabupaten,
         createdAt,
       },
     });

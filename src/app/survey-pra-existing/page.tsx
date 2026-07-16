@@ -151,6 +151,7 @@ const SUBMITTED_SURVEYS_REFRESH_INTERVAL_MS = 10_000;
 function SurveyPraExistingContent() {
   const router = useRouter();
   const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super-admin";
 
   const [gpsCoords, setGpsCoords] = useState<GPSCoordinates | null>(null);
   const [trackingPath, setTrackingPath] = useState<Array<{ lat: number; lng: number }>>([]);
@@ -413,12 +414,22 @@ function SurveyPraExistingContent() {
   }, []);
 
   useEffect(() => {
-    const storedKabupaten = getActiveKabupatenFromStorage(user?.uid || "") || getActiveKabupatenFromStorage();
+    if (!user) return;
+
+    const assignedKabupaten = user.kabupaten?.trim().toLowerCase() || "tabanan";
+    if (!isSuperAdmin) {
+      setActiveKabupaten(assignedKabupaten);
+      setActiveKabupatenToStorage(user.uid || "", assignedKabupaten);
+      setFormData((previous) => ({ ...previous, kabupaten: assignedKabupaten }));
+      return;
+    }
+
+    const storedKabupaten = getActiveKabupatenFromStorage(user.uid || "") || getActiveKabupatenFromStorage();
     if (storedKabupaten) {
       setActiveKabupaten(storedKabupaten);
       setFormData((previous) => ({ ...previous, kabupaten: storedKabupaten }));
     }
-  }, [user?.uid]);
+  }, [isSuperAdmin, user]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1497,7 +1508,11 @@ function SurveyPraExistingContent() {
             <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Form Pra Existing</h2>
-                <p className="text-sm text-slate-500">Kabupaten wajib dipilih agar data tidak nyasar dan terbaca di panel wilayah yang benar.</p>
+                <p className="text-sm text-slate-500">
+                  {isSuperAdmin
+                    ? "Kabupaten tetap bisa dipilih untuk kebutuhan lintas wilayah."
+                    : "Kabupaten membaca akun user dan dikunci agar data tidak nyasar ke wilayah lain."}
+                </p>
               </div>
               <div className={`rounded-2xl border px-4 py-3 text-sm ${isFormLocked ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
                 <div className="flex items-start justify-between gap-3">
@@ -1538,7 +1553,7 @@ function SurveyPraExistingContent() {
               </div>
               <fieldset disabled={isFormLocked} className="space-y-5 disabled:opacity-60">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <SelectField label="Kabupaten" value={formData.kabupaten} onChange={(value) => handleInputChange("kabupaten", value)} options={KABUPATEN_OPTIONS.map((item) => item.id)} optionLabelMap={Object.fromEntries(KABUPATEN_OPTIONS.map((item) => [item.id, item.name]))} required />
+                  <SelectField label="Kabupaten" value={formData.kabupaten} onChange={(value) => handleInputChange("kabupaten", value)} options={KABUPATEN_OPTIONS.map((item) => item.id)} optionLabelMap={Object.fromEntries(KABUPATEN_OPTIONS.map((item) => [item.id, item.name]))} required disabled={!isSuperAdmin} />
                   <SelectField label="Kecamatan" value={formData.kecamatan} onChange={(value) => handleInputChange("kecamatan", value)} options={districtOptions} required disabled={formData.kabupaten !== "tabanan"} />
                   <SelectField label="Desa" value={formData.desa} onChange={(value) => handleInputChange("desa", value)} options={desaOptions} required disabled={!formData.kecamatan} />
                   <SelectField label="Banjar" value={formData.banjar} onChange={(value) => handleInputChange("banjar", value)} options={banjarOptions} required disabled={!formData.desa} />

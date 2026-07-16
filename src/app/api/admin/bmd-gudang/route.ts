@@ -33,6 +33,31 @@ async function createInventoryTransaction(
   }
 ) {
   const now = new Date().toISOString();
+  const { data: existingRows, error: existingError } = await (
+    supabase.from(TABLES.transactions) as unknown as {
+      select: (columns: string) => {
+        eq: (column: string, value: string) => {
+          eq: (column: string, value: string) => {
+            eq: (column: string, value: string) => {
+              eq: (column: string, value: string) => {
+                limit: (count: number) => SelectResult;
+              };
+            };
+          };
+        };
+      };
+    }
+  )
+    .select("fb_doc_id")
+    .eq("material_id", payload.materialId)
+    .eq("tipe_transaksi", payload.type)
+    .eq("id_referensi", payload.referensi)
+    .eq("source_module", payload.sourceModule)
+    .limit(1);
+  if (existingError) throw new Error(existingError.message);
+  const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+  if (existing?.fb_doc_id) return String(existing.fb_doc_id);
+
   const id = createDocId("gudang_trx");
   const trxRow = {
     fb_doc_id: id,
@@ -275,6 +300,10 @@ export async function POST(request: NextRequest) {
       }
 
       const rawPayload = ((row.raw_payload as Record<string, unknown> | null) || {});
+      const auditTrail = Array.isArray(rawPayload.auditTrail) ? rawPayload.auditTrail : [];
+      const actorId = normalizeString(payload.actorId);
+      const actorName = normalizeString(payload.actorName) || "Admin Gudang";
+      const note = normalizeString(payload.note) || `Status diubah menjadi ${nextStatus}`;
       const { error: updateError } = await (
         supabase.from(TABLES.requests) as unknown as {
           update: (values: Record<string, unknown>) => {
@@ -287,6 +316,20 @@ export async function POST(request: NextRequest) {
           raw_payload: {
             ...rawPayload,
             status: nextStatus,
+            auditTrail: [
+              ...auditTrail,
+              {
+                status: nextStatus,
+                actorId,
+                actorName,
+                note,
+                at: now,
+              },
+            ],
+            lastStatusActorId: actorId,
+            lastStatusActorName: actorName,
+            lastStatusNote: note,
+            lastStatusAt: now,
             updatedAt: now,
           },
           updated_at: now,

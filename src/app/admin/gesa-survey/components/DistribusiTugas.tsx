@@ -339,6 +339,8 @@ export default function DistribusiTugas({
             "petugas-survey-cahaya",
             "petugas-kontruksi",
             "petugas-om",
+            "petugas-om-correctif",
+            "petugas-om-preventif",
             "petugas-bmd-gudang",
           ]);
 

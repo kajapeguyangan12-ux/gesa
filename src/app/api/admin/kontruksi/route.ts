@@ -17,6 +17,17 @@ const TABLES = {
   submissions: "kontruksi_submissions",
   valid: "kontruksi_valid",
   rejected: "kontruksi_rejected",
+  materials: "mst_gudang_material",
+  transactions: "log_inventory_trxs",
+};
+
+const STAGE_MATERIAL_REQUIREMENTS: Record<string, { category: string; quantity: number }[]> = {
+  "pemasangan-tiang": [
+    { category: "TIANG", quantity: 1 },
+    { category: "ARM", quantity: 1 },
+    { category: "LAMPU", quantity: 1 },
+  ],
+  "pemasangan-kabel": [{ category: "KABEL", quantity: 1 }],
 };
 
 function createDocId(prefix: string) {
@@ -174,6 +185,323 @@ async function selectRows(table: string, orderColumn: string, limit: number) {
   return (data || []) as Record<string, unknown>[];
 }
 
+async function markDesignTaskSubmitted(
+  supabase: any,
+  payload: Record<string, unknown>,
+  submissionId: string
+) {
+  const sourceTaskId = typeof payload.sourceTaskId === "string" ? payload.sourceTaskId.trim() : "";
+  if (!sourceTaskId) return;
+
+  const now = new Date().toISOString();
+  const idTitik = typeof payload.idTitik === "string" ? payload.idTitik.trim() : "";
+  const stage = typeof payload.stage === "string" ? payload.stage.trim() : typeof payload.tahap === "string" ? payload.tahap.trim() : "";
+
+  const { data, error } = await supabase
+    .from(TABLES.designTasks)
+    .select("*")
+    .eq("fb_doc_id", sourceTaskId)
+    .limit(1);
+  if (error) throw new Error(error.message);
+
+  const existing = Array.isArray(data) ? data[0] : null;
+  if (!existing) return;
+
+  const rawPayload = ((existing.raw_payload as Record<string, unknown> | null) || {});
+  const zones = Array.isArray(existing.zones)
+    ? existing.zones
+    : Array.isArray(rawPayload.zones)
+      ? rawPayload.zones
+      : [];
+  const currentSubmittedStages = Array.isArray(rawPayload.submittedStages) ? rawPayload.submittedStages : [];
+  const currentSubmittedPoints = Array.isArray(rawPayload.submittedPoints) ? rawPayload.submittedPoints : [];
+  const nextSubmittedStages = Array.from(new Set([...currentSubmittedStages, stage].filter(Boolean)));
+  const nextSubmittedPoints = Array.from(new Set([...currentSubmittedPoints, idTitik].filter(Boolean)));
+
+  const nextZones = zones.map((zone: unknown) => {
+    if (!zone || typeof zone !== "object") return zone;
+    const record = zone as Record<string, unknown>;
+    if (idTitik && record.idTitik !== idTitik) return record;
+    return {
+      ...record,
+      kontruksiStatus: "submitted",
+      status: "submitted",
+      submittedStage: stage,
+      submissionId,
+      submittedAt: now,
+    };
+  });
+
+  const totalZones = zones.length;
+  const submittedCount = nextZones.filter((zone: unknown) => {
+    if (!zone || typeof zone !== "object") return false;
+    const status = String((zone as Record<string, unknown>).status || (zone as Record<string, unknown>).kontruksiStatus || "");
+    return status === "submitted" || status === "valid";
+  }).length;
+  const nextStatus = totalZones > 0 && submittedCount >= totalZones ? "submitted" : "in-progress";
+
+  const { error: updateError } = await supabase
+    .from(TABLES.designTasks)
+    .update({
+      zones: nextZones,
+      status: nextStatus,
+      raw_payload: {
+        ...rawPayload,
+        zones: nextZones,
+        status: nextStatus,
+        submittedStages: nextSubmittedStages,
+        submittedPoints: nextSubmittedPoints,
+        lastSubmissionId: submissionId,
+        lastSubmittedStage: stage,
+        lastSubmittedPoint: idTitik,
+        updatedAt: now,
+      },
+      updated_at: now,
+    })
+    .eq("fb_doc_id", sourceTaskId);
+  if (updateError) throw new Error(updateError.message);
+}
+
+async function markDesignTaskDecision(
+  supabase: any,
+  payload: Record<string, unknown>,
+  decision: "valid" | "rejected",
+  submissionId: string
+) {
+  const sourceTaskId = typeof payload.sourceTaskId === "string" ? payload.sourceTaskId.trim() : "";
+  if (!sourceTaskId) return;
+
+  const now = new Date().toISOString();
+  const idTitik = typeof payload.idTitik === "string" ? payload.idTitik.trim() : "";
+  const stage =
+    typeof payload.stage === "string"
+      ? payload.stage.trim()
+      : typeof payload.tahap === "string"
+        ? payload.tahap.trim()
+        : "";
+
+  const { data, error } = await supabase
+    .from(TABLES.designTasks)
+    .select("*")
+    .eq("fb_doc_id", sourceTaskId)
+    .limit(1);
+  if (error) throw new Error(error.message);
+
+  const existing = Array.isArray(data) ? data[0] : null;
+  if (!existing) return;
+
+  const rawPayload = ((existing.raw_payload as Record<string, unknown> | null) || {});
+  const zones = Array.isArray(existing.zones)
+    ? existing.zones
+    : Array.isArray(rawPayload.zones)
+      ? rawPayload.zones
+      : [];
+  const currentDecisionStages = Array.isArray(rawPayload[`${decision}Stages`])
+    ? (rawPayload[`${decision}Stages`] as unknown[])
+    : [];
+  const currentDecisionPoints = Array.isArray(rawPayload[`${decision}Points`])
+    ? (rawPayload[`${decision}Points`] as unknown[])
+    : [];
+  const nextDecisionStages = Array.from(new Set([...currentDecisionStages, stage].filter(Boolean)));
+  const nextDecisionPoints = Array.from(new Set([...currentDecisionPoints, idTitik].filter(Boolean)));
+
+  const nextZones = zones.map((zone: unknown) => {
+    if (!zone || typeof zone !== "object") return zone;
+    const record = zone as Record<string, unknown>;
+    if (idTitik && record.idTitik !== idTitik) return record;
+    return {
+      ...record,
+      kontruksiStatus: decision,
+      status: decision,
+      [`${decision}Stage`]: stage,
+      [`${decision}SubmissionId`]: submissionId,
+      [`${decision}At`]: now,
+    };
+  });
+
+  const statuses: string[] = nextZones
+    .filter((zone: unknown) => zone && typeof zone === "object")
+    .map((zone: unknown) => {
+      const record = zone as Record<string, unknown>;
+      return String(record.status || record.kontruksiStatus || "");
+    });
+  const totalZones = statuses.length;
+  const validCount = statuses.filter((status) => status === "valid").length;
+  const rejectedCount = statuses.filter((status) => status === "rejected").length;
+  const hasProgress = statuses.some((status) => status === "submitted" || status === "valid" || status === "rejected");
+  const nextStatus =
+    totalZones > 0 && validCount >= totalZones
+      ? "valid"
+      : rejectedCount > 0
+        ? "needs-revision"
+        : hasProgress
+          ? "in-progress"
+          : String(existing.status || rawPayload.status || "assigned");
+
+  const { error: updateError } = await supabase
+    .from(TABLES.designTasks)
+    .update({
+      zones: nextZones,
+      status: nextStatus,
+      raw_payload: {
+        ...rawPayload,
+        zones: nextZones,
+        status: nextStatus,
+        [`${decision}Stages`]: nextDecisionStages,
+        [`${decision}Points`]: nextDecisionPoints,
+        lastDecision: decision,
+        lastDecisionSubmissionId: submissionId,
+        lastDecisionStage: stage,
+        lastDecisionPoint: idTitik,
+        lastDecisionAt: now,
+        updatedAt: now,
+      },
+      updated_at: now,
+    })
+    .eq("fb_doc_id", sourceTaskId);
+  if (updateError) throw new Error(updateError.message);
+}
+
+async function findDuplicateSubmission(supabase: any, payload: Record<string, unknown>) {
+  if (payload.allowDuplicate === true) return null;
+
+  const sourceTaskId = typeof payload.sourceTaskId === "string" ? payload.sourceTaskId.trim() : "";
+  const idTitik = typeof payload.idTitik === "string" ? payload.idTitik.trim() : "";
+  const stage =
+    typeof payload.stage === "string"
+      ? payload.stage.trim()
+      : typeof payload.tahap === "string"
+        ? payload.tahap.trim()
+        : "";
+  if (!sourceTaskId || !idTitik || !stage) return null;
+
+  const { data, error } = await supabase
+    .from(TABLES.submissions)
+    .select("fb_doc_id")
+    .eq("source_task_id", sourceTaskId)
+    .eq("id_titik", idTitik)
+    .eq("stage", stage)
+    .limit(1);
+  if (error) throw new Error(error.message);
+
+  return Array.isArray(data) ? data[0] || null : null;
+}
+
+async function createConstructionMaterialOut(
+  supabase: any,
+  payload: {
+    materialId: string;
+    materialName: string;
+    quantity: number;
+    reference: string;
+    stage: string;
+    idTitik: string;
+  }
+) {
+  const now = new Date().toISOString();
+  const existingReference = `${payload.reference}:${payload.materialId}`;
+  const { data: existingRows, error: existingError } = await supabase
+    .from(TABLES.transactions)
+    .select("fb_doc_id")
+    .eq("id_referensi", existingReference)
+    .limit(1);
+  if (existingError) throw new Error(existingError.message);
+  if (Array.isArray(existingRows) && existingRows.length > 0) return;
+
+  const trxId = createDocId("gudang_trx");
+  const { error: trxError } = await supabase.from(TABLES.transactions).insert({
+    fb_doc_id: trxId,
+    material_id: payload.materialId,
+    material_name: payload.materialName,
+    tipe_transaksi: "KELUAR",
+    jumlah: payload.quantity,
+    id_referensi: existingReference,
+    source_module: "Konstruksi",
+    status: "Posted",
+    raw_payload: {
+      id: trxId,
+      type: "KELUAR",
+      jumlah: payload.quantity,
+      referensi: existingReference,
+      sourceModule: "Konstruksi",
+      status: "Posted",
+      stage: payload.stage,
+      idTitik: payload.idTitik,
+      createdAt: now,
+      updatedAt: now,
+    },
+    created_at: now,
+    updated_at: now,
+  });
+  if (trxError) throw new Error(trxError.message);
+
+  const { data: materialRows, error: materialError } = await supabase
+    .from(TABLES.materials)
+    .select("stok_tersedia, raw_payload")
+    .eq("fb_doc_id", payload.materialId)
+    .limit(1);
+  if (materialError) throw new Error(materialError.message);
+
+  const material = Array.isArray(materialRows) ? materialRows[0] : null;
+  if (!material) return;
+
+  const rawPayload = ((material.raw_payload as Record<string, unknown> | null) || {});
+  const currentStock = parseNumber(material.stok_tersedia) || 0;
+  const nextStock = Math.max(0, currentStock - payload.quantity);
+  const { error: updateError } = await supabase
+    .from(TABLES.materials)
+    .update({
+      stok_tersedia: nextStock,
+      raw_payload: {
+        ...rawPayload,
+        stokTersedia: nextStock,
+        updatedAt: now,
+      },
+      updated_at: now,
+    })
+    .eq("fb_doc_id", payload.materialId);
+  if (updateError) throw new Error(updateError.message);
+}
+
+async function consumeConstructionMaterials(
+  supabase: any,
+  payload: Record<string, unknown>,
+  submissionId: string
+) {
+  const stage =
+    typeof payload.stage === "string"
+      ? payload.stage.trim()
+      : typeof payload.tahap === "string"
+        ? payload.tahap.trim()
+        : "";
+  const requirements = STAGE_MATERIAL_REQUIREMENTS[stage] || [];
+  if (requirements.length === 0) return;
+
+  const idTitik = typeof payload.idTitik === "string" ? payload.idTitik.trim() : "";
+  for (const requirement of requirements) {
+    const { data, error } = await supabase
+      .from(TABLES.materials)
+      .select("fb_doc_id, nama_barang, stok_tersedia")
+      .eq("kategori", requirement.category)
+      .order("stok_tersedia", { ascending: false })
+      .limit(1);
+    if (error) throw new Error(error.message);
+
+    const material = Array.isArray(data) ? data[0] : null;
+    const stock = parseNumber(material?.stok_tersedia) || 0;
+    if (!material || stock <= 0) continue;
+
+    await createConstructionMaterialOut(supabase, {
+      materialId: String(material.fb_doc_id || ""),
+      materialName: String(material.nama_barang || requirement.category),
+      quantity: Math.min(requirement.quantity, stock),
+      reference: submissionId,
+      stage,
+      idTitik,
+    });
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const resource = (request.nextUrl.searchParams.get("resource") || "submissions") as Resource;
@@ -273,9 +601,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (resource === "submission") {
+      const duplicate = await findDuplicateSubmission(supabase, payload);
+      if (duplicate) {
+        return NextResponse.json(
+          {
+            error: "Data titik dan tahap ini sudah pernah dikirim. Konfirmasi pengiriman ulang terlebih dahulu.",
+            duplicateId: duplicate.fb_doc_id,
+          },
+          { status: 409 }
+        );
+      }
       const row = toKontruksiInsert(payload);
       const { error } = await supabase.from(TABLES.submissions).upsert(row, { onConflict: "fb_doc_id" });
       if (error) throw new Error(error.message);
+      await markDesignTaskSubmitted(supabase, payload, row.fb_doc_id);
       return NextResponse.json({ id: row.fb_doc_id });
     }
 
@@ -289,6 +628,8 @@ export async function POST(request: NextRequest) {
       };
       const { error: upsertError } = await supabase.from(TABLES.valid).upsert(row, { onConflict: "fb_doc_id" });
       if (upsertError) throw new Error(upsertError.message);
+      await markDesignTaskDecision(supabase, item, "valid", row.fb_doc_id);
+      await consumeConstructionMaterials(supabase, item, row.fb_doc_id);
       if (sourceId) {
         const { error: deleteError } = await supabase.from(TABLES.submissions).delete().eq("fb_doc_id", sourceId);
         if (deleteError) throw new Error(deleteError.message);
@@ -310,6 +651,7 @@ export async function POST(request: NextRequest) {
       };
       const { error: upsertError } = await supabase.from(TABLES.rejected).upsert(row, { onConflict: "fb_doc_id" });
       if (upsertError) throw new Error(upsertError.message);
+      await markDesignTaskDecision(supabase, item, "rejected", row.fb_doc_id);
       if (sourceId) {
         const { error: deleteError } = await supabase.from(TABLES.submissions).delete().eq("fb_doc_id", sourceId);
         if (deleteError) throw new Error(deleteError.message);

@@ -1,11 +1,19 @@
 "use client";
 
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { useAuth } from "@/hooks/useAuth";
 import { OMPageShell, OMPlaceholderPanel } from "@/components/om/OMPageShell";
+import { isMobileOmRole, PreventiveOMReportsList } from "@/components/om/PreventiveOMMobile";
 
 export default function OMHistoryLaporanPage() {
+  const { user } = useAuth();
+  const isMobileRole = isMobileOmRole(user?.role);
+
   return (
     <ProtectedRoute>
+      {isMobileRole ? (
+        <PreventiveOMReportsList mode="reports" />
+      ) : (
       <OMPageShell
         eyebrow="Riwayat Laporan"
         title="Riwayat laporan O&M dengan struktur yang siap untuk audit dan penelusuran."
@@ -26,6 +34,7 @@ export default function OMHistoryLaporanPage() {
           note="Halaman riwayat sedang dipersiapkan."
         />
       </OMPageShell>
+      )}
     </ProtectedRoute>
   );
 }

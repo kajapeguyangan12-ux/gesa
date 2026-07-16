@@ -393,6 +393,7 @@ function mapSurveyPraExistingDocument(doc) {
 
 function mapUserAdminDocument(doc) {
   const data = doc.data();
+  const role = pickString(data.role);
 
   return {
     fb_doc_id: doc.id,
@@ -401,7 +402,8 @@ function mapUserAdminDocument(doc) {
     username: pickString(data.username),
     email: pickString(data.email),
     password: pickString(data.password),
-    role: pickString(data.role),
+    role,
+    kabupaten: role === "super-admin" ? null : pickString(data.kabupaten, data.wilayah, data.region) || "tabanan",
     phone_number: pickString(data.phoneNumber, data.phone, data.noTelp, data.no_telp),
     created_at: normalizeTimestamp(data.createdAt),
     updated_at: normalizeTimestamp(data.updatedAt),

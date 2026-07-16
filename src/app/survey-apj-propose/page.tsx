@@ -72,6 +72,7 @@ const DynamicUnifiedMap = dynamic(
 function SurveyAPJProposeContent() {
   const router = useRouter();
   const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super-admin";
 
   const [activeKabupaten, setActiveKabupaten] = useState<string | null>(null);
   const [pendingKabupaten, setPendingKabupaten] = useState<string | null>(null);
@@ -266,6 +267,17 @@ function SurveyAPJProposeContent() {
       setShowKabupatenPicker(false);
       return;
     }
+
+    const assignedKabupaten = user?.kabupaten?.trim().toLowerCase() || "tabanan";
+    if (!isSuperAdmin) {
+      setActiveKabupaten(assignedKabupaten);
+      setActiveKabupatenToStorage(user?.uid || "", assignedKabupaten);
+      setShowKabupatenPicker(false);
+      setShowKabupatenConfirm(false);
+      setPendingKabupaten(null);
+      return;
+    }
+
     const stored = getActiveKabupatenFromStorage(user?.uid || "");
     if (stored) {
       setActiveKabupaten(stored);
@@ -274,7 +286,7 @@ function SurveyAPJProposeContent() {
       setActiveKabupaten(null);
       setShowKabupatenPicker(true);
     }
-  }, [taskKabupaten, user?.uid]);
+  }, [isSuperAdmin, taskKabupaten, user?.kabupaten, user?.uid]);
 
   const activeKabupatenName =
     KABUPATEN_OPTIONS.find((k) => k.id === activeKabupaten)?.name || "-";
@@ -1113,13 +1125,17 @@ function SurveyAPJProposeContent() {
                     <span className="text-[11px] font-semibold text-amber-700 border border-amber-200 bg-amber-50 px-2 py-0.5 rounded-full">
                       Dikunci dari tugas admin
                     </span>
-                  ) : (
+                  ) : isSuperAdmin ? (
                     <button
                       onClick={() => setShowKabupatenPicker(true)}
                       className="text-[11px] font-semibold text-gray-700 hover:text-blue-700 border border-gray-200 hover:border-blue-200 bg-white px-2 py-0.5 rounded-full transition-all"
                     >
                       Ganti kabupaten
                     </button>
+                  ) : (
+                    <span className="text-[11px] font-semibold text-slate-700 border border-slate-200 bg-slate-50 px-2 py-0.5 rounded-full">
+                      Dikunci dari akun user
+                    </span>
                   )}
                 </div>
               </div>
@@ -1843,7 +1859,7 @@ function SurveyAPJProposeContent() {
         </button>
       </main>
 
-      {showKabupatenPicker && (
+      {isSuperAdmin && showKabupatenPicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="p-5 border-b border-gray-200">
@@ -1882,7 +1898,7 @@ function SurveyAPJProposeContent() {
         </div>
       )}
 
-      {showKabupatenConfirm && pendingKabupaten && (
+      {isSuperAdmin && showKabupatenConfirm && pendingKabupaten && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="p-5 border-b border-gray-200">

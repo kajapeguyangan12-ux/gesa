@@ -2,7 +2,7 @@ create table if not exists public.mst_gudang_material (
   fb_doc_id text primary key,
   kode_barang text not null,
   nama_barang text not null,
-  kategori text not null check (kategori in ('TIANG', 'LAMPU', 'ARM')),
+  kategori text not null check (kategori in ('TIANG', 'LAMPU', 'ARM', 'KABEL')),
   stok_tersedia integer not null default 0,
   stok_minimum integer not null default 0,
   lokasi_gudang text not null default 'Gudang Utama',
@@ -14,6 +14,15 @@ create table if not exists public.mst_gudang_material (
 
 create unique index if not exists mst_gudang_material_kode_barang_idx
   on public.mst_gudang_material (kode_barang);
+
+do $$
+begin
+  alter table public.mst_gudang_material
+    drop constraint if exists mst_gudang_material_kategori_check;
+  alter table public.mst_gudang_material
+    add constraint mst_gudang_material_kategori_check
+    check (kategori in ('TIANG', 'LAMPU', 'ARM', 'KABEL'));
+end $$;
 
 create table if not exists public.log_inventory_trxs (
   fb_doc_id text primary key,
@@ -41,8 +50,9 @@ create table if not exists public.gudang_material_requests (
   requester_id text not null,
   requester_name text not null,
   note text null,
-  status text not null default 'Diajukan' check (status in ('Diajukan', 'Diproses', 'Disetujui', 'Ditolak')),
+  status text not null default 'Diajukan' check (status in ('Diajukan', 'Diproses', 'Disetujui', 'Dikeluarkan', 'Selesai', 'Ditolak')),
   location_hint text null,
+  source_report_id text null,
   raw_payload jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -50,6 +60,21 @@ create table if not exists public.gudang_material_requests (
 
 create index if not exists gudang_material_requests_requester_id_idx
   on public.gudang_material_requests (requester_id);
+
+alter table public.gudang_material_requests
+  add column if not exists source_report_id text null;
+
+create index if not exists gudang_material_requests_source_report_id_idx
+  on public.gudang_material_requests (source_report_id);
+
+do $$
+begin
+  alter table public.gudang_material_requests
+    drop constraint if exists gudang_material_requests_status_check;
+  alter table public.gudang_material_requests
+    add constraint gudang_material_requests_status_check
+    check (status in ('Diajukan', 'Diproses', 'Disetujui', 'Dikeluarkan', 'Selesai', 'Ditolak'));
+end $$;
 
 create table if not exists public.bmd_assets (
   fb_doc_id text primary key,

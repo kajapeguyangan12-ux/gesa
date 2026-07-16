@@ -1,4 +1,4 @@
-export type MaterialCategory = "TIANG" | "LAMPU" | "ARM";
+export type MaterialCategory = "TIANG" | "LAMPU" | "ARM" | "KABEL";
 export type InventoryTransactionType = "MASUK" | "KELUAR" | "MUTASI" | "RETUR" | "BOOKED";
 export type BmdCondition = "Baik" | "Rusak Ringan" | "Rusak Berat";
 export type BmdStatus = "Di Gudang" | "Dipinjam" | "Dihapuskan";
@@ -22,6 +22,12 @@ export type ArmDetail = {
   sudutKemiringan: string;
 };
 
+export type KabelDetail = {
+  jenisKabel: string;
+  ukuranKabel: string;
+  panjangRoll: string;
+};
+
 export type MaterialBase = {
   id: string;
   kodeBarang: string;
@@ -31,12 +37,14 @@ export type MaterialBase = {
   stokMinimum: number;
   lokasiGudang: string;
   fotoLabel: string;
+  fotoUrl?: string;
 };
 
 export type MaterialItem =
   | (MaterialBase & { kategori: "TIANG"; detail: TiangDetail })
   | (MaterialBase & { kategori: "LAMPU"; detail: LampuDetail })
-  | (MaterialBase & { kategori: "ARM"; detail: ArmDetail });
+  | (MaterialBase & { kategori: "ARM"; detail: ArmDetail })
+  | (MaterialBase & { kategori: "KABEL"; detail: KabelDetail });
 
 export type InventoryTransaction = {
   id: string;
@@ -59,9 +67,18 @@ export type MaterialRequest = {
   requesterName: string;
   requesterId?: string;
   note: string;
-  status: "Diajukan" | "Diproses" | "Disetujui" | "Ditolak";
+  status: "Diajukan" | "Diproses" | "Disetujui" | "Dikeluarkan" | "Selesai" | "Ditolak";
   locationHint: string;
   timeLabel: string;
+  workType?: string;
+  sourceModule?: "Gudang" | "Konstruksi" | "O&M";
+  auditTrail?: Array<{
+    status: string;
+    actorId: string;
+    actorName: string;
+    note: string;
+    at: string;
+  }>;
 };
 
 export type BmdAsset = {
@@ -74,6 +91,7 @@ export type BmdAsset = {
   lokasi: string;
   peminjam: string;
   estimasiKembali: string;
+  fotoUrl?: string;
 };
 
 export function createDocId(prefix: string) {
@@ -111,6 +129,14 @@ export function createDefaultMaterialDetail(category: MaterialCategory) {
     };
   }
 
+  if (category === "KABEL") {
+    return {
+      jenisKabel: "",
+      ukuranKabel: "",
+      panjangRoll: "",
+    };
+  }
+
   return {
     panjangMeter: "",
     diameterInch: "",
@@ -143,6 +169,7 @@ export function mapMaterialRow(row: Record<string, unknown>): MaterialItem {
     stokMinimum: normalizeNumber(row.stok_minimum ?? raw.stokMinimum, 0),
     lokasiGudang: normalizeString(row.lokasi_gudang) || normalizeString(raw.lokasiGudang),
     fotoLabel: normalizeString(row.foto_label) || normalizeString(raw.fotoLabel) || kategori,
+    fotoUrl: normalizeString(raw.fotoUrl),
   };
 
   const detail = (raw.detail as Record<string, unknown> | undefined) || {};
@@ -166,6 +193,17 @@ export function mapMaterialRow(row: Record<string, unknown>): MaterialItem {
         jenisLed: normalizeString(detail.jenisLed),
         merk: normalizeString(detail.merk),
         lumen: normalizeString(detail.lumen),
+      },
+    };
+  }
+  if (kategori === "KABEL") {
+    return {
+      ...base,
+      kategori,
+      detail: {
+        jenisKabel: normalizeString(detail.jenisKabel),
+        ukuranKabel: normalizeString(detail.ukuranKabel),
+        panjangRoll: normalizeString(detail.panjangRoll),
       },
     };
   }
@@ -209,6 +247,9 @@ export function mapRequestRow(row: Record<string, unknown>): MaterialRequest {
     status: (normalizeString(row.status) || normalizeString(raw.status) || "Diajukan") as MaterialRequest["status"],
     locationHint: normalizeString(row.location_hint) || normalizeString(raw.locationHint),
     timeLabel: formatTimeLabel(normalizeString(row.created_at) || normalizeString(raw.createdAt)),
+    workType: normalizeString(raw.workType),
+    sourceModule: (normalizeString(raw.sourceModule) || undefined) as MaterialRequest["sourceModule"],
+    auditTrail: Array.isArray(raw.auditTrail) ? raw.auditTrail as MaterialRequest["auditTrail"] : [],
   };
 }
 
@@ -224,5 +265,6 @@ export function mapBmdAssetRow(row: Record<string, unknown>): BmdAsset {
     lokasi: normalizeString(row.lokasi) || normalizeString(raw.lokasi),
     peminjam: normalizeString(row.peminjam) || normalizeString(raw.peminjam) || "-",
     estimasiKembali: normalizeString(row.estimasi_kembali) || normalizeString(raw.estimasiKembali) || "-",
+    fotoUrl: normalizeString(raw.fotoUrl),
   };
 }

@@ -34,6 +34,18 @@ function GesaSurveyContent() {
   const [showKabupatenConfirm, setShowKabupatenConfirm] = useState(false);
 
   useEffect(() => {
+    if (!user) return;
+
+    const assignedKabupaten = user?.kabupaten?.trim().toLowerCase() || "tabanan";
+    if (!isSuperAdmin) {
+      setActiveKabupaten(assignedKabupaten);
+      setActiveKabupatenToStorage(user?.uid || "", assignedKabupaten);
+      setShowKabupatenPicker(false);
+      setShowKabupatenConfirm(false);
+      setPendingKabupaten(null);
+      return;
+    }
+
     const stored = getActiveKabupatenFromStorage(user?.uid || "");
     if (stored) {
       setActiveKabupaten(stored);
@@ -42,7 +54,7 @@ function GesaSurveyContent() {
       setActiveKabupaten(null);
       setShowKabupatenPicker(true);
     }
-  }, [user?.uid]);
+  }, [isSuperAdmin, user]);
 
   useEffect(() => {
     setVisitedMenus((current) =>
@@ -241,14 +253,20 @@ function GesaSurveyContent() {
               <span className="text-xs font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded-full">
                 Kabupaten aktif: {activeKabupatenName}
               </span>
-              <span className="text-xs text-gray-500">Data hanya tampil sesuai kabupaten terpilih.</span>
+              <span className="text-xs text-gray-500">
+                {isSuperAdmin
+                  ? "Data tampil sesuai kabupaten yang sedang dipilih."
+                  : "Kabupaten admin dibaca otomatis dari role akun."}
+              </span>
             </div>
-            <button
-              onClick={() => setShowKabupatenPicker(true)}
-              className="px-3 py-1.5 text-xs font-semibold text-gray-700 hover:text-green-700 border border-gray-200 hover:border-green-200 rounded-lg bg-white transition-all"
-            >
-              Ganti kabupaten
-            </button>
+            {isSuperAdmin ? (
+              <button
+                onClick={() => setShowKabupatenPicker(true)}
+                className="px-3 py-1.5 text-xs font-semibold text-gray-700 hover:text-green-700 border border-gray-200 hover:border-green-200 rounded-lg bg-white transition-all"
+              >
+                Ganti kabupaten
+              </button>
+            ) : null}
           </div>
           {visitedMenus.includes("dashboard") && (
             <section className={activeMenu === "dashboard" ? "block" : "hidden"} aria-hidden={activeMenu !== "dashboard"}>
@@ -312,7 +330,7 @@ function GesaSurveyContent() {
           )}
         </div>
 
-        {showKabupatenPicker && (
+      {isSuperAdmin && showKabupatenPicker && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
               <div className="p-5 border-b border-gray-200">
@@ -351,7 +369,7 @@ function GesaSurveyContent() {
           </div>
         )}
 
-        {showKabupatenConfirm && pendingKabupaten && (
+      {isSuperAdmin && showKabupatenConfirm && pendingKabupaten && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
               <div className="p-5 border-b border-gray-200">

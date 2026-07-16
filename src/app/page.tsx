@@ -21,8 +21,21 @@ export default function Home() {
 
   useEffect(() => {
     if (user) {
+      if (user.role === "masyarakat-umum") {
+        router.push("/masyarakat");
+        return;
+      }
+
+      if (user.role === "pemkab-gesa") {
+        router.push("/pemkab");
+        return;
+      }
+
       // Login petugas - untuk petugas dan super admin
-      if (user.role.startsWith("petugas-") || user.role === "super-admin") {
+      if (
+        user.role.startsWith("petugas-") ||
+        user.role === "super-admin"
+      ) {
         // Redirect ke module selection petugas
         router.push("/module-selection");
       } else if (user.role === "admin") {
@@ -218,6 +231,13 @@ export default function Home() {
 
             {/* Admin Login Button */}
             <div className="mt-4">
+              <button
+                type="button"
+                onClick={() => router.push("/register")}
+                className="mb-3 w-full bg-white text-blue-700 py-3.5 rounded-lg font-semibold border-2 border-blue-100 hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 transform hover:scale-[1.02] active:scale-95 shadow-sm"
+              >
+                DAFTAR MASYARAKAT UMUM
+              </button>
               <button
                 type="button"
                 onClick={() => router.push('/admin/login')}

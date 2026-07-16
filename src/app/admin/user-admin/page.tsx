@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { clearCachedData, fetchWithCache } from "@/utils/firestoreCache";
+import { KABUPATEN_OPTIONS } from "@/utils/constants";
 
 interface User {
   id: string;
@@ -12,6 +13,7 @@ interface User {
   username: string;
   email: string;
   role: string;
+  kabupaten?: string;
   department?: string;
   createdAt: any;
   uid?: string;
@@ -24,9 +26,44 @@ interface UsersPagePayload {
   nextOffset?: number;
 }
 
-type UserRole = "super-admin" | "admin" | "petugas-existing" | "petugas-apj-propose" | "petugas-pra-existing" | "petugas-survey-cahaya" | "petugas-kontruksi" | "petugas-om" | "petugas-bmd-gudang";
+type UserRole =
+  | "super-admin"
+  | "admin"
+  | "masyarakat-umum"
+  | "pemkab-gesa"
+  | "petugas-existing"
+  | "petugas-apj-propose"
+  | "petugas-pra-existing"
+  | "petugas-survey-cahaya"
+  | "petugas-kontruksi"
+  | "petugas-om"
+  | "petugas-om-correctif"
+  | "petugas-om-preventif"
+  | "petugas-bmd-gudang";
+type KabupatenId = (typeof KABUPATEN_OPTIONS)[number]["id"];
 
 // Memoized UserCard component for better performance
+const getRoleBadgeLabel = (role: string) => {
+  switch (role) {
+    case "super-admin":
+      return "Super Admin";
+    case "admin":
+      return "Admin";
+    case "masyarakat-umum":
+      return "Masyarakat";
+    case "pemkab-gesa":
+      return "Pemkab";
+    case "petugas-om":
+      return "O&M Preventif";
+    case "petugas-om-correctif":
+      return "O&M Correctif";
+    case "petugas-om-preventif":
+      return "O&M Preventif";
+    default:
+      return role.includes("petugas") ? "Petugas" : role;
+  }
+};
+
 const UserCard = memo(({ user, classes, onViewDetail, onDelete, isSuperAdmin, isSelected, onToggleSelect }: { user: User; classes: any; onViewDetail: (user: User) => void; onDelete: (user: User) => void; isSuperAdmin: boolean; isSelected: boolean; onToggleSelect: (userId: string) => void }) => (
   <div
     className={`group bg-gradient-to-br ${classes.cardBg} rounded-xl p-5 shadow-sm hover:shadow-xl transition-all duration-300 border-2 ${classes.border} hover:-translate-y-1 ${isSelected ? "ring-2 ring-red-400 ring-offset-2" : ""}`}
@@ -92,14 +129,21 @@ const UserCard = memo(({ user, classes, onViewDetail, onDelete, isSuperAdmin, is
       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
       </svg>
-      {user.role === "super-admin" 
-        ? "Super Admin" 
-        : user.role === "admin" 
-        ? "Admin" 
-        : user.role.includes("petugas") 
-        ? "Petugas" 
-        : user.role}
+      {getRoleBadgeLabel(user.role)}
     </div>
+    {user.role === "super-admin" ? (
+      <div className="mt-2 inline-flex items-center gap-1 rounded-lg bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-700">
+        Semua wilayah
+      </div>
+    ) : (
+      <div className="mt-2 inline-flex items-center gap-1 rounded-lg bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-700">
+        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        {user.kabupaten || "tabanan"}
+      </div>
+    )}
   </div>
 ));
 
@@ -114,14 +158,6 @@ function UserAdminContent() {
   const router = useRouter();
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [superAdmins, setSuperAdmins] = useState<User[]>([]);
-  const [administrators, setAdministrators] = useState<User[]>([]);
-  const [surveyExisting, setSurveyExisting] = useState<User[]>([]);
-  const [surveyAPJ, setSurveyAPJ] = useState<User[]>([]);
-  const [surveyPraExisting, setSurveyPraExisting] = useState<User[]>([]);
-  const [surveyCahaya, setSurveyCahaya] = useState<User[]>([]);
-  const [kontruksi, setKontruksi] = useState<User[]>([]);
-  const [om, setOm] = useState<User[]>([]);
-  const [bmdGudang, setBmdGudang] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
@@ -134,6 +170,7 @@ function UserAdminContent() {
     email: "",
     password: "",
     role: "petugas-existing" as UserRole,
+    kabupaten: "tabanan" as KabupatenId,
   });
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -141,12 +178,15 @@ function UserAdminContent() {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [hasMoreUsers, setHasMoreUsers] = useState(false);
   const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
+  const [loadingAllUsers, setLoadingAllUsers] = useState(false);
   const [supabaseOffset, setSupabaseOffset] = useState(0);
   const [searchInput, setSearchInput] = useState("");
   const [activeSearchQuery, setActiveSearchQuery] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [activeKabupatenTab, setActiveKabupatenTab] = useState<KabupatenId>("tabanan");
 
   const isSuperAdmin = user?.role === "super-admin";
+  const isSelectedRoleSuperAdmin = formData.role === "super-admin";
 
   useEffect(() => {
     void fetchUsers(false, "");
@@ -159,14 +199,6 @@ function UserAdminContent() {
   const applyUserBuckets = (users: User[]) => {
     setAllUsers(users);
     setSuperAdmins(users.filter((item) => item.role === "super-admin"));
-    setAdministrators(users.filter((item) => item.role === "admin"));
-    setSurveyExisting(users.filter((item) => item.role === "petugas-existing"));
-    setSurveyAPJ(users.filter((item) => item.role === "petugas-apj-propose"));
-    setSurveyPraExisting(users.filter((item) => item.role === "petugas-pra-existing"));
-    setSurveyCahaya(users.filter((item) => item.role === "petugas-survey-cahaya"));
-    setKontruksi(users.filter((item) => item.role === "petugas-kontruksi"));
-    setOm(users.filter((item) => item.role === "petugas-om"));
-    setBmdGudang(users.filter((item) => item.role === "petugas-bmd-gudang"));
   };
 
   const fetchUsers = async (forceRefresh = false, searchQuery = activeSearchQuery) => {
@@ -261,7 +293,7 @@ function UserAdminContent() {
   };
 
   const handleLoadMoreUsers = async () => {
-    if (!hasMoreUsers || loadingMoreUsers) return;
+    if (!hasMoreUsers || loadingMoreUsers || loadingAllUsers) return;
 
     setLoadingMoreUsers(true);
     try {
@@ -297,6 +329,53 @@ function UserAdminContent() {
     }
   };
 
+  const handleLoadAllUsers = async () => {
+    if (!hasMoreUsers || loadingMoreUsers || loadingAllUsers) return;
+
+    setLoadingAllUsers(true);
+    try {
+      let nextOffset = supabaseOffset;
+      let nextHasMore: boolean = hasMoreUsers;
+      let mergedUsers = [...allUsers];
+
+      while (nextHasMore) {
+        const params = new URLSearchParams({
+          limit: String(USER_FETCH_LIMIT),
+          offset: String(nextOffset),
+        });
+        if (activeSearchQuery) {
+          params.set("q", activeSearchQuery);
+        }
+
+        const response = await fetch(`/api/admin/user-admin?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const payload = (await response.json()) as UsersPagePayload & { error?: string };
+        if (!response.ok) {
+          throw new Error(payload.error || "Gagal memuat seluruh data user dari Supabase.");
+        }
+
+        const nextUsers = payload.users || [];
+        if (nextUsers.length === 0) {
+          nextHasMore = false;
+          break;
+        }
+
+        mergedUsers = [...mergedUsers, ...nextUsers];
+        nextHasMore = Boolean(payload.hasMore);
+        nextOffset = payload.nextOffset || mergedUsers.length;
+      }
+
+      applyUserBuckets(mergedUsers);
+      setHasMoreUsers(nextHasMore);
+      setSupabaseOffset(nextOffset);
+    } catch (error) {
+      console.error("Error loading all users:", error);
+    } finally {
+      setLoadingAllUsers(false);
+    }
+  };
+
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -311,6 +390,7 @@ function UserAdminContent() {
           email: formData.email,
           password: formData.password,
           role: formData.role,
+          ...(formData.role === "super-admin" ? {} : { kabupaten: formData.kabupaten }),
         }),
       });
 
@@ -327,6 +407,7 @@ function UserAdminContent() {
         email: "",
         password: "",
         role: "petugas-existing",
+        kabupaten: "tabanan",
       });
       fetchUsers(true); // Refresh data
     } catch (error: any) {
@@ -444,14 +525,48 @@ function UserAdminContent() {
   const roleLabels: Record<UserRole, string> = {
     "super-admin": "Super Admin (Akses Penuh)",
     "admin": "Admin (Halaman Admin)",
+    "masyarakat-umum": "Masyarakat Umum",
+    "pemkab-gesa": "Pemkab Monitoring GESA",
     "petugas-existing": "Petugas Survey Existing",
     "petugas-apj-propose": "Petugas APJ Propose",
     "petugas-pra-existing": "Petugas Survey Pra Existing",
     "petugas-survey-cahaya": "Petugas Survey Cahaya",
     "petugas-kontruksi": "Petugas Kontruksi",
-    "petugas-om": "Petugas O&M",
+    "petugas-om": "Petugas O&M Preventif (Legacy)",
+    "petugas-om-correctif": "Petugas O&M Correctif",
+    "petugas-om-preventif": "Petugas O&M Preventif",
     "petugas-bmd-gudang": "Petugas BMD & Gudang Project",
   };
+
+  const roleSections: Array<{ title: string; role: UserRole; color: string }> = [
+    { title: "Administrator", role: "admin", color: "purple" },
+    { title: "Masyarakat Umum", role: "masyarakat-umum", color: "slate" },
+    { title: "Pemkab Monitoring GESA", role: "pemkab-gesa", color: "cyan" },
+    { title: "Petugas Survey Existing", role: "petugas-existing", color: "blue" },
+    { title: "Petugas Survey APJ Propose", role: "petugas-apj-propose", color: "green" },
+    { title: "Petugas Survey Pra Existing", role: "petugas-pra-existing", color: "emerald" },
+    { title: "Petugas Survey Cahaya", role: "petugas-survey-cahaya", color: "orange" },
+    { title: "Petugas Kontruksi", role: "petugas-kontruksi", color: "teal" },
+    { title: "Petugas BMD & Gudang Project", role: "petugas-bmd-gudang", color: "pink" },
+  ];
+
+  const normalizeUserKabupaten = (value?: string) => {
+    const normalized = value?.trim().toLowerCase();
+    return normalized === "denpasar" ? "denpasar" : "tabanan";
+  };
+
+  const getUsersByKabupatenAndRole = (kabupaten: KabupatenId, role: UserRole) =>
+    allUsers.filter((item) => item.role === role && normalizeUserKabupaten(item.kabupaten) === kabupaten);
+
+  const getOmUsersByKabupaten = (kabupaten: KabupatenId) =>
+    allUsers.filter(
+      (item) =>
+        normalizeUserKabupaten(item.kabupaten) === kabupaten &&
+        ["petugas-om", "petugas-om-preventif", "petugas-om-correctif"].includes(item.role)
+    );
+
+  const getUsersByKabupaten = (kabupaten: KabupatenId) =>
+    allUsers.filter((item) => item.role !== "super-admin" && normalizeUserKabupaten(item.kabupaten) === kabupaten);
 
   const renderUserSection = (
     title: string,
@@ -531,6 +646,33 @@ function UserAdminContent() {
         hover: "hover:bg-indigo-200",
         empty: "bg-indigo-50 border-indigo-300 text-indigo-400",
       },
+      violet: {
+        gradient: "from-violet-500 to-violet-600",
+        cardBg: "from-violet-50 to-violet-100",
+        border: "border-violet-200 hover:border-violet-400",
+        badge: "from-violet-600 to-violet-700",
+        icon: "bg-gradient-to-br from-violet-600 to-violet-700",
+        hover: "hover:bg-violet-200",
+        empty: "bg-violet-50 border-violet-300 text-violet-400",
+      },
+      cyan: {
+        gradient: "from-cyan-500 to-sky-600",
+        cardBg: "from-cyan-50 to-sky-100",
+        border: "border-cyan-200 hover:border-cyan-400",
+        badge: "from-cyan-600 to-sky-700",
+        icon: "bg-gradient-to-br from-cyan-600 to-sky-700",
+        hover: "hover:bg-cyan-200",
+        empty: "bg-cyan-50 border-cyan-300 text-cyan-500",
+      },
+      slate: {
+        gradient: "from-slate-500 to-slate-700",
+        cardBg: "from-slate-50 to-slate-100",
+        border: "border-slate-200 hover:border-slate-400",
+        badge: "from-slate-600 to-slate-700",
+        icon: "bg-gradient-to-br from-slate-600 to-slate-700",
+        hover: "hover:bg-slate-200",
+        empty: "bg-slate-50 border-slate-300 text-slate-500",
+      },
       pink: {
         gradient: "from-pink-500 to-pink-600",
         cardBg: "from-pink-50 to-pink-100",
@@ -549,7 +691,7 @@ function UserAdminContent() {
     const hasMoreUsers = users.length > DEFAULT_VISIBLE_USERS;
 
     return (
-      <div className="mb-8">
+      <div key={`${title}-${color}`} className="mb-8">
         <div className={`flex items-center gap-3 mb-5 bg-gradient-to-r ${classes.gradient} rounded-xl px-5 py-4 shadow-md`}>
           <div className="w-10 h-10 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
             <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -558,7 +700,16 @@ function UserAdminContent() {
           </div>
           <div>
             <h3 className="text-xl font-bold text-white">{title}</h3>
-            <p className="text-sm text-white text-opacity-80">{users.length} pengguna terdaftar</p>
+            <div className="text-sm text-white text-opacity-80">
+              <p>{users.length} pengguna terdaftar</p>
+              {title === "Petugas O&M" ? (
+                <p className="mt-1 text-xs text-white/90">
+                  Preventif: {users.filter((item) => item.role === "petugas-om" || item.role === "petugas-om-preventif").length}
+                  {" • "}
+                  Correctif: {users.filter((item) => item.role === "petugas-om-correctif").length}
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -620,6 +771,54 @@ function UserAdminContent() {
     );
   };
 
+  const renderKabupatenSection = (kabupaten: KabupatenId) => {
+    const kabupatenMeta = KABUPATEN_OPTIONS.find((item) => item.id === kabupaten);
+    const users = getUsersByKabupaten(kabupaten);
+    const tone =
+      kabupaten === "tabanan"
+        ? {
+            wrap: "border-emerald-200 bg-emerald-50/50",
+            header: "from-emerald-600 to-teal-600",
+            badge: "bg-white/20 text-white",
+          }
+        : {
+            wrap: "border-sky-200 bg-sky-50/50",
+            header: "from-sky-600 to-blue-600",
+            badge: "bg-white/20 text-white",
+          };
+
+    return (
+      <section key={kabupaten} className={`rounded-2xl border ${tone.wrap} p-4 lg:p-5`}>
+        <div className={`mb-5 rounded-xl bg-gradient-to-r ${tone.header} px-5 py-4 text-white shadow-md`}>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-xl font-bold">{kabupatenMeta?.name || kabupaten}</h3>
+              <p className="text-sm text-white/80">{kabupatenMeta?.description || "Kelompok pengguna wilayah"}</p>
+            </div>
+            <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-bold ${tone.badge}`}>
+              {users.length} pengguna
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {roleSections.map((section) => (
+            <div key={`${kabupaten}-${section.role}`}>
+              {renderUserSection(
+                section.title,
+                getUsersByKabupatenAndRole(kabupaten, section.role),
+                section.color
+              )}
+            </div>
+          ))}
+          <div key={`${kabupaten}-petugas-om`}>
+            {renderUserSection("Petugas O&M", getOmUsersByKabupaten(kabupaten), "indigo")}
+          </div>
+        </div>
+      </section>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
       {/* Header */}
@@ -661,9 +860,9 @@ function UserAdminContent() {
                 <p className="text-sm lg:text-base text-purple-100">
                   Kelola dan pantau aktivitas pengguna sistem
                 </p>
-                <p className="mt-2 text-xs lg:text-sm text-purple-100/90">
-                  Memuat {USER_FETCH_LIMIT} pengguna per halaman dari Supabase.
-                </p>
+                 <p className="mt-2 text-xs lg:text-sm text-purple-100/90">
+                  Memuat {USER_FETCH_LIMIT} pengguna per halaman dari Supabase, atau tampilkan semuanya sekaligus.
+                 </p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -715,7 +914,7 @@ function UserAdminContent() {
                         void handleSearchUsers();
                       }
                     }}
-                    placeholder="Cari nama, username, email, atau role..."
+                    placeholder="Cari nama, username, email, role, atau wilayah..."
                     className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-sm font-medium text-gray-900 outline-none transition-all placeholder:text-gray-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
                   />
                 </div>
@@ -742,11 +941,11 @@ function UserAdminContent() {
                   Menampilkan hasil pencarian untuk: <span className="font-bold">{activeSearchQuery}</span>
                 </p>
               ) : (
-                <p className="mt-3 text-xs text-gray-500">
-                  Pencarian dilakukan ke backend, jadi user bisa ditemukan walau belum tampil di batch awal.
-                </p>
-              )}
-            </div>
+                  <p className="mt-3 text-xs text-gray-500">
+                    Pencarian dilakukan ke backend, jadi user bisa ditemukan walau belum tampil di batch awal.
+                  </p>
+                )}
+              </div>
 
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-purple-100 bg-white px-4 py-3 shadow-sm">
               <p className="text-sm font-medium text-gray-700">
@@ -796,31 +995,70 @@ function UserAdminContent() {
 
             <div className="space-y-6">
               {renderUserSection("Super Administrator", superAdmins, "red")}
-              {renderUserSection("Administrator", administrators, "purple")}
-              {renderUserSection("Petugas Survey Existing", surveyExisting, "blue")}
-              {renderUserSection("Petugas Survey APJ Propose", surveyAPJ, "green")}
-              {renderUserSection("Petugas Survey Pra Existing", surveyPraExisting, "emerald")}
-              {renderUserSection("Petugas Survey Cahaya", surveyCahaya, "orange")}
-              {renderUserSection("Petugas Kontruksi", kontruksi, "teal")}
-              {renderUserSection("Petugas O&M", om, "indigo")}
-              {renderUserSection("Petugas BMD & Gudang Project", bmdGudang, "pink")}
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Daftar User Per Kabupaten</h3>
+                    <p className="text-sm text-gray-500">Pilih folder wilayah agar daftar tidak terlalu panjang.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+                    {KABUPATEN_OPTIONS.map((item) => {
+                      const count = getUsersByKabupaten(item.id).length;
+                      const active = activeKabupatenTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setActiveKabupatenTab(item.id)}
+                          className={`rounded-lg px-4 py-2 text-sm font-bold transition-all ${
+                            active
+                              ? "bg-white text-purple-700 shadow-sm ring-1 ring-purple-100"
+                              : "text-slate-600 hover:bg-white/70"
+                          }`}
+                        >
+                          <span>{item.name}</span>
+                          <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] ${active ? "bg-purple-50 text-purple-700" : "bg-slate-200 text-slate-600"}`}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                {renderKabupatenSection(activeKabupatenTab)}
+              </div>
             </div>
 
             {hasMoreUsers && !activeSearchQuery && (
               <div className="mt-8 flex items-center justify-center">
-                <button
-                  type="button"
-                  onClick={() => void handleLoadMoreUsers()}
-                  disabled={loadingMoreUsers}
-                  className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-400"
-                >
-                  <span>{loadingMoreUsers ? "Memuat..." : `Muat ${USER_FETCH_LIMIT} pengguna berikutnya`}</span>
-                  {!loadingMoreUsers && (
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  )}
-                </button>
+                <div className="flex flex-col items-center gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => void handleLoadMoreUsers()}
+                    disabled={loadingMoreUsers || loadingAllUsers}
+                    className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-400"
+                  >
+                    <span>{loadingMoreUsers ? "Memuat..." : `Muat ${USER_FETCH_LIMIT} pengguna berikutnya`}</span>
+                    {!loadingMoreUsers && (
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleLoadAllUsers()}
+                    disabled={loadingMoreUsers || loadingAllUsers}
+                    className="inline-flex items-center gap-2 rounded-xl border border-purple-200 bg-white px-5 py-3 text-sm font-semibold text-purple-700 shadow-sm transition-all hover:border-purple-300 hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <span>{loadingAllUsers ? "Memuat semua..." : "Tampilkan semua user"}</span>
+                    {!loadingAllUsers && (
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </>
@@ -909,6 +1147,33 @@ function UserAdminContent() {
                   minLength={6}
                 />
               </div>
+
+              {!isSelectedRoleSuperAdmin ? (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-2">
+                    Wilayah / Kabupaten
+                  </label>
+                  <select
+                    value={formData.kabupaten}
+                    onChange={(e) => setFormData({ ...formData, kabupaten: e.target.value as KabupatenId })}
+                    className="w-full px-4 py-3 text-black font-medium border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all bg-white"
+                    required
+                  >
+                    {KABUPATEN_OPTIONS.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-gray-500">
+                    Admin dan petugas akan membaca data sesuai wilayah ini. Untuk data lama, fokus awal tetap tabanan.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+                  Super Admin tidak memakai wilayah karena aksesnya penuh ke semua kabupaten.
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-semibold text-gray-900 mb-2">
@@ -1058,6 +1323,27 @@ function UserAdminContent() {
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Role / Jabatan</p>
                       <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg font-bold shadow-sm mt-1">
                         {roleLabels[selectedUser.role as UserRole] || selectedUser.role}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border-2 border-gray-200">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                        {selectedUser.role === "super-admin" ? "Akses Wilayah" : "Wilayah / Kabupaten"}
+                      </p>
+                      <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg font-bold shadow-sm mt-1">
+                        {selectedUser.role === "super-admin"
+                          ? "Semua wilayah"
+                          : KABUPATEN_OPTIONS.find((item) => item.id === (selectedUser.kabupaten || "tabanan"))?.name || selectedUser.kabupaten || "Tabanan"}
                       </div>
                     </div>
                   </div>
