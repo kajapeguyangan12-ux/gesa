@@ -54,6 +54,7 @@ type OMReport = {
   photoDamageName?: string;
   photoPoleName?: string;
   phoneNumber?: string;
+  reporterEmail?: string;
   taskStatus?: string;
   status: string;
   createdAt: string | null;
@@ -488,6 +489,7 @@ function ReportDetailPanel({
           <DataField label="ID Tiang / Scan Tiang" value={report.idTitik || report.location} />
           <DataField label="Data ID Tiang" value={report.idTitik} />
           <DataField label="No. Telp" value={report.phoneNumber} />
+          <DataField label="Email Notifikasi" value={report.reporterEmail} />
           <DataField label="Data No. Telp" value={report.phoneNumber} />
         </div>
         <button type="button" className="mx-auto mt-9 block rounded-md border border-gray-400 bg-white px-8 py-2 text-xs font-semibold text-gray-900">
@@ -969,6 +971,7 @@ export function PreventiveOMTaskList() {
   const [pointPreview, setPointPreview] = useState<ApjPoint | null>(null);
   const [pointPreviewLoading, setPointPreviewLoading] = useState(false);
   const [pointPreviewError, setPointPreviewError] = useState("");
+  const [workPointDetailOpen, setWorkPointDetailOpen] = useState(false);
   const [workScannerOpen, setWorkScannerOpen] = useState(false);
   const [workScannerStatus, setWorkScannerStatus] = useState("Menyiapkan kamera...");
   const [workPhotoScanning, setWorkPhotoScanning] = useState(false);
@@ -1091,6 +1094,7 @@ export function PreventiveOMTaskList() {
     setWorkMessage("");
     setPointPreview(null);
     setPointPreviewError("");
+    setWorkPointDetailOpen(false);
     setSelectedTask({ ...task, source: "work-form" } as OMTask);
   };
 
@@ -1108,6 +1112,7 @@ export function PreventiveOMTaskList() {
     }
     stopWorkScanner();
     setWorkForm((current) => ({ ...current, idTitik }));
+    setWorkPointDetailOpen(false);
     setWorkScannerOpen(false);
     setWorkScannerStatus(`ID ${idTitik} berhasil dipindai.`);
     setWorkError("");
@@ -1304,12 +1309,20 @@ export function PreventiveOMTaskList() {
               ) : null}
               {pointPreview ? (
                 <section className="rounded-xl border border-sky-200 bg-sky-50/60 p-3">
-                  <div className="mb-3">
+                  <div>
                     <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-sky-700">Data Titik APJ Hasil Scan</div>
                     <div className="mt-1 text-sm font-bold text-slate-950">{pointPreview.namaJalan || pointPreview.namaTitik || workForm.idTitik}</div>
-                    <div className="text-[11px] text-slate-500">Data otomatis dimuat ke formulir tanpa membuka halaman lain.</div>
+                    <div className="text-[11px] text-emerald-700">Titik berhasil ditemukan dan siap digunakan.</div>
                   </div>
-                  <PointDetailFields point={pointPreview} />
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="rounded-lg bg-white p-2 text-slate-600">ID: <b className="text-slate-900">{pointPreview.idTitik || workForm.idTitik}</b></div>
+                    <div className="rounded-lg bg-white p-2 text-slate-600">Daya: <b className="text-slate-900">{pointPreview.dayaLampu || "-"}</b></div>
+                    <div className="rounded-lg bg-white p-2 text-slate-600">Grup: <b className="text-slate-900">{pointPreview.group || "-"}</b></div>
+                    <div className="rounded-lg bg-white p-2 text-slate-600">Area: <b className="text-slate-900">{pointPreview.kabupaten || "-"}</b></div>
+                  </div>
+                  <button type="button" onClick={() => setWorkPointDetailOpen(true)} className="mt-3 w-full rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-bold text-sky-700">
+                    Lihat Detail Titik
+                  </button>
                 </section>
               ) : null}
               <label className="block">
@@ -1419,6 +1432,24 @@ export function PreventiveOMTaskList() {
                     <input type="file" accept="image/*" capture="environment" onChange={(event) => void scanWorkPhoto(event)} disabled={workPhotoScanning} className="sr-only" />
                   </label>
                   <div className="text-center text-[11px] text-slate-500">Setelah QR terbaca, ID dan data titik otomatis masuk ke formulir ini.</div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {workPointDetailOpen && pointPreview ? (
+            <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center">
+              <div className="max-h-[86vh] w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">Detail Titik APJ</div>
+                    <div className="text-sm font-bold text-slate-950">{pointPreview.idTitik || workForm.idTitik}</div>
+                  </div>
+                  <button type="button" onClick={() => setWorkPointDetailOpen(false)} className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">
+                    Tutup
+                  </button>
+                </div>
+                <div className="max-h-[72vh] overflow-auto p-4">
+                  <PointDetailFields point={pointPreview} />
                 </div>
               </div>
             </div>

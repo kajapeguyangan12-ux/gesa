@@ -22,7 +22,7 @@ function LaporApjContent() {
   const [point, setPoint] = useState<PointDetail | null>(null);
   const [loadingPoint, setLoadingPoint] = useState(Boolean(idTitik));
   const [pointError, setPointError] = useState("");
-  const [form, setForm] = useState({ reporterName: "", phoneNumber: "", damageType: "", description: "", photoName: "" });
+  const [form, setForm] = useState({ reporterName: "", reporterEmail: "", phoneNumber: "", damageType: "", description: "", photoName: "" });
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
@@ -72,8 +72,8 @@ function LaporApjContent() {
       });
       const payload = (await response.json()) as { id?: string; error?: string };
       if (!response.ok) throw new Error(payload.error || "Gagal mengirim laporan.");
-      setSuccess(`Laporan berhasil dikirim. Nomor laporan: ${payload.id}`);
-      setForm({ reporterName: "", phoneNumber: "", damageType: "", description: "", photoName: "" });
+      setSuccess(`Laporan berhasil dikirim. Nomor laporan: ${payload.id}. Progres perbaikan akan dikirim ke email yang didaftarkan.`);
+      setForm({ reporterName: "", reporterEmail: "", phoneNumber: "", damageType: "", description: "", photoName: "" });
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Gagal mengirim laporan.");
     } finally {
@@ -113,7 +113,12 @@ function LaporApjContent() {
             </label>
             <label className="block">
               <span className="text-xs font-semibold text-slate-700">No. HP</span>
-              <input value={form.phoneNumber} onChange={(event) => update("phoneNumber", event.target.value)} className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-red-400" placeholder="08xxxxxxxxxx" />
+              <input required value={form.phoneNumber} onChange={(event) => update("phoneNumber", event.target.value)} className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-red-400" placeholder="08xxxxxxxxxx" />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold text-slate-700">Email Notifikasi Progres <span className="text-red-600">*</span></span>
+              <input required type="email" value={form.reporterEmail} onChange={(event) => update("reporterEmail", event.target.value)} className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-red-400" placeholder="nama@email.com" />
+              <span className="mt-1 block text-[11px] leading-4 text-slate-500">Notifikasi progres penanganan dan perbaikan akan dikirim ke email ini.</span>
             </label>
             <label className="block">
               <span className="text-xs font-semibold text-slate-700">Jenis Kerusakan</span>

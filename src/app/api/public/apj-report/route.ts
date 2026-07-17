@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { isValidNotificationEmail } from "@/lib/reportProgressEmail";
 
 function createDocId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -38,12 +39,16 @@ export async function POST(request: NextRequest) {
     const payload = (await request.json()) as Record<string, unknown>;
     const idTitik = normalizeString(payload.idTitik);
     const reporterName = normalizeString(payload.reporterName);
+    const reporterEmail = normalizeString(payload.reporterEmail).toLowerCase();
     const phoneNumber = normalizeString(payload.phoneNumber);
     const damageType = normalizeString(payload.damageType);
     const description = normalizeString(payload.description);
 
-    if (!idTitik || !reporterName || !phoneNumber || !damageType || !description) {
-      return NextResponse.json({ error: "ID titik, nama, no HP, jenis kerusakan, dan deskripsi wajib diisi." }, { status: 400 });
+    if (!idTitik || !reporterName || !reporterEmail || !phoneNumber || !damageType || !description) {
+      return NextResponse.json({ error: "ID titik, nama, email, no HP, jenis kerusakan, dan deskripsi wajib diisi." }, { status: 400 });
+    }
+    if (!isValidNotificationEmail(reporterEmail)) {
+      return NextResponse.json({ error: "Format email notifikasi tidak valid." }, { status: 400 });
     }
 
     const supabase = getSupabaseAdminClient() as any;
@@ -63,6 +68,9 @@ export async function POST(request: NextRequest) {
       reportType: "masyarakat",
       reporterUid,
       reporterName,
+      reporterEmail,
+      notificationEmail: reporterEmail,
+      emailNotificationsEnabled: true,
       reporterRole: "masyarakat-qr",
       phoneNumber,
       damageType,

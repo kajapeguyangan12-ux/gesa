@@ -28,6 +28,7 @@ type PublicReport = {
   idTitik?: string;
   photoDamageName?: string;
   phoneNumber?: string;
+  reporterEmail?: string;
   status: string;
   statusTimeline?: PublicStatusTimelineItem[];
   createdAt: string | null;
@@ -423,6 +424,7 @@ export function PublicReportForm() {
   const [photoDamageName, setPhotoDamageName] = useState("");
   const [idTitik, setIdTitik] = useState("");
   const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber || "");
+  const [reporterEmail, setReporterEmail] = useState(user?.email || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -437,8 +439,12 @@ export function PublicReportForm() {
     event.preventDefault();
     setError("");
     setSuccess("");
-    if (!damageType || !description || !idTitik) {
-      setError("Jenis kerusakan, deskripsi, dan ID tiang wajib diisi.");
+    if (!damageType || !description || !idTitik || !reporterEmail.trim()) {
+      setError("Jenis kerusakan, deskripsi, ID tiang, dan email notifikasi wajib diisi.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(reporterEmail.trim())) {
+      setError("Format email notifikasi tidak valid.");
       return;
     }
     setLoading(true);
@@ -458,11 +464,12 @@ export function PublicReportForm() {
           idTitik,
           photoDamageName,
           phoneNumber,
+          reporterEmail: reporterEmail.trim().toLowerCase(),
         }),
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || "Gagal mengirim laporan.");
-      setSuccess("Laporan berhasil dikirim.");
+      setSuccess("Laporan berhasil dikirim. Progres perbaikan akan dikirim ke email yang didaftarkan.");
       setDamageType("");
       setDescription("");
       setPhotoDamageName("");
@@ -502,6 +509,11 @@ export function PublicReportForm() {
             </div>
           </label>
           <Field label="No. Telp" value={phoneNumber} onChange={setPhoneNumber} placeholder="Masukkan Nomor HP yang bisa dihubungi" />
+          <label className="block">
+            <span className="text-[11px] leading-none text-gray-600">Email Notifikasi Progres <span className="text-red-600">*</span></span>
+            <input required type="email" value={reporterEmail} onChange={(event) => setReporterEmail(event.target.value)} className="mt-1 h-8 w-full rounded-md border border-gray-400 px-2 text-xs outline-none focus:border-sky-500" placeholder="nama@email.com" />
+            <span className="mt-1 block text-[10px] leading-4 text-gray-500">Progres penanganan dan perbaikan akan dikirim ke email ini.</span>
+          </label>
         </div>
         {error ? <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{error}</div> : null}
         {success ? <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-700">{success}</div> : null}
@@ -795,6 +807,7 @@ export function PublicReportDetail({ reportId }: { reportId: string }) {
             <ReadOnlyDataField label="Upload Foto Kerusakan" value={report.photoDamageName || "-"} />
             <ReadOnlyDataField label="Id Tiang / Scan Tiang" value={report.idTitik || report.location} />
             <ReadOnlyDataField label="No. Telp" value={report.phoneNumber || "-"} />
+            <ReadOnlyDataField label="Email Notifikasi" value={report.reporterEmail || "-"} />
             <button type="button" className={`mx-auto mt-6 block h-8 w-40 rounded-md border text-xs font-semibold ${getPublicStatusClass(report.status)}`}>
               {getPublicStatusLabel(report.status)}
             </button>

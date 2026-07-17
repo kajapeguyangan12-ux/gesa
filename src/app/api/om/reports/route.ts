@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { isValidNotificationEmail, sendReportProgressEmail } from "@/lib/reportProgressEmail";
 
 function createDocId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -192,6 +193,7 @@ export async function POST(request: NextRequest) {
     const description = normalizeString(payload.description);
     const reportType = normalizeString(payload.reportType) || "preventif";
     const reporterUid = normalizeString(payload.reporterUid);
+    const reporterEmail = normalizeString(payload.reporterEmail).toLowerCase();
 
     if (!title || !description) {
       return NextResponse.json({ error: "Judul dan deskripsi laporan wajib diisi." }, { status: 400 });
@@ -199,6 +201,9 @@ export async function POST(request: NextRequest) {
 
     if (!reporterUid) {
       return NextResponse.json({ error: "Reporter tidak valid." }, { status: 400 });
+    }
+    if (reportType === "masyarakat" && !isValidNotificationEmail(reporterEmail)) {
+      return NextResponse.json({ error: "Email notifikasi masyarakat wajib diisi dengan format yang valid." }, { status: 400 });
     }
 
     const supabase = getSupabaseAdminClient() as any;
@@ -233,6 +238,9 @@ export async function POST(request: NextRequest) {
         reportType,
         reporterUid,
         reporterName,
+        reporterEmail,
+        notificationEmail: reporterEmail,
+        emailNotificationsEnabled: reportType === "masyarakat",
         status: "new",
         statusTimeline: initialTimeline,
         createdAt: now,
@@ -403,7 +411,19 @@ export async function PATCH(request: NextRequest) {
       if (notificationError) throw new Error(notificationError.message);
     }
 
-    return NextResponse.json({ ok: true, status: nextStatus });
+    const reporterEmail = normalizeString(rawPayload.notificationEmail) || normalizeString(rawPayload.reporterEmail);
+    const emailResult = reporterEmail
+      ? await sendReportProgressEmail({
+          to: reporterEmail,
+          reporterName: normalizeString(rawPayload.reporterName) || "Pelapor",
+          reportId,
+          reportTitle,
+          statusLabel: OM_STATUS_LABELS[nextStatus] || nextStatus,
+          note,
+        })
+      : { sent: false as const, reason: "email_not_provided" as const };
+
+    return NextResponse.json({ ok: true, status: nextStatus, emailNotification: emailResult });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Gagal mengubah status laporan O&M." },
