@@ -171,7 +171,13 @@ function TopActions({ title }: { title: string }) {
   const router = useRouter();
   return (
     <header className="relative z-10 flex h-10 items-center justify-between border-b border-gray-300 bg-white/80 px-3">
-      <button type="button" onClick={() => router.push("/")} className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-black text-white" aria-label="Kembali">
+      <button
+        type="button"
+        onClick={() => router.push("/module-selection")}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-black text-white"
+        aria-label="Kembali ke panel modul"
+        title="Kembali ke panel modul"
+      >
         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
         </svg>
@@ -470,7 +476,9 @@ function Panel({ active, children }: { active: PemkabView; children: ReactNode }
           <div className="relative z-10 flex min-h-[480px]">
             <Sidebar active={view} onChange={setView} />
             <main className="min-w-0 flex-1 p-4">
-              {view === active ? children : <PemkabContent active={view} />}
+              <div key={`pemkab-view-${view}`}>
+                {view === active ? children : <PemkabContent active={view} />}
+              </div>
             </main>
           </div>
         </div>

@@ -73,9 +73,9 @@ export default function PemkabLeafletMap({ title, points }: { title: string; poi
   }
 
   return (
-    <div className="relative h-full min-h-[270px] overflow-hidden rounded-sm border border-gray-300 bg-white">
+    <div key={`pemkab-map-shell-${title}`} className="relative h-full min-h-[270px] overflow-hidden rounded-sm border border-gray-300 bg-white">
       <div className="absolute left-0 right-0 top-0 z-[500] bg-white/90 py-2 text-center text-xs font-bold">{title}</div>
-      <MapContainer center={[-8.46, 115.17]} zoom={10} style={{ height: "100%", minHeight: 270, width: "100%" }} scrollWheelZoom>
+      <MapContainer key={`pemkab-map-${title}`} center={[-8.46, 115.17]} zoom={10} style={{ height: "100%", minHeight: 270, width: "100%" }} scrollWheelZoom>
         <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <FitBounds points={validPoints} />
         {validPoints.map((point, index) => (

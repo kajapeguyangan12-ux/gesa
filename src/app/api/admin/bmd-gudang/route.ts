@@ -106,13 +106,9 @@ async function createInventoryTransaction(
   const material = Array.isArray(materialRows) ? materialRows[0] : null;
   if (!material) return id;
 
-  const currentStock = normalizeNumber(material.stok_tersedia, 0);
-  const nextStock =
-    payload.type === "MASUK" || payload.type === "RETUR"
-      ? currentStock + payload.jumlah
-      : payload.type === "KELUAR"
-        ? Math.max(0, currentStock - payload.jumlah)
-        : currentStock;
+  // Inventaris perusahaan dicatat per unit. Nilai stok setiap master selalu satu;
+  // ketersediaan dilacak melalui statusUnit dan installedPointId.
+  const nextStock = 1;
 
   const rawPayload = ((material.raw_payload as Record<string, unknown> | null) || {});
   const { error: updateError } = await (
@@ -184,18 +180,41 @@ export async function POST(request: NextRequest) {
 
     if (action === "create-material") {
       const id = createDocId("material");
+      const nomorSeri = normalizeString(payload.nomorSeri);
+      if (!nomorSeri) {
+        return NextResponse.json({ error: "Nomor seri/ID unit wajib diisi. Satu data hanya untuk satu barang." }, { status: 400 });
+      }
+      const { data: existingMaterials, error: existingMaterialsError } = await (supabase as any)
+        .from(TABLES.materials)
+        .select("kode_barang, raw_payload")
+        .limit(2000);
+      if (existingMaterialsError) throw new Error(existingMaterialsError.message);
+      const serialExists = (Array.isArray(existingMaterials) ? existingMaterials : []).some((item: Record<string, unknown>) => {
+        const raw = item.raw_payload && typeof item.raw_payload === "object" ? item.raw_payload as Record<string, unknown> : {};
+        return normalizeString(raw.nomorSeri).toLowerCase() === nomorSeri.toLowerCase()
+          || normalizeString(item.kode_barang).toLowerCase() === nomorSeri.toLowerCase();
+      });
+      if (serialExists) {
+        return NextResponse.json({ error: `Nomor seri/ID unit ${nomorSeri} sudah terdaftar.` }, { status: 409 });
+      }
       const row = {
         fb_doc_id: id,
         kode_barang: normalizeString(payload.kodeBarang),
         nama_barang: normalizeString(payload.namaBarang),
         kategori: normalizeString(payload.kategori),
-        stok_tersedia: normalizeNumber(payload.stokTersedia, 0),
-        stok_minimum: normalizeNumber(payload.stokMinimum, 0),
+        stok_tersedia: 1,
+        stok_minimum: 0,
         lokasi_gudang: normalizeString(payload.lokasiGudang) || "Gudang Utama",
         foto_label: normalizeString(payload.fotoLabel),
         raw_payload: {
           ...payload,
           id,
+          kepemilikan: "Perusahaan",
+          nomorSeri,
+          stokTersedia: 1,
+          stokMinimum: 0,
+          statusUnit: "Tersedia",
+          installedPointId: "",
           createdAt: now,
           updatedAt: now,
         },
@@ -231,6 +250,7 @@ export async function POST(request: NextRequest) {
         raw_payload: {
           ...payload,
           id,
+          kepemilikan: "Pemerintah",
           status: normalizeString(payload.status) || "Di Gudang",
           createdAt: now,
           updatedAt: now,
@@ -256,7 +276,7 @@ export async function POST(request: NextRequest) {
       const type = normalizeString(payload.type) || "MASUK";
       const materialId = normalizeString(payload.materialId);
       const materialName = normalizeString(payload.materialName);
-      const jumlah = normalizeNumber(payload.jumlah, 0);
+      const jumlah = 1;
       const referensi = normalizeString(payload.referensi) || "-";
       const sourceModule = normalizeString(payload.sourceModule) || "Gudang";
       const status = normalizeString(payload.status) || "Posted";

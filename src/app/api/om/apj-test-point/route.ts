@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { findApjComponentAsset, setCompanyAssetInstallation } from "@/lib/apjComponentAsset";
 
 const TEST_POINT_ID = "TEST-APJ-001";
 const TEST_DOC_ID = "om_test_apj_qr_001";
@@ -92,7 +93,10 @@ async function createOrUpdateTestPoint(payload?: Record<string, unknown>) {
     const namaJalan = normalizeString(payload?.namaJalan) || "Jalan Test QR O&M";
     const kecamatan = normalizeString(payload?.kecamatan);
     const kabupaten = normalizeString(payload?.kabupaten) || kecamatan || "tabanan";
-    const dayaLampu = normalizeString(payload?.dayaLampu) || "120W";
+    const lampSerial = normalizeString(payload?.noSeriLampu1) || normalizeString(payload?.noSeriLampu2);
+    const linkedLamp = lampSerial ? await findApjComponentAsset(supabase, lampSerial, "Perusahaan") : null;
+    const linkedLampPower = normalizeString(linkedLamp?.detail?.dayaWatt);
+    const dayaLampu = payload ? linkedLampPower || (lampSerial ? "" : normalizeString(payload.dayaLampu)) : "120W";
     const latitude = normalizeNumber(payload?.latitude) ?? -8.5392;
     const longitude = normalizeNumber(payload?.longitude) ?? 115.1256;
 
@@ -125,10 +129,13 @@ async function createOrUpdateTestPoint(payload?: Record<string, unknown>) {
           daya_lampu: dayaLampu,
           noSeriTiangArm: normalizeString(payload.noSeriTiangArm),
           no_seri_tiang_arm: normalizeString(payload.noSeriTiangArm),
+          kepemilikanTiangArm: "Perusahaan",
           noSeriLampu1: normalizeString(payload.noSeriLampu1),
           no_seri_lampu_1: normalizeString(payload.noSeriLampu1),
+          kepemilikanLampu1: "Perusahaan",
           noSeriLampu2: normalizeString(payload.noSeriLampu2),
           no_seri_lampu_2: normalizeString(payload.noSeriLampu2),
+          kepemilikanLampu2: "Perusahaan",
           lebarJalan: normalizeString(payload.lebarJalan),
           lebar_jalan: normalizeString(payload.lebarJalan),
           fungsiRuas: normalizeString(payload.fungsiRuas),
@@ -172,6 +179,7 @@ async function createOrUpdateTestPoint(payload?: Record<string, unknown>) {
         submitted_by_id: "om-manual-test",
         submitted_by_name: "O&M Manual Test",
         nama_titik: namaTitik,
+        daya_lampu: dayaLampu,
         id_titik: idTitik,
         zona: group,
         stage: "comissioning",
@@ -186,6 +194,15 @@ async function createOrUpdateTestPoint(payload?: Record<string, unknown>) {
       { onConflict: "fb_doc_id" }
     );
     if (error) throw new Error(error.message);
+    if (payload) {
+      const savedRaw = rawPayload as Record<string, unknown>;
+      for (const serialKey of ["noSeriTiangArm", "noSeriLampu1", "noSeriLampu2"] as const) {
+        const oldSerial = normalizeString(existingRaw[serialKey]);
+        const newSerial = normalizeString(savedRaw[serialKey]);
+        if (oldSerial && oldSerial !== newSerial) await setCompanyAssetInstallation(supabase, oldSerial, null);
+        if (newSerial) await setCompanyAssetInstallation(supabase, newSerial, idTitik);
+      }
+    }
     return NextResponse.json({ idTitik, message: payload ? "Data test APJ O&M berhasil disimpan." : "Data test APJ berhasil dibuat." });
 }
 

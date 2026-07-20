@@ -22,6 +22,10 @@ type MaterialBase = {
   lokasiGudang: string;
   fotoLabel: string;
   fotoUrl?: string;
+  nomorSeri?: string;
+  kepemilikan: "Perusahaan";
+  statusUnit: "Tersedia" | "Terpasang" | "Dilepas";
+  installedPointId?: string;
 };
 
 type TiangDetail = {
@@ -101,6 +105,12 @@ type BmdAsset = {
   peminjam: string;
   estimasiKembali: string;
   fotoUrl?: string;
+  nomorSeri?: string;
+  kepemilikan: "Pemerintah";
+  asalTitikApj?: string;
+  tanggalPelepasan?: string;
+  alasanPelepasan?: string;
+  dokumenPelepasan?: string;
 };
 
 const INITIAL_MATERIALS: MaterialItem[] = [];
@@ -377,11 +387,11 @@ function MaterialCard({
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl bg-slate-50 px-4 py-3">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Stok</div>
-            <div className={`mt-1 text-xl font-bold ${getStockTone(item.stokTersedia, item.stokMinimum)}`}>{item.stokTersedia}</div>
+            <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Status Unit</div>
+            <div className={`mt-1 text-sm font-bold ${item.statusUnit === "Terpasang" ? "text-sky-700" : "text-emerald-700"}`}>{item.statusUnit}</div>
           </div>
-          <DetailField label="Minimum" value={item.stokMinimum} />
-          <DetailField label="Lokasi" value={item.lokasiGudang} />
+          <DetailField label="ID Unit" value={item.nomorSeri || item.kodeBarang} />
+          <DetailField label="Lokasi" value={item.installedPointId ? `Titik ${item.installedPointId}` : item.lokasiGudang} />
         </div>
       </div>
     </button>
@@ -441,7 +451,7 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
     adminMode ? "database" : "operasional"
   );
   const [activeBmdPatch, setActiveBmdPatch] = useState<"tambah" | "database" | "operasional" | "alur">(
-    adminMode ? "database" : "operasional"
+    "database"
   );
   const [materials, setMaterials] = useState<MaterialItem[]>(INITIAL_MATERIALS);
   const [transactions, setTransactions] = useState<InventoryTransaction[]>(INITIAL_TRANSACTIONS);
@@ -458,6 +468,7 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
   const [loanPurpose, setLoanPurpose] = useState<string>("Pemakaian sementara untuk inspeksi lapangan");
   const [materialCategoryDraft, setMaterialCategoryDraft] = useState<MaterialCategory>("LAMPU");
   const [materialCodeDraft, setMaterialCodeDraft] = useState<string>("");
+  const [materialSerialDraft, setMaterialSerialDraft] = useState<string>("");
   const [materialNameDraft, setMaterialNameDraft] = useState<string>("");
   const [materialPhotoLabelDraft, setMaterialPhotoLabelDraft] = useState<string>("");
   const [materialPhotoFile, setMaterialPhotoFile] = useState<File | null>(null);
@@ -469,6 +480,11 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
   const [requestNote, setRequestNote] = useState<string>("");
   const [requestWorkType, setRequestWorkType] = useState<string>(WORK_TYPE_OPTIONS[0].value);
   const [bmdRegisterDraft, setBmdRegisterDraft] = useState<string>("");
+  const [bmdSerialDraft, setBmdSerialDraft] = useState<string>("");
+  const [bmdOriginPointDraft, setBmdOriginPointDraft] = useState<string>("");
+  const [bmdReleaseDateDraft, setBmdReleaseDateDraft] = useState<string>("");
+  const [bmdReleaseReasonDraft, setBmdReleaseReasonDraft] = useState<string>("");
+  const [bmdReleaseDocumentDraft, setBmdReleaseDocumentDraft] = useState<string>("");
   const [bmdNameDraft, setBmdNameDraft] = useState<string>("");
   const [bmdCategoryDraft, setBmdCategoryDraft] = useState<string>("Perangkat Lapangan");
   const [bmdLocationDraft, setBmdLocationDraft] = useState<string>("Rak BMD A-01");
@@ -491,9 +507,9 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
   };
 
   const totalItems = materials.length;
-  const lampuReady = materials.filter((item) => item.kategori === "LAMPU" && item.stokTersedia > item.stokMinimum).length;
-  const tiangReady = materials.filter((item) => item.kategori === "TIANG" && item.stokTersedia > item.stokMinimum).length;
-  const criticalStock = materials.filter((item) => item.stokTersedia <= item.stokMinimum).length;
+  const lampuReady = materials.filter((item) => item.kategori === "LAMPU" && item.statusUnit === "Tersedia").length;
+  const tiangReady = materials.filter((item) => item.kategori === "TIANG" && item.statusUnit === "Tersedia").length;
+  const installedUnits = materials.filter((item) => item.statusUnit === "Terpasang").length;
   const totalBmd = bmdAssets.length;
   const borrowedBmd = bmdAssets.filter((asset) => asset.status === "Dipinjam").length;
   const damagedBmd = bmdAssets.filter((asset) => asset.kondisi !== "Baik").length;
@@ -530,7 +546,11 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
     });
     const payload = (await response.json().catch(() => ({}))) as { error?: string; items?: unknown[] };
     if (!response.ok) {
-      throw new Error(payload.error || "Permintaan ke server gagal.");
+      const apiError = payload.error || "Permintaan ke server gagal.";
+      if (apiError.includes("mst_gudang_material") && apiError.toLowerCase().includes("schema cache")) {
+        throw new Error("Database Gudang belum disiapkan. Jalankan scripts/bmd-gudang-schema.sql satu kali di SQL Editor Supabase.");
+      }
+      throw new Error(apiError);
     }
     return payload;
   }, []);
@@ -609,7 +629,10 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
   };
 
   const handleCreateMaterial = async () => {
-    if (!materialCodeDraft.trim() || !materialNameDraft.trim()) return;
+    if (!materialCodeDraft.trim() || !materialSerialDraft.trim() || !materialNameDraft.trim()) {
+      setLoadError("Kode barang, nomor seri/ID unit, dan nama barang wajib diisi.");
+      return;
+    }
     try {
       setActionBusy(true);
       const fotoUrl = materialPhotoFile
@@ -620,10 +643,12 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
         body: JSON.stringify({
           action: "create-material",
           kodeBarang: materialCodeDraft.trim(),
+          nomorSeri: materialSerialDraft.trim(),
+          kepemilikan: "Perusahaan",
           namaBarang: materialNameDraft.trim(),
           kategori: materialCategoryDraft,
-          stokTersedia: materialStockDraft,
-          stokMinimum: materialMinimumDraft,
+          stokTersedia: 1,
+          stokMinimum: 0,
           lokasiGudang: materialLocationDraft.trim() || "Gudang Utama",
           fotoLabel: materialPhotoLabelDraft.trim() || materialCategoryDraft,
           fotoUrl,
@@ -631,6 +656,7 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
         }),
       });
       setMaterialCodeDraft("");
+      setMaterialSerialDraft("");
       setMaterialNameDraft("");
       setMaterialPhotoLabelDraft("");
       setMaterialPhotoFile(null);
@@ -656,6 +682,12 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
         body: JSON.stringify({
           action: "create-bmd-asset",
           nomorRegister: bmdRegisterDraft.trim(),
+          nomorSeri: bmdSerialDraft.trim() || bmdRegisterDraft.trim(),
+          kepemilikan: "Pemerintah",
+          asalTitikApj: bmdOriginPointDraft.trim(),
+          tanggalPelepasan: bmdReleaseDateDraft,
+          alasanPelepasan: bmdReleaseReasonDraft.trim(),
+          dokumenPelepasan: bmdReleaseDocumentDraft.trim(),
           namaAset: bmdNameDraft.trim(),
           kategori: bmdCategoryDraft.trim() || "Aset BMD",
           kondisi: bmdConditionDraft,
@@ -667,6 +699,11 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
         }),
       });
       setBmdRegisterDraft("");
+      setBmdSerialDraft("");
+      setBmdOriginPointDraft("");
+      setBmdReleaseDateDraft("");
+      setBmdReleaseReasonDraft("");
+      setBmdReleaseDocumentDraft("");
       setBmdNameDraft("");
       setBmdCategoryDraft("Perangkat Lapangan");
       setBmdLocationDraft("Rak BMD A-01");
@@ -684,8 +721,7 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
       setLoadError(`Barang kategori ${MATERIAL_CATEGORY_LABEL[selectedMaterial.kategori]} tidak cocok untuk ${selectedWorkType.label}.`);
       return;
     }
-    const qty = Number.parseInt(requestQuantity, 10);
-    if (!Number.isFinite(qty) || qty <= 0) return;
+    const qty = 1;
     try {
       setActionBusy(true);
       setLoadError("");
@@ -740,8 +776,8 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
   };
 
   const handleAddStock = async () => {
-    const qty = Number.parseInt(logQuantity, 10);
-    if (!selectedMaterial || !Number.isFinite(qty) || qty <= 0) return;
+    const qty = 1;
+    if (!selectedMaterial) return;
     try {
       setActionBusy(true);
       await fetchJson(endpoint, {
@@ -764,8 +800,8 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
   };
 
   const handleBookMaterial = async () => {
-    const qty = Number.parseInt(logQuantity, 10);
-    if (!selectedMaterial || !Number.isFinite(qty) || qty <= 0) return;
+    const qty = 1;
+    if (!selectedMaterial) return;
     try {
       setActionBusy(true);
       await fetchJson(endpoint, {
@@ -788,8 +824,8 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
   };
 
   const handleCheckoutMaterial = async () => {
-    const qty = Number.parseInt(logQuantity, 10);
-    if (!selectedMaterial || !Number.isFinite(qty) || qty <= 0) return;
+    const qty = 1;
+    if (!selectedMaterial) return;
     try {
       setActionBusy(true);
       await fetchJson(endpoint, {
@@ -988,11 +1024,11 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                 Split Dashboard
               </div>
               <h1 className="mt-4 text-2xl font-bold leading-tight sm:text-3xl lg:text-4xl">
-                Pisahkan stok operasional gudang dari aset BMD yang bersifat administratif.
+                Pisahkan barang perusahaan di Gudang dari barang pemerintah yang sudah dilepas ke BMD.
               </h1>
               <p className="mt-3 max-w-xl text-sm leading-6 text-slate-100 sm:text-base">
-                Gudang material difokuskan ke stok dinamis, log keluar-masuk, dan booking ke Konstruksi atau O&M.
-                BMD difokuskan ke register aset, peminjaman internal, dan pengembalian formal.
+                Gudang perusahaan mencatat setiap barang sebagai satu unit ber-ID unik, lengkap dengan lokasi pemasangannya.
+                BMD difokuskan ke register, asal titik, kondisi, dan dokumen pelepasan barang pemerintah.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <div className="min-w-[160px] rounded-2xl border border-white/12 bg-white/10 px-4 py-3 backdrop-blur">
@@ -1042,7 +1078,7 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
               <div className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-500">Aturan Inti</div>
               <div className="mt-2 text-xl font-bold text-slate-900">Aset vs. Stok</div>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Material gudang bisa habis pakai dan melekat ke proyek. BMD tetap dicatat per unit dan kembali lagi ke gudang.
+                Barang Gudang adalah milik perusahaan. BMD dicatat per unit khusus barang pemerintah yang dilepas dan disimpan.
               </p>
             </div>
             <div className="rounded-[28px] border border-slate-200 bg-white/90 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur">
@@ -1051,7 +1087,7 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <button onClick={() => setActiveTab("gudang")} className={`rounded-2xl px-3 py-3 text-left ${activeTab === "gudang" ? "bg-slate-900 text-white" : "bg-slate-50 text-slate-600"}`}>
                   <div className="font-semibold">Gudang Material</div>
-                  <div className="mt-1 text-xs opacity-80">Stok dinamis</div>
+                  <div className="mt-1 text-xs opacity-80">Inventaris per ID unit</div>
                 </button>
                 <button onClick={() => setActiveTab("bmd")} className={`rounded-2xl px-3 py-3 text-left ${activeTab === "bmd" ? "bg-slate-900 text-white" : "bg-slate-50 text-slate-600"}`}>
                   <div className="font-semibold">Manajemen BMD</div>
@@ -1065,17 +1101,17 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
         <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {activeTab === "gudang" ? (
             <>
-              <StockMetricCard label="Total Item" value={String(totalItems)} note="Master barang aktif di gudang." accent="from-slate-700 to-slate-900" />
-              <StockMetricCard label="Lampu Ready" value={String(lampuReady)} note="Lampu dengan stok di atas minimum." accent="from-amber-400 to-orange-500" />
-              <StockMetricCard label="Tiang Ready" value={String(tiangReady)} note="Material tiang siap dipanggil proyek." accent="from-sky-500 to-blue-600" />
-              <StockMetricCard label={adminMode ? "Stok Kritis" : "Pengajuan Saya"} value={String(adminMode ? criticalStock : totalRequests)} note={adminMode ? "Perlu restock atau mutasi gudang." : "Jumlah pengajuan yang sudah Anda buat."} accent="from-rose-500 to-red-600" />
+              <StockMetricCard label="Total Unit" value={String(totalItems)} note="Dihitung satu per ID barang unik." accent="from-slate-700 to-slate-900" />
+              <StockMetricCard label="Lampu Tersedia" value={String(lampuReady)} note="Unit lampu yang belum terpasang." accent="from-amber-400 to-orange-500" />
+              <StockMetricCard label="Tiang Tersedia" value={String(tiangReady)} note="Unit tiang yang belum terpasang." accent="from-sky-500 to-blue-600" />
+              <StockMetricCard label={adminMode ? "Unit Terpasang" : "Pengajuan Saya"} value={String(adminMode ? installedUnits : totalRequests)} note={adminMode ? "Unit yang sudah terhubung ke titik APJ." : "Jumlah pengajuan yang sudah Anda buat."} accent="from-rose-500 to-red-600" />
             </>
           ) : (
             <>
               <StockMetricCard label="Total Aset BMD" value={String(totalBmd)} note="Jumlah aset tercatat pada register." accent="from-slate-700 to-slate-900" />
-              <StockMetricCard label="Aset Terpinjam" value={String(borrowedBmd)} note="Sedang dibawa unit internal." accent="from-amber-400 to-orange-500" />
+              <StockMetricCard label="Barang Pemerintah" value={String(totalBmd)} note="Terpisah dari barang milik perusahaan." accent="from-amber-400 to-orange-500" />
               <StockMetricCard label="Aset Rusak" value={String(damagedBmd)} note="Butuh tindak lanjut perawatan." accent="from-rose-500 to-red-600" />
-              <StockMetricCard label="Siap Digunakan" value={String(totalBmd - borrowedBmd)} note="Bisa dipinjamkan dari gudang BMD." accent="from-emerald-500 to-teal-600" />
+              <StockMetricCard label="Tersimpan" value={String(totalBmd - borrowedBmd)} note="Barang pemerintah yang tersimpan pada register BMD." accent="from-emerald-500 to-teal-600" />
             </>
           )}
         </section>
@@ -1097,7 +1133,7 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                 <div className="rounded-[30px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_20px_45px_rgba(15,23,42,0.08)]">
                   <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Patch Gudang</div>
                   <h2 className="mt-1 text-2xl font-bold text-slate-900">Tambah Data Barang</h2>
-                  <div className="mt-2 text-sm leading-6 text-slate-600">Setiap barang dibuat dulu sebagai master, lalu dipakai oleh patch stok, transaksi, dan pengajuan.</div>
+                  <div className="mt-2 text-sm leading-6 text-slate-600">Master ini khusus barang milik perusahaan. Nomor seri/kode barang dapat dihubungkan ke komponen pada titik APJ.</div>
                   <div className="mt-5 grid gap-3 md:grid-cols-2">
                     <label className="text-sm font-semibold text-slate-700">
                       Kategori
@@ -1111,6 +1147,10 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                     <label className="text-sm font-semibold text-slate-700">
                       Kode Barang
                       <input value={materialCodeDraft} onChange={(event) => setMaterialCodeDraft(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="BRG-LAMPU-001" />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      Nomor Seri / ID Unit *
+                      <input required value={materialSerialDraft} onChange={(event) => setMaterialSerialDraft(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="SN-LMP-0001" />
                     </label>
                     <label className="text-sm font-semibold text-slate-700">
                       Nama Barang
@@ -1134,15 +1174,8 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                       Lokasi Gudang
                       <input value={materialLocationDraft} onChange={(event) => setMaterialLocationDraft(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="Gudang Utama" />
                     </label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <label className="text-sm font-semibold text-slate-700">
-                        Stok Awal
-                        <input value={materialStockDraft} onChange={(event) => setMaterialStockDraft(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" inputMode="numeric" />
-                      </label>
-                      <label className="text-sm font-semibold text-slate-700">
-                        Stok Minimum
-                        <input value={materialMinimumDraft} onChange={(event) => setMaterialMinimumDraft(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" inputMode="numeric" />
-                      </label>
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                      Otomatis dihitung sebagai <b>1 unit</b>. Setiap barang dibuat satu per satu menggunakan ID unik.
                     </div>
                   </div>
                   <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -1275,9 +1308,10 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                         <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{selectedMaterial.kodeBarang} • {MATERIAL_CATEGORY_LABEL[selectedMaterial.kategori]}</div>
                       </div>
                       <div className="mt-4 grid gap-3">
-                        <DetailField label="Stok Tersedia" value={selectedMaterial.stokTersedia} />
-                        <DetailField label="Stok Minimum" value={selectedMaterial.stokMinimum} />
-                        <DetailField label="Lokasi Gudang" value={selectedMaterial.lokasiGudang} />
+                        <DetailField label="Nomor Seri / ID Unit" value={selectedMaterial.nomorSeri || selectedMaterial.kodeBarang} />
+                        <DetailField label="Status Unit" value={selectedMaterial.statusUnit} />
+                        <DetailField label="Terpasang di Titik" value={selectedMaterial.installedPointId || "-"} />
+                        <DetailField label="Lokasi" value={selectedMaterial.installedPointId ? `Titik APJ ${selectedMaterial.installedPointId}` : selectedMaterial.lokasiGudang} />
                         <DetailField label="Label" value={selectedMaterial.fotoLabel} />
                       </div>
                       <div className="mt-4 rounded-[24px] border border-slate-200 bg-white p-4">
@@ -1334,10 +1368,9 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                         <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{selectedMaterial.kodeBarang}</div>
                       </div>
                       <div className="mt-4 grid gap-3">
-                        <label className="text-sm font-semibold text-slate-700">
-                          Jumlah
-                          <input value={adminMode ? logQuantity : requestQuantity} onChange={(event) => (adminMode ? setLogQuantity(event.target.value) : setRequestQuantity(event.target.value))} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" inputMode="numeric" placeholder="Masukkan jumlah" />
-                        </label>
+                        <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                          Transaksi berlaku untuk <b>1 unit</b>: {selectedMaterial.nomorSeri || selectedMaterial.kodeBarang}.
+                        </div>
                         {adminMode ? (
                           <label className="text-sm font-semibold text-slate-700">
                             Referensi Work Order
@@ -1354,7 +1387,6 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                         <div className="mt-4 grid gap-3">
                           <button onClick={handleBookMaterial} disabled={actionBusy} className="rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:shadow-lg">Book ke Konstruksi / O&M</button>
                           <button onClick={handleCheckoutMaterial} disabled={actionBusy} className="rounded-2xl bg-gradient-to-r from-slate-800 to-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:shadow-lg">Log Keluar Barang</button>
-                          <button onClick={handleAddStock} disabled={actionBusy} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">Tambah Stok Masuk</button>
                         </div>
                       ) : (
                         <div className="mt-4 grid gap-3">
@@ -1422,8 +1454,8 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                     ) : selectedMaterial ? (
                       <>
                         <DetailField label="Jenis Patch" value={MATERIAL_CATEGORY_LABEL[selectedMaterial.kategori]} />
-                        <DetailField label="Stok Tersedia" value={selectedMaterial.stokTersedia} />
-                        <DetailField label="Lokasi Gudang" value={selectedMaterial.lokasiGudang} />
+                        <DetailField label="Status Unit" value={selectedMaterial.statusUnit} />
+                        <DetailField label="Lokasi" value={selectedMaterial.installedPointId ? `Titik APJ ${selectedMaterial.installedPointId}` : selectedMaterial.lokasiGudang} />
                       </>
                     ) : (
                       <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm leading-6 text-slate-600">Belum ada barang terpilih.</div>
@@ -1502,9 +1534,8 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
         ) : (
           <>
             <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {adminMode ? <PatchButton active={activeBmdPatch === "tambah"} label="Patch Tambah Aset" note="Registrasi aset BMD satu per satu." onClick={() => setActiveBmdPatch("tambah")} /> : null}
-              <PatchButton active={activeBmdPatch === "database"} label="Patch Database Aset" note="Database BMD dibagi per kategori aset." onClick={() => setActiveBmdPatch("database")} />
-              <PatchButton active={activeBmdPatch === "operasional"} label={adminMode ? "Patch Peminjaman" : "Patch Pengajuan"} note={adminMode ? "Catat pinjam dan pengembalian." : "Ajukan pinjam aset ke admin."} onClick={() => setActiveBmdPatch("operasional")} />
+              {adminMode ? <PatchButton active={activeBmdPatch === "tambah"} label="Catat Pelepasan BMD" note="Registrasi barang pemerintah yang dilepas dari titik." onClick={() => setActiveBmdPatch("tambah")} /> : null}
+              <PatchButton active={activeBmdPatch === "database"} label="Database BMD" note="Barang pemerintah tersimpan, terpisah dari Gudang perusahaan." onClick={() => setActiveBmdPatch("database")} />
               <PatchButton active={activeBmdPatch === "alur"} label="Patch Alur BMD" note="Ringkasan proses administratif BMD." onClick={() => setActiveBmdPatch("alur")} />
             </section>
 
@@ -1512,8 +1543,8 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
               <section className="mt-6 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
                 <div className="rounded-[30px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_20px_45px_rgba(15,23,42,0.08)]">
                   <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Patch BMD</div>
-                  <h2 className="mt-1 text-2xl font-bold text-slate-900">Tambah Aset BMD</h2>
-                  <div className="mt-2 text-sm leading-6 text-slate-600">Setiap aset diregistrasi per unit, lalu dipakai oleh patch database dan patch peminjaman.</div>
+                  <h2 className="mt-1 text-2xl font-bold text-slate-900">Catat Barang Pemerintah yang Dilepas</h2>
+                  <div className="mt-2 text-sm leading-6 text-slate-600">BMD hanya untuk barang milik pemerintah yang dilepas dari titik lalu disimpan. Barang milik perusahaan tetap dicatat di Gudang.</div>
                   <div className="mt-5 grid gap-3 md:grid-cols-2">
                     <label className="text-sm font-semibold text-slate-700">
                       Nomor Register Aset
@@ -1522,6 +1553,26 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                     <label className="text-sm font-semibold text-slate-700">
                       Nama Aset
                       <input value={bmdNameDraft} onChange={(event) => setBmdNameDraft(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="GPS Handheld Survey" />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      Nomor Seri Barang
+                      <input value={bmdSerialDraft} onChange={(event) => setBmdSerialDraft(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="SN-BMD-0001" />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      Asal ID Titik APJ
+                      <input value={bmdOriginPointDraft} onChange={(event) => setBmdOriginPointDraft(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="AR-001-001" />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      Tanggal Pelepasan
+                      <input type="date" value={bmdReleaseDateDraft} onChange={(event) => setBmdReleaseDateDraft(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      Dokumen/Berita Acara
+                      <input value={bmdReleaseDocumentDraft} onChange={(event) => setBmdReleaseDocumentDraft(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="BAST-2026-001" />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700 md:col-span-2">
+                      Alasan Pelepasan
+                      <textarea value={bmdReleaseReasonDraft} onChange={(event) => setBmdReleaseReasonDraft(event.target.value)} rows={2} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="Rusak, diganti, atau alasan pelepasan lainnya" />
                     </label>
                     <label className="text-sm font-semibold text-slate-700">
                       Kategori
@@ -1605,71 +1656,19 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                       </div>
                       <div className="mt-4 grid gap-3">
                         <DetailField label="Status" value={selectedBmdAsset.status} />
+                        <DetailField label="Kepemilikan" value="Pemerintah" />
+                        <DetailField label="Nomor Seri" value={selectedBmdAsset.nomorSeri || selectedBmdAsset.nomorRegister} />
+                        <DetailField label="Asal Titik APJ" value={selectedBmdAsset.asalTitikApj || "-"} />
+                        <DetailField label="Tanggal Pelepasan" value={selectedBmdAsset.tanggalPelepasan || "-"} />
+                        <DetailField label="Alasan Pelepasan" value={selectedBmdAsset.alasanPelepasan || "-"} />
+                        <DetailField label="Dokumen Pelepasan" value={selectedBmdAsset.dokumenPelepasan || "-"} />
                         <DetailField label="Kondisi" value={selectedBmdAsset.kondisi} />
                         <DetailField label="Lokasi" value={selectedBmdAsset.lokasi} />
-                        <DetailField label="Peminjam" value={selectedBmdAsset.peminjam} />
-                        <DetailField label="Estimasi Kembali" value={selectedBmdAsset.estimasiKembali} />
                       </div>
                     </>
                   ) : (
                     <div className="mt-4 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm leading-6 text-slate-600">Belum ada aset yang dipilih dari patch database BMD.</div>
                   )}
-                </div>
-              </section>
-            ) : null}
-
-            {activeBmdPatch === "operasional" ? (
-              <section className="mt-6 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
-                <div className="rounded-[30px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_20px_45px_rgba(15,23,42,0.08)]">
-                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">{adminMode ? "Patch Peminjaman" : "Patch Pengajuan BMD"}</div>
-                  <h2 className="mt-1 text-xl font-bold text-slate-900">{adminMode ? "Peminjaman & Pengembalian" : "Ajukan Peminjaman Aset"}</h2>
-                  {selectedBmdAsset ? (
-                    <>
-                      <div className="mt-4 rounded-[24px] bg-slate-50 p-4">
-                        <div className="text-sm font-semibold text-slate-900">{selectedBmdAsset.namaAset}</div>
-                        <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{selectedBmdAsset.nomorRegister}</div>
-                      </div>
-                      <div className="mt-4 grid gap-3">
-                        <label className="text-sm font-semibold text-slate-700">
-                          Dibawa Oleh
-                          <input value={loanBorrower} onChange={(event) => setLoanBorrower(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="Masukkan unit / petugas" />
-                        </label>
-                        <label className="text-sm font-semibold text-slate-700">
-                          Keperluan
-                          <textarea value={loanPurpose} onChange={(event) => setLoanPurpose(event.target.value)} className="mt-2 min-h-[110px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" placeholder="Tuliskan tujuan peminjaman" />
-                        </label>
-                      </div>
-                      {adminMode ? (
-                        <div className="mt-4 grid gap-3">
-                          <button onClick={handleLoanBmd} disabled={actionBusy} className="rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:shadow-lg">Catat Peminjaman</button>
-                          <button onClick={handleReturnBmd} disabled={actionBusy} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">Proses Pengembalian</button>
-                        </div>
-                      ) : (
-                        <div className="mt-4 grid gap-3">
-                          <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Lokasi aset saat ini: <span className="font-semibold text-slate-900">{selectedBmdAsset.lokasi}</span></div>
-                          <button onClick={handleSubmitBmdRequest} disabled={actionBusy} className="rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:shadow-lg">Ajukan Peminjaman ke Admin</button>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="mt-4 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm leading-6 text-slate-600">Pilih aset dari patch database BMD terlebih dahulu.</div>
-                  )}
-                </div>
-                <div className="rounded-[30px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_20px_45px_rgba(15,23,42,0.08)]">
-                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Status Aset</div>
-                  <div className="mt-1 text-xl font-bold text-slate-900">Ringkasan Aset Terpilih</div>
-                  <div className="mt-4 space-y-3">
-                    {selectedBmdAsset ? (
-                      <>
-                        <DetailField label="Kategori" value={selectedBmdAsset.kategori} />
-                        <DetailField label="Status" value={selectedBmdAsset.status} />
-                        <DetailField label="Kondisi" value={selectedBmdAsset.kondisi} />
-                        <DetailField label="Estimasi Kembali" value={selectedBmdAsset.estimasiKembali} />
-                      </>
-                    ) : (
-                      <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm leading-6 text-slate-600">Belum ada aset terpilih.</div>
-                    )}
-                  </div>
                 </div>
               </section>
             ) : null}
@@ -1680,9 +1679,9 @@ export default function BmdGudangDashboard({ adminMode = false }: { adminMode?: 
                   <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Patch Alur BMD</div>
                   <div className="mt-1 text-xl font-bold text-slate-900">Alur Administratif</div>
                   <div className="mt-4 grid gap-3 text-sm leading-6 text-slate-600 md:grid-cols-3">
-                    <div className="rounded-2xl bg-slate-50 px-4 py-4">1. Registrasi aset baru dengan nomor register, kategori, dan kondisi awal.</div>
-                    <div className="rounded-2xl bg-slate-50 px-4 py-4">2. Saat dipinjam, status aset berubah menjadi <strong>Dipinjam</strong> dan tetap terhubung ke data detail aset.</div>
-                    <div className="rounded-2xl bg-slate-50 px-4 py-4">3. Saat kembali, admin cek kondisi lalu aset dikembalikan ke lokasi simpan BMD.</div>
+                    <div className="rounded-2xl bg-slate-50 px-4 py-4">1. Petugas melepas barang pemerintah dari titik APJ dan mencatat nomor serinya.</div>
+                    <div className="rounded-2xl bg-slate-50 px-4 py-4">2. Admin mencatat asal titik, kondisi, tanggal, dan dokumen pelepasan ke register BMD.</div>
+                    <div className="rounded-2xl bg-slate-50 px-4 py-4">3. Barang disimpan di lokasi BMD dan tetap dapat ditelusuri dari nomor seri serta riwayat titiknya.</div>
                   </div>
                 </div>
               </section>

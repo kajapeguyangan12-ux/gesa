@@ -932,10 +932,10 @@ export function PublicApjMapPage() {
       setLoading(true);
       setError("");
       try {
-        const response = await fetch(`/api/survey-apj-propose/submitted-surveys?kabupaten=${encodeURIComponent(kabupaten)}`, { cache: "no-store" });
-        const payload = (await response.json()) as { surveys?: ApjSurvey[]; data?: ApjSurvey[]; error?: string };
+        const response = await fetch(`/api/om/apj-points?limit=5000&kabupaten=${encodeURIComponent(kabupaten)}`, { cache: "no-store" });
+        const payload = (await response.json()) as { points?: ApjSurvey[]; error?: string };
         if (!response.ok) throw new Error(payload.error || "Gagal memuat titik APJ.");
-        setItems(payload.surveys || payload.data || []);
+        setItems(payload.points || []);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Gagal memuat titik APJ.");
         setItems([]);
@@ -968,11 +968,11 @@ export function PublicApjMapPage() {
             <div>
               <p className="text-sm font-bold text-gray-950">Peta Titik APJ</p>
               <p className="mt-1 text-xs leading-5 text-gray-600">
-                Tampilan peta mengikuti map admin. Area data: {kabupaten || "tabanan"}.
+                Data tersinkron langsung dari master APJ admin O&M. Area: {kabupaten || "tabanan"}.
               </p>
             </div>
             <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
-              {loading ? "..." : mapData.length} titik
+              {loading ? "..." : `${mapData.length}/${items.length}`} titik
             </span>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 text-[11px] text-gray-700">

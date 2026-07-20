@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { loadCompanyLampPowerMap, resolveRawPointLampPower } from "@/lib/apjComponentAsset";
 
 let inMemoryTaskRows: TaskRow[] = [];
 const TASK_STORE_STAGE = "om_task_store";
@@ -167,7 +168,7 @@ export async function GET(request: NextRequest) {
       // app_notifications remains the primary source when the generic store is unavailable.
     }
 
-    const tasks = data
+    let tasks = data
       .map(serializeTask)
       .filter((task) => {
         if (uid && task.assignedUid && task.assignedUid !== uid) return false;
@@ -175,6 +176,38 @@ export async function GET(request: NextRequest) {
         return task.targetRoles.includes(role) || task.targetRoles.includes("petugas-om-preventif");
       })
       .slice(0, limit);
+
+    try {
+      const pointIds = Array.from(new Set(tasks.flatMap((task: any) => [
+        normalizeString(task.pointId),
+        ...(Array.isArray(task.targetPoints) ? task.targetPoints.map((point: Record<string, unknown>) => normalizeString(point.idTitik)) : []),
+      ]).filter(Boolean)));
+      if (pointIds.length > 0) {
+        const [{ data: pointRows, error: pointError }, lampPowers] = await Promise.all([
+          supabase.from("kontruksi_valid").select("id_titik, raw_payload").in("id_titik", pointIds).limit(5000),
+          loadCompanyLampPowerMap(supabase),
+        ]);
+        if (pointError) throw new Error(pointError.message);
+        const powerByPoint = new Map<string, string>();
+        for (const row of Array.isArray(pointRows) ? pointRows as Record<string, unknown>[] : []) {
+          const raw = row.raw_payload && typeof row.raw_payload === "object" ? row.raw_payload as Record<string, unknown> : {};
+          const power = resolveRawPointLampPower(raw, lampPowers);
+          const pointId = normalizeString(row.id_titik);
+          if (pointId && power && !powerByPoint.has(pointId)) powerByPoint.set(pointId, power);
+        }
+        tasks = tasks.map((task: any) => ({
+          ...task,
+          targetPoints: Array.isArray(task.targetPoints)
+            ? task.targetPoints.map((point: Record<string, unknown>) => ({
+                ...point,
+                dayaLampu: powerByPoint.get(normalizeString(point.idTitik)) || point.dayaLampu,
+              }))
+            : task.targetPoints,
+        }));
+      }
+    } catch {
+      // Data tugas tetap tersedia bila sinkronisasi master lampu sedang tidak dapat dibaca.
+    }
 
     return NextResponse.json({
       tasks,

@@ -38,6 +38,10 @@ export type MaterialBase = {
   lokasiGudang: string;
   fotoLabel: string;
   fotoUrl?: string;
+  nomorSeri?: string;
+  kepemilikan: "Perusahaan";
+  statusUnit: "Tersedia" | "Terpasang" | "Dilepas";
+  installedPointId?: string;
 };
 
 export type MaterialItem =
@@ -92,6 +96,12 @@ export type BmdAsset = {
   peminjam: string;
   estimasiKembali: string;
   fotoUrl?: string;
+  nomorSeri?: string;
+  kepemilikan: "Pemerintah";
+  asalTitikApj?: string;
+  tanggalPelepasan?: string;
+  alasanPelepasan?: string;
+  dokumenPelepasan?: string;
 };
 
 export function createDocId(prefix: string) {
@@ -170,6 +180,10 @@ export function mapMaterialRow(row: Record<string, unknown>): MaterialItem {
     lokasiGudang: normalizeString(row.lokasi_gudang) || normalizeString(raw.lokasiGudang),
     fotoLabel: normalizeString(row.foto_label) || normalizeString(raw.fotoLabel) || kategori,
     fotoUrl: normalizeString(raw.fotoUrl),
+    nomorSeri: normalizeString(raw.nomorSeri) || normalizeString(raw.no_seri),
+    kepemilikan: "Perusahaan",
+    statusUnit: (normalizeString(raw.statusUnit) || "Tersedia") as MaterialBase["statusUnit"],
+    installedPointId: normalizeString(raw.installedPointId),
   };
 
   const detail = (raw.detail as Record<string, unknown> | undefined) || {};
@@ -266,5 +280,11 @@ export function mapBmdAssetRow(row: Record<string, unknown>): BmdAsset {
     peminjam: normalizeString(row.peminjam) || normalizeString(raw.peminjam) || "-",
     estimasiKembali: normalizeString(row.estimasi_kembali) || normalizeString(raw.estimasiKembali) || "-",
     fotoUrl: normalizeString(raw.fotoUrl),
+    nomorSeri: normalizeString(raw.nomorSeri) || normalizeString(raw.no_seri) || normalizeString(row.nomor_register),
+    kepemilikan: "Pemerintah",
+    asalTitikApj: normalizeString(raw.asalTitikApj),
+    tanggalPelepasan: normalizeString(raw.tanggalPelepasan),
+    alasanPelepasan: normalizeString(raw.alasanPelepasan),
+    dokumenPelepasan: normalizeString(raw.dokumenPelepasan),
   };
 }

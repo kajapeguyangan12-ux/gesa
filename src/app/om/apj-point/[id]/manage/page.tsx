@@ -16,13 +16,49 @@ type ApjPoint = {
   longitude: number;
   createdAt?: string;
   rawPayload?: Record<string, unknown>;
+  componentAssets?: Record<string, ComponentAsset | null>;
+};
+
+type ComponentAsset = {
+  id: string;
+  nomorSeri: string;
+  nama: string;
+  kategori: string;
+  kepemilikan: "Perusahaan" | "Pemerintah";
+  lokasi: string;
+  kondisi?: string;
+  status?: string;
+  detail: Record<string, unknown>;
+};
+
+type MaterialUnit = {
+  id: string;
+  kodeBarang: string;
+  nomorSeri?: string;
+  namaBarang: string;
+  kategori: "TIANG" | "LAMPU" | "ARM" | "KABEL";
+  statusUnit: "Tersedia" | "Terpasang" | "Dilepas";
+  installedPointId?: string;
+  detail?: { dayaWatt?: string };
+};
+
+type BmdUnit = {
+  id: string;
+  nomorRegister: string;
+  nomorSeri?: string;
+  namaAset: string;
+  kategori: string;
+  status: string;
 };
 
 const emptyManageForm = {
   namaTitik: "",
   noSeriTiangArm: "",
+  kepemilikanTiangArm: "Perusahaan",
   noSeriLampu1: "",
+  kepemilikanLampu1: "Perusahaan",
   noSeriLampu2: "",
+  kepemilikanLampu2: "Perusahaan",
   kabupaten: "",
   kecamatan: "",
   namaJalan: "",
@@ -51,6 +87,11 @@ function rawText(raw: Record<string, unknown> | undefined, ...keys: string[]) {
   return "";
 }
 
+function serialText(raw: Record<string, unknown> | undefined, ...keys: string[]) {
+  const value = rawText(raw, ...keys);
+  return value === "-" ? "" : value;
+}
+
 function qrImageUrl(value: string) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=${encodeURIComponent(value)}`;
 }
@@ -63,6 +104,8 @@ function ManageApjPoint({ idTitik }: { idTitik: string }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [materialUnits, setMaterialUnits] = useState<MaterialUnit[]>([]);
+  const [bmdUnits, setBmdUnits] = useState<BmdUnit[]>([]);
   const isOmTestData = Boolean(point?.rawPayload?.isOmTestData || point?.rawPayload?.isTestData || point?.rawPayload?.source === "om_manual_test");
 
   const reportUrl = useMemo(() => {
@@ -82,9 +125,12 @@ function ManageApjPoint({ idTitik }: { idTitik: string }) {
       setPoint(next);
       setForm({
         namaTitik: next.namaTitik || rawText(raw, "namaTitik", "nama_titik") || next.idTitik || idTitik,
-        noSeriTiangArm: rawText(raw, "noSeriTiangArm", "no_seri_tiang_arm"),
-        noSeriLampu1: rawText(raw, "noSeriLampu1", "no_seri_lampu_1"),
-        noSeriLampu2: rawText(raw, "noSeriLampu2", "no_seri_lampu_2"),
+        noSeriTiangArm: serialText(raw, "noSeriTiangArm", "no_seri_tiang_arm"),
+        kepemilikanTiangArm: rawText(raw, "kepemilikanTiangArm") === "Pemerintah" ? "Pemerintah" : "Perusahaan",
+        noSeriLampu1: serialText(raw, "noSeriLampu1", "no_seri_lampu_1"),
+        kepemilikanLampu1: rawText(raw, "kepemilikanLampu1") === "Pemerintah" ? "Pemerintah" : "Perusahaan",
+        noSeriLampu2: serialText(raw, "noSeriLampu2", "no_seri_lampu_2"),
+        kepemilikanLampu2: rawText(raw, "kepemilikanLampu2") === "Pemerintah" ? "Pemerintah" : "Perusahaan",
         kabupaten: next.kabupaten === "-" ? "" : next.kabupaten || rawText(raw, "kabupaten"),
         kecamatan: rawText(raw, "kecamatan"),
         namaJalan: next.namaJalan === "-" ? "" : next.namaJalan || rawText(raw, "namaJalan", "nama_jalan", "jalan"),
@@ -116,7 +162,69 @@ function ManageApjPoint({ idTitik }: { idTitik: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idTitik]);
 
+  useEffect(() => {
+    const loadAssetOptions = async () => {
+      try {
+        const [materialsResponse, bmdResponse] = await Promise.all([
+          fetch("/api/bmd-gudang?resource=materials", { cache: "no-store" }),
+          fetch("/api/bmd-gudang?resource=bmd-assets", { cache: "no-store" }),
+        ]);
+        const materialsPayload = (await materialsResponse.json()) as { items?: MaterialUnit[] };
+        const bmdPayload = (await bmdResponse.json()) as { items?: BmdUnit[] };
+        if (materialsResponse.ok) setMaterialUnits(materialsPayload.items || []);
+        if (bmdResponse.ok) setBmdUnits(bmdPayload.items || []);
+      } catch {
+        setMaterialUnits([]);
+        setBmdUnits([]);
+      }
+    };
+    void loadAssetOptions();
+  }, [idTitik, message]);
+
+  useEffect(() => {
+    if (materialUnits.length === 0) return;
+    setForm((current) => {
+      const hasCompanyLamp = (current.kepemilikanLampu1 === "Perusahaan" && Boolean(current.noSeriLampu1))
+        || (current.kepemilikanLampu2 === "Perusahaan" && Boolean(current.noSeriLampu2));
+      if (!hasCompanyLamp) return current;
+      const syncedPower = syncManagedLampPower(current);
+      if (!syncedPower || syncedPower === current.dayaLampu) return current;
+      return { ...current, dayaLampu: syncedPower };
+    });
+    // Sinkronisasi hanya diperlukan ketika daftar master unit selesai dimuat.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materialUnits, form.noSeriLampu1, form.noSeriLampu2, form.kepemilikanLampu1, form.kepemilikanLampu2]);
+
   const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+
+  const syncManagedLampPower = (next: typeof form) => {
+    const serials = [
+      next.kepemilikanLampu1 === "Perusahaan" ? next.noSeriLampu1 : "",
+      next.kepemilikanLampu2 === "Perusahaan" ? next.noSeriLampu2 : "",
+    ].filter(Boolean);
+    const unit = materialUnits.find((item) => serials.includes(item.nomorSeri || item.kodeBarang));
+    return unit?.detail?.dayaWatt || "";
+  };
+
+  const selectManagedComponent = (key: "noSeriTiangArm" | "noSeriLampu1" | "noSeriLampu2", value: string) => {
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "noSeriLampu1" || key === "noSeriLampu2") next.dayaLampu = syncManagedLampPower(next);
+      return next;
+    });
+  };
+
+  const changeManagedOwnership = (
+    serialKey: "noSeriTiangArm" | "noSeriLampu1" | "noSeriLampu2",
+    ownershipKey: "kepemilikanTiangArm" | "kepemilikanLampu1" | "kepemilikanLampu2",
+    value: string
+  ) => {
+    setForm((current) => {
+      const next = { ...current, [ownershipKey]: value, [serialKey]: "" };
+      if (serialKey === "noSeriLampu1" || serialKey === "noSeriLampu2") next.dayaLampu = syncManagedLampPower(next);
+      return next;
+    });
+  };
 
   const save = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -192,11 +300,68 @@ function ManageApjPoint({ idTitik }: { idTitik: string }) {
             {error ? <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
             {point ? (
               <form onSubmit={save} className="grid gap-4 md:grid-cols-2">
+                <div className="md:col-span-2 rounded-2xl border border-sky-100 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
+                  Nomor seri hanya menjadi penghubung. Pilih <b>Perusahaan</b> untuk mengambil detail dari Gudang, atau <b>Pemerintah</b> untuk mengambil detail barang yang sudah dilepas dan tersimpan di BMD.
+                </div>
+                {([
+                  ["Tiang/Arm", "noSeriTiangArm", "kepemilikanTiangArm", "tiangArm"],
+                  ["Lampu 1", "noSeriLampu1", "kepemilikanLampu1", "lampu1"],
+                  ["Lampu 2", "noSeriLampu2", "kepemilikanLampu2", "lampu2"],
+                ] as const).map(([label, serialKey, ownershipKey, assetKey]) => {
+                  const asset = point.componentAssets?.[assetKey];
+                  const ownership = form[ownershipKey];
+                  const allowedCategories = assetKey === "tiangArm" ? ["TIANG", "ARM"] : ["LAMPU"];
+                  const companyOptions = materialUnits.filter((unit) =>
+                    allowedCategories.includes(unit.kategori)
+                    && (unit.statusUnit === "Tersedia" || unit.installedPointId === idTitik || (unit.nomorSeri || unit.kodeBarang) === form[serialKey])
+                  );
+                  const governmentOptions = bmdUnits.filter((unit) =>
+                    allowedCategories.some((category) => unit.kategori.toUpperCase().includes(category))
+                    || (unit.nomorSeri || unit.nomorRegister) === form[serialKey]
+                  );
+                  return (
+                    <div key={serialKey} className="md:col-span-2 grid gap-3 rounded-2xl border border-slate-200 p-4 md:grid-cols-[1fr_220px]">
+                      <label className="block">
+                        <span className="text-sm font-semibold text-slate-700">No Seri {label}</span>
+                        <select value={form[serialKey]} onChange={(event) => selectManagedComponent(serialKey, event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-teal-400">
+                          <option value="">Kosong / belum dipasang</option>
+                          {ownership === "Pemerintah"
+                            ? governmentOptions.map((unit) => {
+                                const serial = unit.nomorSeri || unit.nomorRegister;
+                                return <option key={unit.id} value={serial}>{serial} — {unit.namaAset}</option>;
+                              })
+                            : companyOptions
+                                .filter((unit) => {
+                                  const serial = unit.nomorSeri || unit.kodeBarang;
+                                  if (serialKey === "noSeriLampu1" || serialKey === "noSeriLampu2") {
+                                    const otherSerial = serialKey === "noSeriLampu1" ? form.noSeriLampu2 : form.noSeriLampu1;
+                                    if (serial === otherSerial) return false;
+                                    const otherUnit = materialUnits.find((item) => (item.nomorSeri || item.kodeBarang) === otherSerial);
+                                    if (otherUnit?.detail?.dayaWatt && unit.detail?.dayaWatt !== otherUnit.detail.dayaWatt) return false;
+                                  }
+                                  return true;
+                                })
+                                .map((unit) => {
+                                  const serial = unit.nomorSeri || unit.kodeBarang;
+                                  return <option key={unit.id} value={serial}>{serial} — {unit.namaBarang} ({unit.kategori})</option>;
+                                })}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-sm font-semibold text-slate-700">Kepemilikan</span>
+                        <select value={form[ownershipKey]} onChange={(event) => changeManagedOwnership(serialKey, ownershipKey, event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-teal-400">
+                          <option value="Perusahaan">Barang Perusahaan (Gudang)</option>
+                          <option value="Pemerintah">Barang Pemerintah (BMD)</option>
+                        </select>
+                      </label>
+                      <div className={`md:col-span-2 rounded-xl px-4 py-3 text-sm ${asset ? "bg-emerald-50 text-emerald-800" : "bg-slate-50 text-slate-500"}`}>
+                        {asset ? <><b>{asset.nama}</b> · {asset.kategori} · {asset.lokasi}{asset.kondisi ? ` · ${asset.kondisi}` : ""}</> : form[serialKey] ? "Detail belum ditemukan. Pastikan nomor seri sudah dibuat pada master yang dipilih, lalu simpan/muat ulang." : "Belum ada nomor seri yang dihubungkan."}
+                      </div>
+                    </div>
+                  );
+                })}
                 {[
                   ["Nama Titik", "namaTitik"],
-                  ["No Seri Tiang/Arm", "noSeriTiangArm"],
-                  ["No Seri Lampu 1", "noSeriLampu1"],
-                  ["No Seri Lampu 2", "noSeriLampu2"],
                   ["Kabupaten", "kabupaten"],
                   ["Kecamatan", "kecamatan"],
                   ["Nama Jalan", "namaJalan"],
@@ -220,6 +385,7 @@ function ManageApjPoint({ idTitik }: { idTitik: string }) {
                     <input
                       value={form[key as keyof typeof form]}
                       onChange={(event) => update(key as keyof typeof form, event.target.value)}
+                      readOnly={key === "dayaLampu" && Boolean(form.noSeriLampu1 || form.noSeriLampu2)}
                       className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-teal-400"
                     />
                   </label>

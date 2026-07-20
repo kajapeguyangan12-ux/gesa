@@ -3,7 +3,8 @@ create table if not exists public.mst_gudang_material (
   kode_barang text not null,
   nama_barang text not null,
   kategori text not null check (kategori in ('TIANG', 'LAMPU', 'ARM', 'KABEL')),
-  stok_tersedia integer not null default 0,
+  -- Inventaris perusahaan dicatat per unit; setiap baris selalu mewakili satu barang.
+  stok_tersedia integer not null default 1 check (stok_tersedia = 1),
   stok_minimum integer not null default 0,
   lokasi_gudang text not null default 'Gudang Utama',
   foto_label text null,
@@ -15,6 +16,10 @@ create table if not exists public.mst_gudang_material (
 create unique index if not exists mst_gudang_material_kode_barang_idx
   on public.mst_gudang_material (kode_barang);
 
+create unique index if not exists mst_gudang_material_nomor_seri_idx
+  on public.mst_gudang_material ((lower(raw_payload ->> 'nomorSeri')))
+  where coalesce(raw_payload ->> 'nomorSeri', '') <> '';
+
 do $$
 begin
   alter table public.mst_gudang_material
@@ -23,6 +28,17 @@ begin
     add constraint mst_gudang_material_kategori_check
     check (kategori in ('TIANG', 'LAMPU', 'ARM', 'KABEL'));
 end $$;
+
+-- Menyamakan data lama dengan model satu baris = satu unit.
+update public.mst_gudang_material
+set stok_tersedia = 1,
+    stok_minimum = 0,
+    raw_payload = jsonb_set(
+      jsonb_set(raw_payload, '{stokTersedia}', '1'::jsonb, true),
+      '{stokMinimum}', '0'::jsonb, true
+    ),
+    updated_at = now()
+where stok_tersedia <> 1 or stok_minimum <> 0;
 
 create table if not exists public.log_inventory_trxs (
   fb_doc_id text primary key,
@@ -93,3 +109,5 @@ create table if not exists public.bmd_assets (
 
 create unique index if not exists bmd_assets_nomor_register_idx
   on public.bmd_assets (nomor_register);
+
+notify pgrst, 'reload schema';

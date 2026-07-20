@@ -78,6 +78,16 @@ type ApjPoint = {
   status?: string;
   stage?: string;
   rawPayload?: Record<string, unknown>;
+  componentAssets?: Record<string, {
+    nomorSeri: string;
+    nama: string;
+    kategori: string;
+    kepemilikan: "Perusahaan" | "Pemerintah";
+    lokasi: string;
+    kondisi?: string;
+    status?: string;
+    detail: Record<string, unknown>;
+  } | null>;
 };
 
 type OMTaskPoint = {
@@ -118,6 +128,7 @@ const displayedRawPointKeys = new Set([
   "longitude", "lng", "lon", "instalasi", "keteranganTitik", "keterangan_titik", "status",
   "kontruksiStatus", "stage", "tahap", "type", "source", "surveyorName", "surveyor_name",
   "createdAt", "created_at", "validatedAt", "validated_at", "operationalAt", "operational_at",
+  "kepemilikanTiangArm", "kepemilikanLampu1", "kepemilikanLampu2",
 ]);
 
 function pickRawPointValue(raw: Record<string, unknown>, ...keys: string[]) {
@@ -172,7 +183,15 @@ function pointDetailSections(point: ApjPoint) {
 }
 
 function PointDetailFields({ point }: { point: ApjPoint }) {
+  const [assetDetailsOpen, setAssetDetailsOpen] = useState(false);
   const sections = pointDetailSections(point);
+  const identityAndSerials = sections.primary.slice(0, 5);
+  const otherPrimary = sections.primary.slice(5);
+  const installedAssets = ([
+    ["Tiang/Arm", point.componentAssets?.tiangArm],
+    ["Lampu 1", point.componentAssets?.lampu1],
+    ["Lampu 2", point.componentAssets?.lampu2],
+  ] as const).filter((entry) => Boolean(entry[1]));
   const renderEntries = (entries: PointDetailEntry[]) => entries.map(([label, value]) => (
     <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
       <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
@@ -184,7 +203,48 @@ function PointDetailFields({ point }: { point: ApjPoint }) {
     <div className="space-y-5">
       <section>
         <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-sky-700">Data Utama</div>
-        <div className="space-y-2">{renderEntries(sections.primary)}</div>
+        <div className="space-y-2">{renderEntries(identityAndSerials)}</div>
+      </section>
+      {installedAssets.length ? (
+        <section>
+          <button
+            type="button"
+            onClick={() => setAssetDetailsOpen((current) => !current)}
+            className="flex w-full items-center justify-between rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-left text-xs font-bold text-sky-700"
+          >
+            <span>{assetDetailsOpen ? "Sembunyikan Detail Barang" : "Lihat Detail Barang Terpasang"}</span>
+            <span aria-hidden>{assetDetailsOpen ? "−" : "+"}</span>
+          </button>
+          {assetDetailsOpen ? (
+            <div className="mt-2 space-y-2">
+              {installedAssets.map(([label, asset]) => asset ? (
+                <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-700">{label}</div>
+                  <div className="mt-1 text-xs font-bold text-slate-900">{asset.nomorSeri} · {asset.nama}</div>
+                  <div className="mt-1 text-[11px] leading-5 text-slate-600">
+                    {asset.kategori} · {asset.kepemilikan} · {asset.lokasi}
+                    {asset.kondisi ? ` · ${asset.kondisi}` : ""}
+                    {asset.status ? ` · ${asset.status}` : ""}
+                  </div>
+                  {Object.keys(asset.detail || {}).length ? (
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {Object.entries(asset.detail).map(([key, value]) => (
+                        <div key={key} className="rounded-lg bg-white px-2 py-1.5">
+                          <div className="text-[9px] uppercase tracking-wide text-slate-400">{key}</div>
+                          <div className="mt-0.5 text-[11px] font-semibold text-slate-700">{formatDetailValue(value)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null)}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+      <section>
+        <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-sky-700">Data Lokasi & Teknis</div>
+        <div className="space-y-2">{renderEntries(otherPrimary)}</div>
       </section>
       {sections.system.length ? (
         <section>
@@ -975,11 +1035,17 @@ export function PreventiveOMTaskList() {
   const [workScannerOpen, setWorkScannerOpen] = useState(false);
   const [workScannerStatus, setWorkScannerStatus] = useState("Menyiapkan kamera...");
   const [workPhotoScanning, setWorkPhotoScanning] = useState(false);
+  const [luxBeforePhoto, setLuxBeforePhoto] = useState<File | null>(null);
+  const [luxAfterPhoto, setLuxAfterPhoto] = useState<File | null>(null);
   const [workForm, setWorkForm] = useState({
     name: "",
     idTitik: "",
     luxTitikApi: "",
     luxRataRata: "",
+    luxBeforePhotoName: "",
+    adjustmentAction: "tidak-ada",
+    luxAfterAdjustment: "",
+    luxAfterPhotoName: "",
     lampCondition: "",
     ornamentCondition: "",
     maintenanceAction: "",
@@ -1082,6 +1148,10 @@ export function PreventiveOMTaskList() {
       idTitik: initialIdTitik,
       luxTitikApi: "",
       luxRataRata: "",
+      luxBeforePhotoName: "",
+      adjustmentAction: "tidak-ada",
+      luxAfterAdjustment: "",
+      luxAfterPhotoName: "",
       lampCondition: "",
       ornamentCondition: "",
       maintenanceAction: "",
@@ -1090,6 +1160,8 @@ export function PreventiveOMTaskList() {
       note: "",
     });
     setWorkFormSnapshot({ name: user?.displayName || user?.name || "", idTitik: initialIdTitik });
+    setLuxBeforePhoto(null);
+    setLuxAfterPhoto(null);
     setWorkError("");
     setWorkMessage("");
     setPointPreview(null);
@@ -1217,12 +1289,33 @@ export function PreventiveOMTaskList() {
       setWorkError("ID titik, lux titik api, kondisi lampu, dan tindakan perawatan wajib diisi.");
       return;
     }
+    if (!luxBeforePhoto) {
+      setWorkError("Foto bukti pembacaan lux meter awal wajib diunggah.");
+      return;
+    }
+    const hasAdjustment = workForm.adjustmentAction === "dimming" || workForm.adjustmentAction === "penaikan";
+    if (hasAdjustment && (!workForm.luxAfterAdjustment.trim() || !luxAfterPhoto)) {
+      setWorkError("Nilai dan foto lux setelah dimming/penaikan wajib diisi.");
+      return;
+    }
     if (!user?.uid) {
       setWorkError("Sesi login tidak valid.");
       return;
     }
     setSubmittingWork(true);
     try {
+      const uploadEvidence = async (file: File, key: string) => {
+        const body = new FormData();
+        body.append("file", file);
+        body.append("reportId", `om-${selectedTask.taskId || selectedTask.id}-${workForm.idTitik.trim()}`);
+        body.append("cellKey", key);
+        const uploadResponse = await fetch("/api/storage/report-attachments", { method: "POST", body });
+        const uploadPayload = (await uploadResponse.json().catch(() => ({}))) as { url?: string; error?: string };
+        if (!uploadResponse.ok || !uploadPayload.url) throw new Error(uploadPayload.error || "Gagal mengunggah bukti lux meter.");
+        return uploadPayload.url;
+      };
+      const luxBeforePhotoUrl = await uploadEvidence(luxBeforePhoto, "lux-meter-sebelum");
+      const luxAfterPhotoUrl = hasAdjustment && luxAfterPhoto ? await uploadEvidence(luxAfterPhoto, "lux-meter-sesudah") : "";
       const response = await fetch("/api/om/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1240,6 +1333,13 @@ export function PreventiveOMTaskList() {
           groupName: selectedTask.groupName,
           luxTitikApi: workForm.luxTitikApi.trim(),
           luxRataRata: workForm.luxRataRata.trim(),
+          luxBeforePhotoName: workForm.luxBeforePhotoName,
+          luxBeforePhotoUrl,
+          adjustmentAction: workForm.adjustmentAction,
+          adjustmentActionLabel: workForm.adjustmentAction === "dimming" ? "Dimming / Penurunan" : workForm.adjustmentAction === "penaikan" ? "Penaikan" : "Tidak ada penyesuaian",
+          luxAfterAdjustment: hasAdjustment ? workForm.luxAfterAdjustment.trim() : "",
+          luxAfterPhotoName: hasAdjustment ? workForm.luxAfterPhotoName : "",
+          luxAfterPhotoUrl,
           lampCondition: workForm.lampCondition.trim(),
           ornamentCondition: workForm.ornamentCondition.trim(),
           maintenanceAction: workForm.maintenanceAction.trim(),
@@ -1343,6 +1443,78 @@ export function PreventiveOMTaskList() {
                   placeholder="Opsional"
                 />
               </label>
+              <label className="block">
+                <span className="text-[11px] leading-none text-gray-600">Bukti Foto Lux Meter Awal <b className="text-red-600">*</b></span>
+                <div className="mt-1 flex h-8 items-center rounded-md border border-gray-400 px-2">
+                  <span className="min-w-0 flex-1 truncate text-xs text-gray-500">{workForm.luxBeforePhotoName || "Foto layar lux meter sebelum penyesuaian"}</span>
+                  <svg className="h-4 w-4 shrink-0 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4v12m0-12 4 4m-4-4-4 4" />
+                  </svg>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    setLuxBeforePhoto(file);
+                    setWorkForm((current) => ({ ...current, luxBeforePhotoName: file?.name || "" }));
+                  }}
+                />
+              </label>
+              <label className="block">
+                <span className="text-[11px] leading-none text-gray-600">Penyesuaian Dimming</span>
+                <select
+                  value={workForm.adjustmentAction}
+                  onChange={(event) => {
+                    const adjustmentAction = event.target.value;
+                    setWorkForm((current) => ({ ...current, adjustmentAction, ...(adjustmentAction === "tidak-ada" ? { luxAfterAdjustment: "", luxAfterPhotoName: "" } : {}) }));
+                    if (adjustmentAction === "tidak-ada") setLuxAfterPhoto(null);
+                  }}
+                  className="mt-1 h-8 w-full rounded-md border border-gray-400 bg-white px-2 text-xs outline-none focus:border-sky-500"
+                >
+                  <option value="tidak-ada">Tidak ada penyesuaian</option>
+                  <option value="dimming">Dimming / Turunkan pencahayaan</option>
+                  <option value="penaikan">Penaikan pencahayaan</option>
+                </select>
+                <span className="mt-1 block text-[10px] leading-4 text-gray-500">
+                  Batas titik APJ: {String(pointPreview?.rawPayload?.presetIluminasiBatas || pointPreview?.rawPayload?.preset_iluminasi_batas || "-")}. Pilih tindakan jika hasil lux melewati atau belum mencapai batas.
+                </span>
+              </label>
+              {workForm.adjustmentAction !== "tidak-ada" ? (
+                <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <label className="block">
+                    <span className="text-[11px] leading-none text-amber-900">Lux Setelah {workForm.adjustmentAction === "dimming" ? "Dimming" : "Penaikan"} <b className="text-red-600">*</b></span>
+                    <input
+                      value={workForm.luxAfterAdjustment}
+                      onChange={(event) => setWorkForm((current) => ({ ...current, luxAfterAdjustment: event.target.value }))}
+                      className="mt-1 h-8 w-full rounded-md border border-amber-300 bg-white px-2 text-xs outline-none focus:border-amber-500"
+                      placeholder="Contoh: 18.5 lux"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] leading-none text-amber-900">Foto Lux Setelah Penyesuaian <b className="text-red-600">*</b></span>
+                    <div className="mt-1 flex h-8 items-center rounded-md border border-amber-300 bg-white px-2">
+                      <span className="min-w-0 flex-1 truncate text-xs text-gray-500">{workForm.luxAfterPhotoName || "Foto layar lux meter sesudah penyesuaian"}</span>
+                      <svg className="h-4 w-4 shrink-0 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4v12m0-12 4 4m-4-4-4 4" />
+                      </svg>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="sr-only"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] || null;
+                        setLuxAfterPhoto(file);
+                        setWorkForm((current) => ({ ...current, luxAfterPhotoName: file?.name || "" }));
+                      }}
+                    />
+                  </label>
+                </div>
+              ) : null}
               <label className="block">
                 <span className="text-[11px] leading-none text-gray-600">Kondisi Lampu</span>
                 <input

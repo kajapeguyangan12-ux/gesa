@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { loadCompanyLampPowerMap, resolveRawPointLampPower } from "@/lib/apjComponentAsset";
 
 type RawRecord = Record<string, unknown>;
 
@@ -20,6 +21,13 @@ function normalizeDate(value: unknown) {
   if (!value) return "";
   const date = new Date(value as string);
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function normalizeKabupaten(value: unknown) {
+  const normalized = normalizeString(value).toLowerCase();
+  if (normalized.includes("denpasar")) return "denpasar";
+  if (normalized.includes("tabanan")) return "tabanan";
+  return normalized;
 }
 
 function getRawPayload(row: RawRecord) {
@@ -95,10 +103,10 @@ function summarizeReports(reports: RawRecord[]) {
 export async function GET(request: NextRequest) {
   try {
     const limit = Math.min(Math.max(Number.parseInt(request.nextUrl.searchParams.get("limit") || "1000", 10) || 1000, 1), 5000);
-    const kabupaten = normalizeString(request.nextUrl.searchParams.get("kabupaten")).toLowerCase();
+    const kabupaten = normalizeKabupaten(request.nextUrl.searchParams.get("kabupaten"));
     const supabase = getSupabaseAdminClient() as any;
 
-    const [{ data: constructionRows, error: constructionError }, { data: reportRows, error: reportError }] = await Promise.all([
+    const [{ data: constructionRows, error: constructionError }, { data: reportRows, error: reportError }, lampPowers] = await Promise.all([
       supabase
         .from("kontruksi_valid")
         .select("fb_doc_id, source_task_id, nama_titik, id_titik, zona, stage, status, latitude, longitude, raw_payload, created_at, updated_at, validated_at")
@@ -109,6 +117,7 @@ export async function GET(request: NextRequest) {
         .select("fb_doc_id, location, status, raw_payload")
         .order("created_at", { ascending: false })
         .limit(limit),
+      loadCompanyLampPowerMap(supabase).catch(() => new Map<string, string>()),
     ]);
 
     if (constructionError) throw new Error(constructionError.message);
@@ -126,9 +135,13 @@ export async function GET(request: NextRequest) {
 
     ((constructionRows || []) as RawRecord[])
       .filter(isCommissioningStage)
-      .map(normalizePoint)
+      .map((row) => {
+        const point = normalizePoint(row);
+        const linkedPower = resolveRawPointLampPower(getRawPayload(row), lampPowers);
+        return linkedPower ? { ...point, dayaLampu: linkedPower } : point;
+      })
       .filter((point) => point.idTitik)
-      .filter((point) => !kabupaten || point.kabupaten.toLowerCase() === kabupaten)
+      .filter((point) => !kabupaten || normalizeKabupaten(point.kabupaten) === kabupaten)
       .forEach((point) => {
         if (pointsById.has(point.idTitik)) return;
         pointsById.set(point.idTitik, {

@@ -26,6 +26,12 @@ type WorkReport = {
   repairAction?: string;
   luxTitikApi?: string;
   luxRataRata?: string;
+  luxBeforePhotoName?: string;
+  luxBeforePhotoUrl?: string;
+  adjustmentActionLabel?: string;
+  luxAfterAdjustment?: string;
+  luxAfterPhotoName?: string;
+  luxAfterPhotoUrl?: string;
   lampCondition?: string;
   ornamentCondition?: string;
   maintenanceAction?: string;
@@ -228,6 +234,8 @@ function AdminWorkReportRecap() {
                 <DetailField label="Kondisi Inspeksi" value={selectedReport.inspectionCondition} />
                 <DetailField label="Lux Titik Api" value={selectedReport.luxTitikApi} />
                 <DetailField label="Lux Rata-rata" value={selectedReport.luxRataRata} />
+                <DetailField label="Penyesuaian Dimming" value={selectedReport.adjustmentActionLabel} />
+                <DetailField label="Lux Setelah Penyesuaian" value={selectedReport.luxAfterAdjustment} />
                 <DetailField label="Kondisi Lampu" value={selectedReport.lampCondition} />
                 <DetailField label="Kondisi Ornamen" value={selectedReport.ornamentCondition} />
                 <DetailField label="Tindakan Perawatan" value={selectedReport.maintenanceAction} />
@@ -236,6 +244,22 @@ function AdminWorkReportRecap() {
                 <DetailField label="Foto Ornamen/Tiang" value={selectedReport.photoOrnamentName || selectedReport.photoPoleName} />
                 <div className="sm:col-span-2 lg:col-span-3"><DetailField label="Deskripsi / Catatan Petugas" value={selectedReport.description} /></div>
               </div>
+              {selectedReport.luxBeforePhotoUrl || selectedReport.luxAfterPhotoUrl ? (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {selectedReport.luxBeforePhotoUrl ? (
+                    <a href={selectedReport.luxBeforePhotoUrl} target="_blank" rel="noreferrer" className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="mb-2 text-xs font-bold text-slate-700">Bukti Lux Meter Awal</div>
+                      <img src={selectedReport.luxBeforePhotoUrl} alt="Bukti lux meter awal" className="h-48 w-full rounded-xl object-cover" />
+                    </a>
+                  ) : null}
+                  {selectedReport.luxAfterPhotoUrl ? (
+                    <a href={selectedReport.luxAfterPhotoUrl} target="_blank" rel="noreferrer" className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                      <div className="mb-2 text-xs font-bold text-amber-900">Bukti Lux Setelah Penyesuaian</div>
+                      <img src={selectedReport.luxAfterPhotoUrl} alt="Bukti lux setelah penyesuaian" className="h-48 w-full rounded-xl object-cover" />
+                    </a>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

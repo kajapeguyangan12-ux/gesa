@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import { findApjComponentAsset, resolvePointComponentAssets, setCompanyAssetInstallation } from "@/lib/apjComponentAsset";
 
 function normalizeRecord(record: Record<string, unknown>) {
   const rawPayload = record.raw_payload && typeof record.raw_payload === "object" ? (record.raw_payload as Record<string, unknown>) : {};
@@ -56,8 +57,11 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 
     if (constructionRows.length > 0) {
       const normalizedRows = constructionRows.map(normalizeRecord);
+      const componentAssets = await resolvePointComponentAssets(supabase, normalizedRows[0].rawPayload);
+      const linkedPower = normalizeString(componentAssets.lampu1?.detail?.dayaWatt)
+        || normalizeString(componentAssets.lampu2?.detail?.dayaWatt);
       return NextResponse.json({
-        latest: normalizedRows[0],
+        latest: { ...normalizedRows[0], dayaLampu: linkedPower || normalizedRows[0].dayaLampu, componentAssets },
         history: normalizedRows,
         source: "kontruksi_valid:comissioning",
       });
@@ -80,8 +84,11 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     }
 
     const normalizedRows = rows.map(normalizeRecord);
+    const componentAssets = await resolvePointComponentAssets(supabase, normalizedRows[0].rawPayload);
+    const linkedPower = normalizeString(componentAssets.lampu1?.detail?.dayaWatt)
+      || normalizeString(componentAssets.lampu2?.detail?.dayaWatt);
     return NextResponse.json({
-      latest: normalizedRows[0],
+      latest: { ...normalizedRows[0], dayaLampu: linkedPower || normalizedRows[0].dayaLampu, componentAssets },
       history: normalizedRows,
       source: "survey_apj_propose",
     });
@@ -130,6 +137,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     const group = normalizeString(payload.group) || normalizeString(row.zona) || normalizeString(rawPayload.grup) || "Tanpa Grup";
     const latitude = normalizeNumber(payload.latitude);
     const longitude = normalizeNumber(payload.longitude);
+    const lampSerial = normalizeString(payload.noSeriLampu1) || normalizeString(payload.noSeriLampu2);
+    const lampOwnership = normalizeString(payload.noSeriLampu1)
+      ? (normalizeString(payload.kepemilikanLampu1) === "Pemerintah" ? "Pemerintah" : "Perusahaan")
+      : (normalizeString(payload.kepemilikanLampu2) === "Pemerintah" ? "Pemerintah" : "Perusahaan");
+    const linkedLamp = lampSerial ? await findApjComponentAsset(supabase, lampSerial, lampOwnership) : null;
+    const linkedLampPower = normalizeString(linkedLamp?.detail?.dayaWatt);
+    const dayaLampu = linkedLampPower || (lampSerial ? "" : normalizeString(payload.dayaLampu) || normalizeString(rawPayload.dayaLampu));
     const nextRawPayload = {
       ...rawPayload,
       idTitik: titikId,
@@ -139,14 +153,17 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       nama_jalan: normalizeString(payload.namaJalan) || normalizeString(rawPayload.nama_jalan),
       kabupaten: normalizeString(payload.kabupaten) || normalizeString(rawPayload.kabupaten),
       kecamatan: normalizeString(payload.kecamatan),
-      dayaLampu: normalizeString(payload.dayaLampu) || normalizeString(rawPayload.dayaLampu),
-      daya_lampu: normalizeString(payload.dayaLampu) || normalizeString(rawPayload.daya_lampu),
+      dayaLampu,
+      daya_lampu: dayaLampu,
       noSeriTiangArm: normalizeString(payload.noSeriTiangArm),
       no_seri_tiang_arm: normalizeString(payload.noSeriTiangArm),
+      kepemilikanTiangArm: normalizeString(payload.kepemilikanTiangArm) === "Pemerintah" ? "Pemerintah" : "Perusahaan",
       noSeriLampu1: normalizeString(payload.noSeriLampu1),
       no_seri_lampu_1: normalizeString(payload.noSeriLampu1),
+      kepemilikanLampu1: normalizeString(payload.kepemilikanLampu1) === "Pemerintah" ? "Pemerintah" : "Perusahaan",
       noSeriLampu2: normalizeString(payload.noSeriLampu2),
       no_seri_lampu_2: normalizeString(payload.noSeriLampu2),
+      kepemilikanLampu2: normalizeString(payload.kepemilikanLampu2) === "Pemerintah" ? "Pemerintah" : "Perusahaan",
       lebarJalan: normalizeString(payload.lebarJalan),
       lebar_jalan: normalizeString(payload.lebarJalan),
       fungsiRuas: normalizeString(payload.fungsiRuas),
@@ -177,6 +194,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       .from("kontruksi_valid")
       .update({
         nama_titik: namaTitik,
+        daya_lampu: dayaLampu,
         zona: group,
         latitude: latitude ?? row.latitude,
         longitude: longitude ?? row.longitude,
@@ -185,6 +203,24 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       })
       .eq("fb_doc_id", row.fb_doc_id);
     if (updateError) throw new Error(updateError.message);
+
+    const links = [
+      ["noSeriTiangArm", "kepemilikanTiangArm"],
+      ["noSeriLampu1", "kepemilikanLampu1"],
+      ["noSeriLampu2", "kepemilikanLampu2"],
+    ] as const;
+    for (const [serialKey, ownershipKey] of links) {
+      const oldSerial = normalizeString(rawPayload[serialKey]);
+      const oldOwnership = normalizeString(rawPayload[ownershipKey]) === "Pemerintah" ? "Pemerintah" : "Perusahaan";
+      const newSerial = normalizeString(nextRawPayload[serialKey]);
+      const newOwnership = normalizeString(nextRawPayload[ownershipKey]) === "Pemerintah" ? "Pemerintah" : "Perusahaan";
+      if (oldSerial && oldOwnership === "Perusahaan" && (oldSerial !== newSerial || newOwnership !== "Perusahaan")) {
+        await setCompanyAssetInstallation(supabase, oldSerial, null);
+      }
+      if (newSerial && newOwnership === "Perusahaan") {
+        await setCompanyAssetInstallation(supabase, newSerial, titikId);
+      }
+    }
     return NextResponse.json({ idTitik: titikId, message: "Data APJ berhasil diperbarui." });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Gagal memperbarui data APJ." }, { status: 500 });

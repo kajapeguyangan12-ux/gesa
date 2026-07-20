@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       const materialName = normalizeString(payload.materialName);
       const requesterId = normalizeString(payload.requesterId);
       const requesterName = normalizeString(payload.requesterName);
-      const quantity = normalizeNumber(payload.quantity, 1);
+      const quantity = requestType === "Pengajuan Barang" ? 1 : normalizeNumber(payload.quantity, 1);
       const workType = normalizeString(payload.workType);
 
       if (!requestType || !materialId || !materialName || !requesterId || !requesterName || quantity <= 0) {

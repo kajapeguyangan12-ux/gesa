@@ -59,6 +59,17 @@ type ApjPayload = {
   error?: string;
 };
 
+type MaterialUnit = {
+  id: string;
+  kodeBarang: string;
+  nomorSeri?: string;
+  namaBarang: string;
+  kategori: "TIANG" | "LAMPU" | "ARM" | "KABEL";
+  statusUnit: "Tersedia" | "Terpasang" | "Dilepas";
+  installedPointId?: string;
+  detail?: { dayaWatt?: string };
+};
+
 function formatDate(value?: string | null) {
   if (!value) return "-";
   const date = new Date(value);
@@ -93,7 +104,7 @@ const emptyCreateForm = {
   fungsiRuas: "",
   zona: "",
   group: "",
-  dayaLampu: "120W",
+  dayaLampu: "",
   tiang: "",
   lenganArm: "",
   armAgExs: "",
@@ -119,6 +130,7 @@ function OMMapsContent() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [groupMode, setGroupMode] = useState<"existing" | "new">("new");
   const [createForm, setCreateForm] = useState(emptyCreateForm);
+  const [materialUnits, setMaterialUnits] = useState<MaterialUnit[]>([]);
 
   const loadPoints = useCallback(async () => {
     setLoading(true);
@@ -141,6 +153,19 @@ function OMMapsContent() {
   useEffect(() => {
     void loadPoints();
   }, [loadPoints]);
+
+  useEffect(() => {
+    const loadMaterialUnits = async () => {
+      try {
+        const response = await fetch("/api/bmd-gudang?resource=materials", { cache: "no-store" });
+        const payload = (await response.json()) as { items?: MaterialUnit[] };
+        if (response.ok) setMaterialUnits(payload.items || []);
+      } catch {
+        setMaterialUnits([]);
+      }
+    };
+    void loadMaterialUnits();
+  }, [showCreateForm]);
 
   const mutateTestPoint = async (method: "POST" | "DELETE") => {
     setTestBusy(true);
@@ -166,6 +191,19 @@ function OMMapsContent() {
 
   const updateCreateForm = (key: keyof typeof createForm, value: string) => {
     setCreateForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const selectCreateComponent = (key: "noSeriTiangArm" | "noSeriLampu1" | "noSeriLampu2", value: string) => {
+    setCreateForm((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "noSeriLampu1" || key === "noSeriLampu2") {
+        const otherSerial = key === "noSeriLampu1" ? next.noSeriLampu2 : next.noSeriLampu1;
+        const selectedUnit = materialUnits.find((unit) => (unit.nomorSeri || unit.kodeBarang) === value);
+        const otherUnit = materialUnits.find((unit) => (unit.nomorSeri || unit.kodeBarang) === otherSerial);
+        next.dayaLampu = selectedUnit?.detail?.dayaWatt || otherUnit?.detail?.dayaWatt || "";
+      }
+      return next;
+    });
   };
 
   const openCreateModal = () => {
@@ -561,11 +599,40 @@ function OMMapsContent() {
               </section>
 
               <section className="grid gap-3 md:grid-cols-2">
+                {([
+                  ["No seri Tiang/Arm", "noSeriTiangArm", ["TIANG", "ARM"]],
+                  ["No seri Lampu 1", "noSeriLampu1", ["LAMPU"]],
+                  ["No seri Lampu 2", "noSeriLampu2", ["LAMPU"]],
+                ] as const).map(([label, key, categories]) => (
+                  <label key={key} className="block">
+                    <span className="text-[11px] font-semibold text-slate-600">{label}</span>
+                    <select
+                      value={createForm[key]}
+                      onChange={(event) => selectCreateComponent(key, event.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-teal-400 focus:ring-4 focus:ring-teal-100"
+                    >
+                      <option value="">Kosong / belum dipasang</option>
+                      {materialUnits
+                        .filter((unit) => (categories as readonly string[]).includes(unit.kategori) && unit.statusUnit === "Tersedia")
+                        .filter((unit) => {
+                          const serial = unit.nomorSeri || unit.kodeBarang;
+                          if (key === "noSeriLampu1" || key === "noSeriLampu2") {
+                            const otherSerial = key === "noSeriLampu1" ? createForm.noSeriLampu2 : createForm.noSeriLampu1;
+                            if (serial === otherSerial) return false;
+                            const otherUnit = materialUnits.find((item) => (item.nomorSeri || item.kodeBarang) === otherSerial);
+                            if (otherUnit?.detail?.dayaWatt && unit.detail?.dayaWatt !== otherUnit.detail.dayaWatt) return false;
+                          }
+                          return true;
+                        })
+                        .map((unit) => {
+                          const serial = unit.nomorSeri || unit.kodeBarang;
+                          return <option key={unit.id} value={serial}>{serial} — {unit.namaBarang} ({unit.kategori})</option>;
+                        })}
+                    </select>
+                  </label>
+                ))}
                 {[
                   ["ID Titik APJ", "idTitik", "Contoh: TEST-APJ-002"],
-                  ["No seri Tiang/Arm", "noSeriTiangArm", "Contoh: TA-001"],
-                  ["No seri Lampu 1", "noSeriLampu1", "Contoh: LMP-001-A"],
-                  ["No seri Lampu 2", "noSeriLampu2", "Contoh: LMP-001-B"],
                   ["Kecamatan", "kecamatan", "Contoh: Tabanan"],
                   ["Nama Jalan", "namaJalan", "Contoh: Jalan Melati"],
                   ["Lebar Jalan", "lebarJalan", "Contoh: 8 m"],
@@ -584,9 +651,10 @@ function OMMapsContent() {
                   <label key={key} className="block">
                     <span className="text-[11px] font-semibold text-slate-600">{label}</span>
                     <input
-                      required={["idTitik", "kecamatan", "namaJalan", "fungsiRuas", "dayaLampu", "latitude", "longitude"].includes(key)}
+                      required={["idTitik", "kecamatan", "namaJalan", "fungsiRuas", "latitude", "longitude"].includes(key)}
                       value={createForm[key as keyof typeof createForm]}
                       onChange={(event) => updateCreateForm(key as keyof typeof createForm, event.target.value)}
+                      readOnly={key === "dayaLampu" && Boolean(createForm.noSeriLampu1 || createForm.noSeriLampu2)}
                       className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-teal-400 focus:ring-4 focus:ring-teal-100"
                       placeholder={placeholder}
                     />
