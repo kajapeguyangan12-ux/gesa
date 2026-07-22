@@ -10,6 +10,54 @@ function normalizeString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeLux(value: unknown) {
+  const match = normalizeString(value).replace(",", ".").match(/-?\d+(?:\.\d+)?/)?.[0];
+  if (!match) return null;
+  const parsed = Number.parseFloat(match);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getRawPayload(record: Record<string, unknown> | null | undefined) {
+  return record?.raw_payload && typeof record.raw_payload === "object"
+    ? record.raw_payload as Record<string, unknown>
+    : {};
+}
+
+async function resolvePointLuxPresets(supabase: any, pointId: string) {
+  if (!pointId) return { initialLux: null, limitLux: null };
+
+  const { data: constructionRows, error: constructionError } = await supabase
+    .from("kontruksi_valid")
+    .select("raw_payload, stage, validated_at")
+    .eq("id_titik", pointId)
+    .order("validated_at", { ascending: false })
+    .limit(20);
+  if (constructionError) throw new Error(constructionError.message);
+
+  const constructionRecord = (Array.isArray(constructionRows) ? constructionRows : []).find((row: Record<string, unknown>) => {
+    const raw = getRawPayload(row);
+    const stage = normalizeString(row.stage || raw.stage || raw.tahap || raw.type).toLowerCase();
+    return stage.includes("comission") || stage.includes("commission");
+  }) as Record<string, unknown> | undefined;
+
+  let raw = getRawPayload(constructionRecord);
+  if (!constructionRecord) {
+    const { data: surveyRows, error: surveyError } = await supabase
+      .from("survey_apj_propose")
+      .select("raw_payload, created_at")
+      .eq("id_titik", pointId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (surveyError) throw new Error(surveyError.message);
+    raw = getRawPayload(Array.isArray(surveyRows) ? surveyRows[0] as Record<string, unknown> | undefined : undefined);
+  }
+
+  return {
+    initialLux: normalizeLux(raw.presetIluminasiAwal ?? raw.preset_iluminasi_awal),
+    limitLux: normalizeLux(raw.presetIluminasiBatas ?? raw.preset_iluminasi_batas),
+  };
+}
+
 const OM_REPORT_STATUSES = new Set(["new", "diproses", "selesai", "ditolak"]);
 const OM_STATUS_LABELS: Record<string, string> = {
   new: "Baru",
@@ -133,6 +181,7 @@ export async function GET(request: NextRequest) {
     const limitParam = Number.parseInt(request.nextUrl.searchParams.get("limit") || "100", 10);
     const status = normalizeString(request.nextUrl.searchParams.get("status"));
     const reportType = normalizeString(request.nextUrl.searchParams.get("reportType"));
+    const kabupaten = normalizeString(request.nextUrl.searchParams.get("kabupaten")).toLowerCase();
     const safeLimit = Number.isFinite(limitParam) ? Math.max(1, Math.min(limitParam, 500)) : 100;
     const supabase = getSupabaseAdminClient();
 
@@ -149,6 +198,24 @@ export async function GET(request: NextRequest) {
     if (error) throw new Error(error.message);
 
     const rows = (data || []) as OMReportRow[];
+    const areaByPoint = new Map<string, string>();
+    if (kabupaten) {
+      const pointIds = Array.from(new Set(rows.map((row) => normalizeString(row.raw_payload?.idTitik || row.raw_payload?.id_titik)).filter(Boolean)));
+      if (pointIds.length > 0) {
+        const { data: pointRows, error: pointError } = await supabase
+          .from("kontruksi_valid")
+          .select("id_titik, raw_payload")
+          .in("id_titik", pointIds)
+          .limit(5000);
+        if (pointError) throw new Error(pointError.message);
+        for (const pointRow of Array.isArray(pointRows) ? pointRows as Record<string, unknown>[] : []) {
+          const raw = pointRow.raw_payload && typeof pointRow.raw_payload === "object" ? pointRow.raw_payload as Record<string, unknown> : {};
+          const pointId = normalizeString(pointRow.id_titik);
+          const pointArea = normalizeString(raw.kabupaten || raw.area).toLowerCase();
+          if (pointId && pointArea && !areaByPoint.has(pointId)) areaByPoint.set(pointId, pointArea);
+        }
+      }
+    }
     const reports = rows.map((row) => ({
       ...(row.raw_payload || {}),
       id: row.fb_doc_id || "",
@@ -162,7 +229,10 @@ export async function GET(request: NextRequest) {
       status: row.status || "new",
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-    }));
+      kabupaten: normalizeString(row.raw_payload?.kabupaten || row.raw_payload?.reporterKabupaten).toLowerCase()
+        || areaByPoint.get(normalizeString(row.raw_payload?.idTitik || row.raw_payload?.id_titik))
+        || "",
+    })).filter((report) => !kabupaten || report.kabupaten === kabupaten);
 
     return NextResponse.json({
       reports,
@@ -194,6 +264,7 @@ export async function POST(request: NextRequest) {
     const reportType = normalizeString(payload.reportType) || "preventif";
     const reporterUid = normalizeString(payload.reporterUid);
     const reporterEmail = normalizeString(payload.reporterEmail).toLowerCase();
+    const reporterKabupaten = normalizeString(payload.reporterKabupaten || payload.kabupaten).toLowerCase();
 
     if (!title || !description) {
       return NextResponse.json({ error: "Judul dan deskripsi laporan wajib diisi." }, { status: 400 });
@@ -205,8 +276,43 @@ export async function POST(request: NextRequest) {
     if (reportType === "masyarakat" && !isValidNotificationEmail(reporterEmail)) {
       return NextResponse.json({ error: "Email notifikasi masyarakat wajib diisi dengan format yang valid." }, { status: 400 });
     }
-
     const supabase = getSupabaseAdminClient() as any;
+    const pointId = normalizeString(payload.idTitik);
+    if (pointId && reporterKabupaten && reportType !== "masyarakat") {
+      const { data: pointRows, error: pointError } = await supabase
+        .from("kontruksi_valid")
+        .select("raw_payload")
+        .eq("id_titik", pointId)
+        .order("validated_at", { ascending: false })
+        .limit(1);
+      if (pointError) throw new Error(pointError.message);
+      const pointRaw = Array.isArray(pointRows) && pointRows[0]?.raw_payload && typeof pointRows[0].raw_payload === "object"
+        ? pointRows[0].raw_payload as Record<string, unknown>
+        : {};
+      const pointKabupaten = normalizeString(pointRaw.kabupaten || pointRaw.area).toLowerCase();
+      if (pointKabupaten && pointKabupaten !== reporterKabupaten) {
+        return NextResponse.json({ error: `Titik APJ berada di ${pointKabupaten}, sedangkan petugas berasal dari ${reporterKabupaten}.` }, { status: 403 });
+      }
+    }
+    if (reportType === "preventif" && normalizeString(payload.formVariant) === "preventive-task") {
+      const initialLux = normalizeLux(payload.luxTitikApi);
+      const pointPresets = await resolvePointLuxPresets(supabase, normalizeString(payload.idTitik));
+      const standardLux = pointPresets.initialLux;
+      const lowerLimitLux = pointPresets.limitLux;
+      payload.standardLux = standardLux;
+      payload.lowerLimitLux = lowerLimitLux;
+      const afterLux = normalizeLux(payload.luxAfterAdjustment);
+      const adjustment = normalizeString(payload.adjustmentAction);
+      if (initialLux !== null && lowerLimitLux !== null && initialLux < lowerLimitLux) {
+        if (adjustment !== "penaikan" || afterLux === null || !normalizeString(payload.luxAfterPhotoUrl)) {
+          return NextResponse.json({ error: `Lux awal di bawah batas preset titik APJ (${lowerLimitLux} lux). Penaikan, lux sesudah, dan foto bukti wajib diisi.` }, { status: 400 });
+        }
+        if (afterLux < lowerLimitLux) {
+          return NextResponse.json({ error: `Lux sesudah penaikan masih di bawah batas preset titik APJ (${lowerLimitLux} lux).` }, { status: 400 });
+        }
+      }
+    }
+
     const now = new Date().toISOString();
     const reportId = createDocId("om_report");
     const reporterName = normalizeString(payload.reporterName) || "Petugas O&M";
@@ -239,6 +345,8 @@ export async function POST(request: NextRequest) {
         reporterUid,
         reporterName,
         reporterEmail,
+        kabupaten: reporterKabupaten,
+        reporterKabupaten,
         notificationEmail: reporterEmail,
         emailNotificationsEnabled: reportType === "masyarakat",
         status: "new",
@@ -338,6 +446,24 @@ export async function PATCH(request: NextRequest) {
 
     const now = new Date().toISOString();
     const rawPayload = ((row.raw_payload as Record<string, unknown> | null) || {});
+    const actorRole = normalizeString(payload.actorRole);
+    const actorKabupaten = normalizeString(payload.actorKabupaten).toLowerCase();
+    let reportKabupaten = normalizeString(rawPayload.kabupaten || rawPayload.reporterKabupaten).toLowerCase();
+    if (!reportKabupaten && normalizeString(rawPayload.idTitik)) {
+      const { data: reportPointRows } = await supabase
+        .from("kontruksi_valid")
+        .select("raw_payload")
+        .eq("id_titik", normalizeString(rawPayload.idTitik))
+        .order("validated_at", { ascending: false })
+        .limit(1);
+      const reportPointRaw = Array.isArray(reportPointRows) && reportPointRows[0]?.raw_payload && typeof reportPointRows[0].raw_payload === "object"
+        ? reportPointRows[0].raw_payload as Record<string, unknown>
+        : {};
+      reportKabupaten = normalizeString(reportPointRaw.kabupaten || reportPointRaw.area).toLowerCase();
+    }
+    if (actorRole === "admin" && (!actorKabupaten || reportKabupaten !== actorKabupaten)) {
+      return NextResponse.json({ error: "Admin hanya dapat memproses laporan dari wilayah akunnya." }, { status: 403 });
+    }
     const statusTimeline = Array.isArray(rawPayload.statusTimeline) ? rawPayload.statusTimeline : [];
     const actorId = normalizeString(payload.actorId);
     const actorName = normalizeString(payload.actorName) || "Admin O&M";

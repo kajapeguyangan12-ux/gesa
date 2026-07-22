@@ -62,6 +62,8 @@ function statusTone(status: string) {
 }
 
 function AdminReportHistory() {
+  const { user } = useAuth();
+  const accountKabupaten = user?.role === "super-admin" ? "" : user?.kabupaten?.trim().toLowerCase() || "tabanan";
   const [reports, setReports] = useState<HistoryReport[]>([]);
   const [selectedReport, setSelectedReport] = useState<HistoryReport | null>(null);
   const [statusFilter, setStatusFilter] = useState("semua");
@@ -74,7 +76,8 @@ function AdminReportHistory() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/om/reports?limit=500", { cache: "no-store" });
+      const areaSuffix = accountKabupaten ? `&kabupaten=${encodeURIComponent(accountKabupaten)}` : "";
+      const response = await fetch(`/api/om/reports?limit=500${areaSuffix}`, { cache: "no-store" });
       const payload = (await response.json()) as { reports?: HistoryReport[]; error?: string };
       if (!response.ok) throw new Error(payload.error || "Gagal memuat riwayat laporan.");
       setReports(payload.reports || []);
@@ -88,7 +91,7 @@ function AdminReportHistory() {
 
   useEffect(() => {
     void loadReports();
-  }, []);
+  }, [accountKabupaten]);
 
   const visibleReports = useMemo(() => {
     const keyword = query.trim().toLowerCase();

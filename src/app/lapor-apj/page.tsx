@@ -9,6 +9,8 @@ type PointDetail = {
   namaJalan: string;
   kabupaten: string;
   dayaLampu: string;
+  lampCount?: number;
+  lampConfiguration?: string;
   latitude: number;
   longitude: number;
 };
@@ -102,6 +104,12 @@ function LaporApjContent() {
                 <div className="rounded-xl bg-white p-2">Daya: <b>{point.dayaLampu}</b></div>
                 <div className="rounded-xl bg-white p-2">Area: <b>{point.kabupaten}</b></div>
                 <div className="rounded-xl bg-white p-2">Status: <b>Terdaftar</b></div>
+                <div className="col-span-2 flex items-center gap-2 px-1 pt-1 text-[10px] text-slate-500">
+                  <span>Konfigurasi lampu</span>
+                  <span className="rounded-full bg-sky-100 px-2 py-0.5 font-bold text-sky-700">
+                    {point.lampConfiguration || (point.lampCount === 2 ? "Double" : point.lampCount === 1 ? "Single" : "-")}
+                  </span>
+                </div>
               </div>
             ) : null}
           </div>

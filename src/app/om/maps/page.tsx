@@ -98,6 +98,7 @@ const emptyCreateForm = {
   noSeriTiangArm: "",
   noSeriLampu1: "",
   noSeriLampu2: "",
+  kabupaten: "",
   kecamatan: "",
   namaJalan: "",
   lebarJalan: "",
@@ -119,6 +120,7 @@ const emptyCreateForm = {
 
 function OMMapsContent() {
   const { user } = useAuth();
+  const accountKabupaten = user?.role === "super-admin" ? "" : user?.kabupaten?.trim().toLowerCase() || "tabanan";
   const [groups, setGroups] = useState<ApjGroup[]>([]);
   const [summary, setSummary] = useState<ApjPayload["summary"]>();
   const [selectedGroupId, setSelectedGroupId] = useState("");
@@ -136,7 +138,9 @@ function OMMapsContent() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/om/apj-points?limit=5000", { cache: "no-store" });
+      const params = new URLSearchParams({ limit: "5000" });
+      if (accountKabupaten) params.set("kabupaten", accountKabupaten);
+      const response = await fetch(`/api/om/apj-points?${params}`, { cache: "no-store" });
       const payload = (await response.json()) as ApjPayload;
       if (!response.ok) throw new Error(payload.error || "Gagal memuat titik APJ O&M.");
       const nextGroups = payload.groups || [];
@@ -148,7 +152,7 @@ function OMMapsContent() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [accountKabupaten]);
 
   useEffect(() => {
     void loadPoints();
@@ -211,6 +215,7 @@ function OMMapsContent() {
     setGroupMode(defaultGroup ? "existing" : "new");
     setCreateForm((current) => ({
       ...current,
+      kabupaten: accountKabupaten || current.kabupaten,
       group: current.group || defaultGroup,
       zona: current.zona || defaultGroup,
     }));
@@ -237,6 +242,9 @@ function OMMapsContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...createForm,
+          kabupaten: accountKabupaten || createForm.kabupaten,
+          actorRole: user?.role || "admin",
+          actorKabupaten: accountKabupaten,
           group: finalGroup,
           zona: createForm.zona.trim() || finalGroup,
         }),
@@ -633,6 +641,7 @@ function OMMapsContent() {
                 ))}
                 {[
                   ["ID Titik APJ", "idTitik", "Contoh: TEST-APJ-002"],
+                  ["Kabupaten", "kabupaten", "Contoh: Tabanan / Denpasar"],
                   ["Kecamatan", "kecamatan", "Contoh: Tabanan"],
                   ["Nama Jalan", "namaJalan", "Contoh: Jalan Melati"],
                   ["Lebar Jalan", "lebarJalan", "Contoh: 8 m"],
@@ -641,9 +650,9 @@ function OMMapsContent() {
                   ["Tiang", "tiang", "Contoh: 9 m / Oktagonal"],
                   ["Lengan ARM", "lenganArm", "Contoh: Single Arm"],
                   ["Arm AG/EXS", "armAgExs", "Contoh: AG"],
-                  ["Preset Iluminasi", "presetIluminasi", "Contoh: Preset 1"],
-                  ["Preset Iluminasi Awal", "presetIluminasiAwal", "Contoh: 100%"],
-                  ["Batas Preset Iluminasi", "presetIluminasiBatas", "Contoh: 70%"],
+                  ["Rata-rata Iluminasi (Lux)", "presetIluminasi", "Contoh: 17"],
+                  ["Preset Awal (Lux)", "presetIluminasiAwal", "Contoh: 35"],
+                  ["Batas Bawah Iluminasi (Lux)", "presetIluminasiBatas", "Contoh: 27"],
                   ["Latitude", "latitude", "Contoh: -8.5392"],
                   ["Longitude", "longitude", "Contoh: 115.1256"],
                   ["Instalasi", "instalasi", "Contoh: Terpasang / Belum terpasang"],
@@ -651,7 +660,11 @@ function OMMapsContent() {
                   <label key={key} className="block">
                     <span className="text-[11px] font-semibold text-slate-600">{label}</span>
                     <input
+                      type={["presetIluminasi", "presetIluminasiAwal", "presetIluminasiBatas"].includes(key) ? "number" : "text"}
+                      min={["presetIluminasi", "presetIluminasiAwal", "presetIluminasiBatas"].includes(key) ? "0" : undefined}
+                      step={["presetIluminasi", "presetIluminasiAwal", "presetIluminasiBatas"].includes(key) ? "0.01" : undefined}
                       required={["idTitik", "kecamatan", "namaJalan", "fungsiRuas", "latitude", "longitude"].includes(key)}
+                      disabled={key === "kabupaten" && Boolean(accountKabupaten)}
                       value={createForm[key as keyof typeof createForm]}
                       onChange={(event) => updateCreateForm(key as keyof typeof createForm, event.target.value)}
                       readOnly={key === "dayaLampu" && Boolean(createForm.noSeriLampu1 || createForm.noSeriLampu2)}

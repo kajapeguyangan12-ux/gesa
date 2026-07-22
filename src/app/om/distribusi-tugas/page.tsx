@@ -15,11 +15,12 @@ type ApjPoint = {
   group: string;
   latitude: number;
   longitude: number;
+  kabupaten?: string;
   operationalAt?: string;
   validatedAt?: string;
 };
 type ApjGroup = { id: string; name: string; total: number; points: ApjPoint[] };
-type OMUser = { id: string; uid: string; name: string; username: string; email: string; role: string };
+type OMUser = { id: string; uid: string; name: string; username: string; email: string; role: string; kabupaten?: string };
 type OMTask = {
   id: string;
   title: string;
@@ -50,6 +51,7 @@ type OMReport = {
   idTitik?: string;
   phoneNumber?: string;
   repairAction?: string;
+  kabupaten?: string;
 };
 
 function formatDateLabel(value?: string) {
@@ -70,6 +72,7 @@ function addMonths(value?: string, months = 6) {
 
 function TaskDistributionWorkspace() {
   const { user } = useAuth();
+  const accountKabupaten = user?.role === "super-admin" ? "" : user?.kabupaten?.trim().toLowerCase() || "tabanan";
   const [mode, setMode] = useState<DistributionMode>("preventif");
   const [groups, setGroups] = useState<ApjGroup[]>([]);
   const [users, setUsers] = useState<OMUser[]>([]);
@@ -119,10 +122,11 @@ function TaskDistributionWorkspace() {
     setLoading(true);
     setError("");
     try {
+      const areaSuffix = accountKabupaten ? `&kabupaten=${encodeURIComponent(accountKabupaten)}` : "";
       const [pointsResponse, usersResponse, tasksResponse] = await Promise.all([
-        fetch("/api/om/apj-points?limit=5000", { cache: "no-store" }),
-        fetch("/api/admin/user-admin?limit=300", { cache: "no-store" }),
-        fetch("/api/om/tasks?limit=80", { cache: "no-store" }),
+        fetch(`/api/om/apj-points?limit=5000${areaSuffix}`, { cache: "no-store" }),
+        fetch(`/api/admin/user-admin?limit=300${areaSuffix}`, { cache: "no-store" }),
+        fetch(`/api/om/tasks?limit=80${areaSuffix}`, { cache: "no-store" }),
       ]);
       const pointsPayload = (await pointsResponse.json()) as { groups?: ApjGroup[]; error?: string };
       const usersPayload = (await usersResponse.json()) as { users?: OMUser[]; error?: string };
@@ -132,7 +136,7 @@ function TaskDistributionWorkspace() {
       if (!tasksResponse.ok) throw new Error(tasksPayload.error || "Gagal memuat tugas.");
       const nextGroups = pointsPayload.groups || [];
       setGroups(nextGroups);
-      setUsers((usersPayload.users || []).filter((item) => item.role.startsWith("petugas-om")));
+      setUsers((usersPayload.users || []).filter((item) => item.role.startsWith("petugas-om") && (!accountKabupaten || item.kabupaten?.toLowerCase() === accountKabupaten)));
       setTasks(tasksPayload.tasks || []);
       setForm((current) => ({
         ...current,
@@ -147,7 +151,8 @@ function TaskDistributionWorkspace() {
 
   const loadCorrectiveReports = async () => {
     try {
-      const response = await fetch("/api/om/reports?limit=200", { cache: "no-store" });
+      const areaSuffix = accountKabupaten ? `&kabupaten=${encodeURIComponent(accountKabupaten)}` : "";
+      const response = await fetch(`/api/om/reports?limit=200${areaSuffix}`, { cache: "no-store" });
       const payload = (await response.json()) as { reports?: OMReport[]; error?: string };
       if (!response.ok) throw new Error(payload.error || "Gagal memuat laporan korektif.");
       const nextReports = (payload.reports || []).filter((report) => ["new", "diproses"].includes(report.status || ""));
@@ -164,12 +169,14 @@ function TaskDistributionWorkspace() {
 
   useEffect(() => {
     void loadData();
-  }, []);
+    // Memuat ulang ketika wilayah akun berubah setelah sesi selesai dipulihkan.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountKabupaten]);
 
   useEffect(() => {
     if (mode !== "korektif") return;
     void loadCorrectiveReports();
-  }, [mode]);
+  }, [mode, accountKabupaten]);
 
   const update = (key: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [key]: value, ...(key === "groupId" ? { pointId: "" } : {}) }));
@@ -215,6 +222,7 @@ function TaskDistributionWorkspace() {
                   dayaLampu: point.dayaLampu,
                   latitude: point.latitude,
                   longitude: point.longitude,
+                  kabupaten: point.kabupaten,
                   operationalAt: point.operationalAt || point.validatedAt || "",
                   nextDueAt: addMonths(point.operationalAt || point.validatedAt || "", 6),
                 }))
@@ -227,6 +235,7 @@ function TaskDistributionWorkspace() {
                       dayaLampu: selectedPoint.dayaLampu,
                       latitude: selectedPoint.latitude,
                       longitude: selectedPoint.longitude,
+                      kabupaten: selectedPoint.kabupaten,
                       operationalAt: selectedPoint.operationalAt || selectedPoint.validatedAt || "",
                       nextDueAt: addMonths(selectedPoint.operationalAt || selectedPoint.validatedAt || "", 6),
                     },
@@ -238,6 +247,9 @@ function TaskDistributionWorkspace() {
           operationalAt: scopeOperationalAt,
           nextDueAt: scopeNextDueAt,
           luxTarget: form.luxTarget,
+          kabupaten: selectedGroup?.points[0]?.kabupaten || selectedPoint?.kabupaten || accountKabupaten,
+          actorRole: user?.role || "admin",
+          actorKabupaten: accountKabupaten,
           createdById: user?.uid || "",
           createdByName: user?.displayName || user?.name || user?.email || "Admin O&M",
         }),
@@ -284,6 +296,9 @@ function TaskDistributionWorkspace() {
           assignedName: selectedCorrectiveUser?.name || selectedCorrectiveUser?.username || "",
           repeatMode: "berdasarkan-laporan",
           sourceReportId: selectedCorrectiveReport.id,
+          kabupaten: selectedCorrectiveReport.kabupaten || accountKabupaten,
+          actorRole: user?.role || "admin",
+          actorKabupaten: accountKabupaten,
           createdById: user?.uid || "",
           createdByName: user?.displayName || user?.name || user?.email || "Admin O&M",
         }),

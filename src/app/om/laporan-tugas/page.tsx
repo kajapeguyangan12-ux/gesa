@@ -71,6 +71,8 @@ function DetailField({ label, value }: { label: string; value?: string }) {
 }
 
 function AdminWorkReportRecap() {
+  const { user } = useAuth();
+  const accountKabupaten = user?.role === "super-admin" ? "" : user?.kabupaten?.trim().toLowerCase() || "tabanan";
   const [reports, setReports] = useState<WorkReport[]>([]);
   const [selectedReport, setSelectedReport] = useState<WorkReport | null>(null);
   const [filter, setFilter] = useState<ReportFilter>("semua");
@@ -82,7 +84,8 @@ function AdminWorkReportRecap() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/om/reports?limit=500", { cache: "no-store" });
+      const areaSuffix = accountKabupaten ? `&kabupaten=${encodeURIComponent(accountKabupaten)}` : "";
+      const response = await fetch(`/api/om/reports?limit=500${areaSuffix}`, { cache: "no-store" });
       const payload = (await response.json()) as { reports?: WorkReport[]; error?: string };
       if (!response.ok) throw new Error(payload.error || "Gagal memuat rekap laporan tugas.");
       setReports((payload.reports || []).filter((report) => report.reportType === "preventif" || report.reportType === "korektif"));
@@ -96,7 +99,7 @@ function AdminWorkReportRecap() {
 
   useEffect(() => {
     void loadReports();
-  }, []);
+  }, [accountKabupaten]);
 
   const visibleReports = useMemo(() => {
     const keyword = query.trim().toLowerCase();

@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     const limitParam = Number.parseInt(request.nextUrl.searchParams.get("limit") || "50", 10);
     const offsetParam = Number.parseInt(request.nextUrl.searchParams.get("offset") || "0", 10);
     const searchParam = request.nextUrl.searchParams.get("q")?.trim() || "";
+    const kabupatenParam = request.nextUrl.searchParams.get("kabupaten")?.trim().toLowerCase() || "";
     const safeLimit = Number.isFinite(limitParam) ? Math.max(1, Math.min(limitParam, 200)) : 50;
     const safeOffset = Number.isFinite(offsetParam) ? Math.max(0, offsetParam) : 0;
     const supabase = getSupabaseAdminClient() as any;
@@ -41,14 +42,15 @@ export async function GET(request: NextRequest) {
       );
     };
 
-    const withKabupaten = await applySearch(
-      supabase
+    let userQuery = supabase
         .from("user_admin")
         .select("fb_doc_id, uid, name, username, email, role, phone_number, kabupaten, created_at", {
           count: "exact",
         })
-        .order("created_at", { ascending: false })
-        .range(safeOffset, safeOffset + safeLimit - 1),
+        .order("created_at", { ascending: false });
+    if (kabupatenParam) userQuery = userQuery.eq("kabupaten", kabupatenParam);
+    const withKabupaten = await applySearch(
+      userQuery.range(safeOffset, safeOffset + safeLimit - 1),
       true
     );
 
@@ -113,6 +115,8 @@ export async function POST(request: NextRequest) {
       password?: string;
       role?: string;
       kabupaten?: string;
+      actorRole?: string;
+      actorKabupaten?: string;
       phoneNumber?: string;
     };
 
@@ -123,7 +127,10 @@ export async function POST(request: NextRequest) {
     const role = payload.role?.trim() || "";
     const phoneNumber = payload.phoneNumber?.trim() || "";
     const isSuperAdminRole = role === "super-admin";
-    const kabupaten = isSuperAdminRole ? "" : payload.kabupaten?.trim().toLowerCase() || "tabanan";
+    const actorRole = payload.actorRole?.trim() || "";
+    const actorKabupaten = payload.actorKabupaten?.trim().toLowerCase() || "";
+    const requestedKabupaten = payload.kabupaten?.trim().toLowerCase() || "tabanan";
+    const kabupaten = isSuperAdminRole ? "" : actorRole === "admin" && actorKabupaten ? actorKabupaten : requestedKabupaten;
 
     if (!name || !username || !email || !password || !role || (!isSuperAdminRole && !kabupaten)) {
       return NextResponse.json({ error: "Data user belum lengkap." }, { status: 400 });

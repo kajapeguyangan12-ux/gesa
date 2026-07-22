@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
-import { getActiveKabupatenFromStorage, setActiveKabupatenToStorage } from "@/utils/helpers";
-import { KABUPATEN_OPTIONS } from "@/utils/constants";
 
 type MenuCard = {
   id: string;
@@ -73,6 +71,15 @@ function ClockListIcon() {
   );
 }
 
+function EnergyHistoryIcon() {
+  return (
+    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 13h3l2-7 4 12 2-5h5" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
+    </svg>
+  );
+}
+
 function RouteIcon() {
   return (
     <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -123,7 +130,7 @@ export default function OMDashboard() {
   const router = useRouter();
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "super-admin";
-  const [activeKabupaten, setActiveKabupaten] = useState("tabanan");
+  const [activeKabupaten, setActiveKabupaten] = useState("-");
 
   const menuCards: MenuCard[] = useMemo(
     () => [
@@ -153,6 +160,15 @@ export default function OMDashboard() {
         eyebrow: "Riwayat",
         accent: "from-amber-500 via-orange-500 to-rose-500",
         icon: <ClockListIcon />,
+      },
+      {
+        id: "ecm-history",
+        title: "ECM & History Aset",
+        description: "Pantau smart meter per dua jam dan telusuri riwayat panel serta lampu, dimulai dari daftar grup APJ.",
+        route: "/om/ecm-history",
+        eyebrow: "Panel & Energi",
+        accent: "from-cyan-600 via-blue-600 to-indigo-600",
+        icon: <EnergyHistoryIcon />,
       },
       {
         id: "distribusi-tugas",
@@ -210,18 +226,9 @@ export default function OMDashboard() {
             : "Petugas";
   useEffect(() => {
     if (!user) return;
-    const nextKabupaten = isSuperAdmin
-      ? getActiveKabupatenFromStorage(user.uid || "") || "tabanan"
-      : user.kabupaten?.trim().toLowerCase() || "tabanan";
+    const nextKabupaten = isSuperAdmin ? "Semua wilayah" : user.kabupaten?.trim().toLowerCase() || "tabanan";
     setActiveKabupaten(nextKabupaten);
-    setActiveKabupatenToStorage(user.uid || "", nextKabupaten);
   }, [isSuperAdmin, user]);
-
-  const handleKabupatenChange = (kabupaten: string) => {
-    if (!isSuperAdmin || !user) return;
-    setActiveKabupaten(kabupaten);
-    setActiveKabupatenToStorage(user.uid || "", kabupaten);
-  };
 
   return (
     <div className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(13,148,136,0.18),_transparent_26%),radial-gradient(circle_at_top_right,_rgba(8,145,178,0.14),_transparent_24%),linear-gradient(180deg,_#f6fdfa_0%,_#eef8f7_48%,_#f8fafc_100%)]">
@@ -263,22 +270,7 @@ export default function OMDashboard() {
                 <div className="rounded-2xl border border-teal-200 bg-teal-50 px-4 py-2 shadow-sm">
                   <div className="text-[11px] uppercase tracking-[0.24em] text-teal-700">Kabupaten</div>
                   {isSuperAdmin ? (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {KABUPATEN_OPTIONS.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => handleKabupatenChange(item.id)}
-                          className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                            activeKabupaten === item.id
-                              ? "bg-teal-600 text-white shadow-sm"
-                              : "bg-white text-teal-700 hover:bg-teal-100"
-                          }`}
-                        >
-                          {item.name}
-                        </button>
-                      ))}
-                    </div>
+                    <><div className="mt-1 text-sm font-semibold text-slate-900">Semua wilayah</div><div className="mt-1 text-[11px] text-teal-700">Tabanan dan Denpasar</div></>
                   ) : (
                     <>
                       <div className="mt-1 text-sm font-semibold text-slate-900">{activeKabupaten}</div>

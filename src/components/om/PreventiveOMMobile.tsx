@@ -116,6 +116,15 @@ function formatDetailValue(value: unknown): string {
   }
 }
 
+function parseLuxValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  const normalized = value.replace(",", ".").match(/-?\d+(?:\.\d+)?/)?.[0];
+  if (!normalized) return null;
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 type PointDetailEntry = [string, unknown];
 
 const displayedRawPointKeys = new Set([
@@ -158,9 +167,9 @@ function pointDetailSections(point: ApjPoint) {
     ["Tiang", pickRawPointValue(raw, "tiang")],
     ["Lengan ARM", pickRawPointValue(raw, "lenganArm", "lengan_arm")],
     ["ARM AG/EXS", pickRawPointValue(raw, "armAgExs", "arm_ag_exs")],
-    ["Preset Iluminasi", pickRawPointValue(raw, "presetIluminasi", "preset_iluminasi")],
-    ["Preset Iluminasi Awal", pickRawPointValue(raw, "presetIluminasiAwal", "preset_iluminasi_awal")],
-    ["Batas Preset Iluminasi", pickRawPointValue(raw, "presetIluminasiBatas", "preset_iluminasi_batas")],
+    ["Rata-rata Iluminasi (Lux)", pickRawPointValue(raw, "presetIluminasi", "preset_iluminasi")],
+    ["Preset Awal (Lux)", pickRawPointValue(raw, "presetIluminasiAwal", "preset_iluminasi_awal")],
+    ["Batas Bawah Iluminasi (Lux)", pickRawPointValue(raw, "presetIluminasiBatas", "preset_iluminasi_batas")],
     ["Latitude", point.latitude || pickRawPointValue(raw, "latitude", "lat")],
     ["Longitude", point.longitude || pickRawPointValue(raw, "longitude", "lng", "lon")],
     ["Instalasi", pickRawPointValue(raw, "instalasi")],
@@ -601,6 +610,7 @@ export function PreventiveOMDashboard() {
       { id: "laporan", title: "Laporan Kerusakan", subtitle: isCorrective ? "Kirim laporan corrective" : "Kirim laporan preventif", route: "/om/laporan-tugas", icon: <IconReport /> },
       { id: "tugas", title: "Daftar Tugas", subtitle: "Tugas dari admin", route: "/om/distribusi-tugas", icon: <IconTask /> },
       { id: "maps", title: "Maps APJ", subtitle: "Titik menyala per grup", route: "/om/maps", icon: <IconMapPoint /> },
+      { id: "ecm-history", title: "ECM & History", subtitle: "Panel, smart meter, dan riwayat aset", route: "/om/ecm-history", icon: <IconHistory /> },
       { id: "riwayat-laporan", title: "Riwayat Laporan Saya", subtitle: "Laporan yang dikirim", route: "/om/history-laporan", icon: <IconHistory /> },
       { id: "riwayat-tugas", title: "Riwayat Tugas Saya", subtitle: "Aktivitas pekerjaan", route: "/om/daftar-laporan", icon: <IconHistory /> },
     ],
@@ -1064,6 +1074,25 @@ export function PreventiveOMTaskList() {
   const [error, setError] = useState("");
   const scanId = searchParams.get("scanId")?.trim() || "";
   const workTaskId = searchParams.get("workTaskId")?.trim() || "";
+  const standardLux = parseLuxValue(pointPreview?.rawPayload?.presetIluminasiAwal ?? pointPreview?.rawPayload?.preset_iluminasi_awal);
+  const lowerLimitLux = parseLuxValue(pointPreview?.rawPayload?.presetIluminasiBatas ?? pointPreview?.rawPayload?.preset_iluminasi_batas);
+  const measuredInitialLux = parseLuxValue(workForm.luxTitikApi);
+  const requiredAdjustment = measuredInitialLux !== null && lowerLimitLux !== null && measuredInitialLux < lowerLimitLux
+    ? "penaikan"
+    : "";
+
+  useEffect(() => {
+    if (requiredAdjustment) {
+      setWorkForm((current) => current.adjustmentAction === requiredAdjustment
+        ? current
+        : { ...current, adjustmentAction: requiredAdjustment });
+      return;
+    }
+    setWorkForm((current) => current.adjustmentAction === "tidak-ada"
+      ? current
+      : { ...current, adjustmentAction: "tidak-ada", luxAfterAdjustment: "", luxAfterPhotoName: "" });
+    setLuxAfterPhoto(null);
+  }, [requiredAdjustment]);
 
   const loadTasks = async () => {
     if (!user) return;
@@ -1073,6 +1102,7 @@ export function PreventiveOMTaskList() {
       const params = new URLSearchParams({
         uid: user.uid || "",
         role: user.role || "",
+        kabupaten: user.kabupaten?.trim().toLowerCase() || "tabanan",
         limit: "80",
       });
       const response = await fetch(`/api/om/tasks?${params.toString()}`, { cache: "no-store" });
@@ -1116,7 +1146,8 @@ export function PreventiveOMTaskList() {
     const loadTaskCoordinates = async () => {
       setTaskMapLoading(true);
       try {
-        const response = await fetch("/api/om/apj-points", { cache: "no-store" });
+        const areaSuffix = user?.kabupaten ? `?kabupaten=${encodeURIComponent(user.kabupaten)}` : "";
+        const response = await fetch(`/api/om/apj-points${areaSuffix}`, { cache: "no-store" });
         const payload = (await response.json()) as {
           groups?: Array<{ id: string; name: string; points: OMTaskPoint[] }>;
           points?: OMTaskPoint[];
@@ -1294,8 +1325,17 @@ export function PreventiveOMTaskList() {
       return;
     }
     const hasAdjustment = workForm.adjustmentAction === "dimming" || workForm.adjustmentAction === "penaikan";
+    if (requiredAdjustment && workForm.adjustmentAction !== requiredAdjustment) {
+      setWorkError(`Lux awal berada di bawah batas ${lowerLimitLux} lux. Penaikan pencahayaan wajib dilakukan.`);
+      return;
+    }
     if (hasAdjustment && (!workForm.luxAfterAdjustment.trim() || !luxAfterPhoto)) {
       setWorkError("Nilai dan foto lux setelah dimming/penaikan wajib diisi.");
+      return;
+    }
+    const measuredAfterLux = parseLuxValue(workForm.luxAfterAdjustment);
+    if (requiredAdjustment === "penaikan" && measuredAfterLux !== null && lowerLimitLux !== null && measuredAfterLux < lowerLimitLux) {
+      setWorkError(`Hasil setelah penaikan masih di bawah batas ${lowerLimitLux} lux.`);
       return;
     }
     if (!user?.uid) {
@@ -1333,6 +1373,8 @@ export function PreventiveOMTaskList() {
           groupName: selectedTask.groupName,
           luxTitikApi: workForm.luxTitikApi.trim(),
           luxRataRata: workForm.luxRataRata.trim(),
+          standardLux,
+          lowerLimitLux,
           luxBeforePhotoName: workForm.luxBeforePhotoName,
           luxBeforePhotoUrl,
           adjustmentAction: workForm.adjustmentAction,
@@ -1349,6 +1391,8 @@ export function PreventiveOMTaskList() {
           reporterUid: user.uid,
           reporterName: workForm.name || user.displayName || user.name || user.email || "Petugas O&M",
           reporterRole: user.role || "petugas-om-preventif",
+          kabupaten: pointPreview?.kabupaten || user.kabupaten || "",
+          reporterKabupaten: user.kabupaten || pointPreview?.kabupaten || "",
         }),
       });
       const payload = (await response.json()) as { id?: string; error?: string };
@@ -1463,8 +1507,8 @@ export function PreventiveOMTaskList() {
                   }}
                 />
               </label>
-              <label className="block">
-                <span className="text-[11px] leading-none text-gray-600">Penyesuaian Dimming</span>
+              {requiredAdjustment ? <label className="block">
+                <span className="text-[11px] leading-none text-gray-600">Penyesuaian Output Lampu</span>
                 <select
                   value={workForm.adjustmentAction}
                   onChange={(event) => {
@@ -1472,6 +1516,7 @@ export function PreventiveOMTaskList() {
                     setWorkForm((current) => ({ ...current, adjustmentAction, ...(adjustmentAction === "tidak-ada" ? { luxAfterAdjustment: "", luxAfterPhotoName: "" } : {}) }));
                     if (adjustmentAction === "tidak-ada") setLuxAfterPhoto(null);
                   }}
+                  disabled={Boolean(requiredAdjustment)}
                   className="mt-1 h-8 w-full rounded-md border border-gray-400 bg-white px-2 text-xs outline-none focus:border-sky-500"
                 >
                   <option value="tidak-ada">Tidak ada penyesuaian</option>
@@ -1479,10 +1524,15 @@ export function PreventiveOMTaskList() {
                   <option value="penaikan">Penaikan pencahayaan</option>
                 </select>
                 <span className="mt-1 block text-[10px] leading-4 text-gray-500">
-                  Batas titik APJ: {String(pointPreview?.rawPayload?.presetIluminasiBatas || pointPreview?.rawPayload?.preset_iluminasi_batas || "-")}. Pilih tindakan jika hasil lux melewati atau belum mencapai batas.
+                  Preset awal: {standardLux ?? "-"} lux · batas preset: {lowerLimitLux ?? "-"} lux.
                 </span>
-              </label>
-              {workForm.adjustmentAction !== "tidak-ada" ? (
+              </label> : null}
+              {requiredAdjustment ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] leading-4 text-amber-800">
+                  Lux awal {measuredInitialLux} lebih kecil dari batas {lowerLimitLux}. Penaikan dan bukti sesudahnya wajib.
+                </div>
+              ) : null}
+              {requiredAdjustment ? (
                 <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
                   <label className="block">
                     <span className="text-[11px] leading-none text-amber-900">Lux Setelah {workForm.adjustmentAction === "dimming" ? "Dimming" : "Penaikan"} <b className="text-red-600">*</b></span>
@@ -1792,6 +1842,8 @@ export function PreventiveOMReportForm() {
           reporterUid: user.uid,
           reporterName: user.displayName || user.name || user.email || "Petugas O&M",
           reporterRole: user.role || (isCorrective ? "petugas-om-correctif" : "petugas-om-preventif"),
+          kabupaten: user.kabupaten || "",
+          reporterKabupaten: user.kabupaten || "",
         }),
       });
       const payload = (await response.json()) as { error?: string };

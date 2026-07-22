@@ -92,7 +92,11 @@ async function createOrUpdateTestPoint(payload?: Record<string, unknown>) {
     const namaTitik = normalizeString(payload?.namaTitik) || `${idTitik} - ${normalizeString(payload?.namaJalan) || "APJ O&M"}`;
     const namaJalan = normalizeString(payload?.namaJalan) || "Jalan Test QR O&M";
     const kecamatan = normalizeString(payload?.kecamatan);
-    const kabupaten = normalizeString(payload?.kabupaten) || kecamatan || "tabanan";
+    const actorRole = normalizeString(payload?.actorRole);
+    const actorKabupaten = normalizeString(payload?.actorKabupaten).toLowerCase();
+    const kabupaten = actorRole === "admin" && actorKabupaten
+      ? actorKabupaten
+      : normalizeString(payload?.kabupaten).toLowerCase() || kecamatan.toLowerCase() || "tabanan";
     const lampSerial = normalizeString(payload?.noSeriLampu1) || normalizeString(payload?.noSeriLampu2);
     const linkedLamp = lampSerial ? await findApjComponentAsset(supabase, lampSerial, "Perusahaan") : null;
     const linkedLampPower = normalizeString(linkedLamp?.detail?.dayaWatt);
@@ -179,7 +183,6 @@ async function createOrUpdateTestPoint(payload?: Record<string, unknown>) {
         submitted_by_id: "om-manual-test",
         submitted_by_name: "O&M Manual Test",
         nama_titik: namaTitik,
-        daya_lampu: dayaLampu,
         id_titik: idTitik,
         zona: group,
         stage: "comissioning",

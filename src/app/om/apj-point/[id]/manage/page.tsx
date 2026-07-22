@@ -3,6 +3,7 @@
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 type ApjPoint = {
@@ -92,11 +93,18 @@ function serialText(raw: Record<string, unknown> | undefined, ...keys: string[])
   return value === "-" ? "" : value;
 }
 
+function luxText(raw: Record<string, unknown> | undefined, ...keys: string[]) {
+  const value = rawText(raw, ...keys).replace(",", ".");
+  return value.match(/\d+(?:\.\d+)?/)?.[0] || "";
+}
+
 function qrImageUrl(value: string) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=${encodeURIComponent(value)}`;
 }
 
 function ManageApjPoint({ idTitik }: { idTitik: string }) {
+  const { user } = useAuth();
+  const accountKabupaten = user?.role === "super-admin" ? "" : user?.kabupaten?.trim().toLowerCase() || "tabanan";
   const router = useRouter();
   const [point, setPoint] = useState<ApjPoint | null>(null);
   const [form, setForm] = useState(emptyManageForm);
@@ -142,9 +150,9 @@ function ManageApjPoint({ idTitik }: { idTitik: string }) {
         tiang: rawText(raw, "tiang"),
         lenganArm: rawText(raw, "lenganArm", "lengan_arm"),
         armAgExs: rawText(raw, "armAgExs", "arm_ag_exs"),
-        presetIluminasi: rawText(raw, "presetIluminasi", "preset_iluminasi"),
-        presetIluminasiAwal: rawText(raw, "presetIluminasiAwal", "preset_iluminasi_awal"),
-        presetIluminasiBatas: rawText(raw, "presetIluminasiBatas", "preset_iluminasi_batas"),
+        presetIluminasi: luxText(raw, "presetIluminasi", "preset_iluminasi"),
+        presetIluminasiAwal: luxText(raw, "presetIluminasiAwal", "preset_iluminasi_awal"),
+        presetIluminasiBatas: luxText(raw, "presetIluminasiBatas", "preset_iluminasi_batas"),
         latitude: Number.isFinite(next.latitude) ? String(next.latitude) : "",
         longitude: Number.isFinite(next.longitude) ? String(next.longitude) : "",
         instalasi: rawText(raw, "instalasi"),
@@ -235,7 +243,7 @@ function ManageApjPoint({ idTitik }: { idTitik: string }) {
       const response = await fetch(`/api/om/apj-point/${encodeURIComponent(idTitik)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, kabupaten: accountKabupaten || form.kabupaten, actorRole: user?.role || "admin", actorKabupaten: accountKabupaten }),
       });
       const payload = (await response.json()) as { message?: string; error?: string };
       if (!response.ok) throw new Error(payload.error || "Gagal menyimpan data APJ.");
@@ -373,9 +381,9 @@ function ManageApjPoint({ idTitik }: { idTitik: string }) {
                   ["Tiang", "tiang"],
                   ["Lengan ARM", "lenganArm"],
                   ["ARM AG/EXS", "armAgExs"],
-                  ["Preset Iluminasi", "presetIluminasi"],
-                  ["Preset Iluminasi Awal", "presetIluminasiAwal"],
-                  ["Batas Preset Iluminasi", "presetIluminasiBatas"],
+                  ["Rata-rata Iluminasi (Lux)", "presetIluminasi"],
+                  ["Preset Awal (Lux)", "presetIluminasiAwal"],
+                  ["Batas Bawah Iluminasi (Lux)", "presetIluminasiBatas"],
                   ["Latitude", "latitude"],
                   ["Longitude", "longitude"],
                   ["Instalasi", "instalasi"],
@@ -383,9 +391,13 @@ function ManageApjPoint({ idTitik }: { idTitik: string }) {
                   <label key={key} className="block">
                     <span className="text-sm font-semibold text-slate-700">{label}</span>
                     <input
+                      type={["presetIluminasi", "presetIluminasiAwal", "presetIluminasiBatas"].includes(key) ? "number" : "text"}
+                      min={["presetIluminasi", "presetIluminasiAwal", "presetIluminasiBatas"].includes(key) ? "0" : undefined}
+                      step={["presetIluminasi", "presetIluminasiAwal", "presetIluminasiBatas"].includes(key) ? "0.01" : undefined}
                       value={form[key as keyof typeof form]}
                       onChange={(event) => update(key as keyof typeof form, event.target.value)}
                       readOnly={key === "dayaLampu" && Boolean(form.noSeriLampu1 || form.noSeriLampu2)}
+                      disabled={key === "kabupaten" && Boolean(accountKabupaten)}
                       className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-teal-400"
                     />
                   </label>

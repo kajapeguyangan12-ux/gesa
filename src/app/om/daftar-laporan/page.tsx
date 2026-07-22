@@ -58,6 +58,7 @@ function ReportDetailField({ label, value }: { label: string; value?: string }) 
 export default function OMDaftarLaporanPage() {
   const { user } = useAuth();
   const isMobileRole = isMobileOmRole(user?.role);
+  const accountKabupaten = user?.role === "super-admin" ? "" : user?.kabupaten?.trim().toLowerCase() || "tabanan";
   const [reports, setReports] = useState<OMReport[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -67,7 +68,8 @@ export default function OMDaftarLaporanPage() {
     try {
       setLoading(true);
       setError("");
-      const response = await fetch("/api/om/reports?limit=200", { cache: "no-store" });
+      const areaSuffix = accountKabupaten ? `&kabupaten=${encodeURIComponent(accountKabupaten)}` : "";
+      const response = await fetch(`/api/om/reports?limit=200${areaSuffix}`, { cache: "no-store" });
       const payload = (await response.json()) as { reports?: OMReport[]; error?: string };
       if (!response.ok) throw new Error(payload.error || "Gagal memuat laporan O&M.");
       setReports(Array.isArray(payload.reports) ? payload.reports : []);
@@ -82,7 +84,7 @@ export default function OMDaftarLaporanPage() {
   useEffect(() => {
     if (!user || isMobileRole) return;
     void loadReports();
-  }, [isMobileRole, user]);
+  }, [isMobileRole, user, accountKabupaten]);
 
   const updateStatus = async (report: OMReport, status: "diproses" | "selesai" | "ditolak") => {
     try {
@@ -95,6 +97,8 @@ export default function OMDaftarLaporanPage() {
           status,
           actorId: user?.uid || "",
           actorName: user?.displayName || user?.email || "Admin O&M",
+          actorRole: user?.role || "admin",
+          actorKabupaten: accountKabupaten,
           note: `Laporan ${statusLabels[status].toLowerCase()} oleh admin.`,
         }),
       });

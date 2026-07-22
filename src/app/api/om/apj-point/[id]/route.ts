@@ -4,6 +4,9 @@ import { findApjComponentAsset, resolvePointComponentAssets, setCompanyAssetInst
 
 function normalizeRecord(record: Record<string, unknown>) {
   const rawPayload = record.raw_payload && typeof record.raw_payload === "object" ? (record.raw_payload as Record<string, unknown>) : {};
+  const lampSerials = [rawPayload.noSeriLampu1 || rawPayload.no_seri_lampu_1, rawPayload.noSeriLampu2 || rawPayload.no_seri_lampu_2]
+    .map(normalizeString)
+    .filter((value) => value && value !== "-");
   return {
     id: String(record.fb_doc_id || ""),
     idTitik: String(record.id_titik || rawPayload.id_titik || rawPayload.idTitik || ""),
@@ -20,6 +23,8 @@ function normalizeRecord(record: Record<string, unknown>) {
     status: String(record.status || rawPayload.status || rawPayload.kontruksiStatus || ""),
     stage: String(record.stage || rawPayload.stage || rawPayload.tahap || ""),
     rawPayload,
+    lampCount: lampSerials.length,
+    lampConfiguration: lampSerials.length >= 2 ? "Double" : lampSerials.length === 1 ? "Single" : "Belum terpasang",
   };
 }
 
@@ -132,6 +137,12 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if (!row) return NextResponse.json({ error: "Data APJ O&M tidak ditemukan." }, { status: 404 });
 
     const rawPayload = row.raw_payload && typeof row.raw_payload === "object" ? (row.raw_payload as Record<string, unknown>) : {};
+    const actorRole = normalizeString(payload.actorRole);
+    const actorKabupaten = normalizeString(payload.actorKabupaten).toLowerCase();
+    const existingKabupaten = normalizeString(rawPayload.kabupaten || rawPayload.area).toLowerCase();
+    if (actorRole === "admin" && (!actorKabupaten || (existingKabupaten && existingKabupaten !== actorKabupaten))) {
+      return NextResponse.json({ error: "Admin hanya dapat mengelola titik APJ dari wilayah akunnya." }, { status: 403 });
+    }
     const now = new Date().toISOString();
     const namaTitik = normalizeString(payload.namaTitik) || normalizeString(row.nama_titik) || titikId;
     const group = normalizeString(payload.group) || normalizeString(row.zona) || normalizeString(rawPayload.grup) || "Tanpa Grup";
@@ -151,7 +162,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       nama_titik: namaTitik,
       namaJalan: normalizeString(payload.namaJalan) || normalizeString(rawPayload.namaJalan),
       nama_jalan: normalizeString(payload.namaJalan) || normalizeString(rawPayload.nama_jalan),
-      kabupaten: normalizeString(payload.kabupaten) || normalizeString(rawPayload.kabupaten),
+      kabupaten: actorRole === "admin" ? actorKabupaten : normalizeString(payload.kabupaten) || normalizeString(rawPayload.kabupaten),
       kecamatan: normalizeString(payload.kecamatan),
       dayaLampu,
       daya_lampu: dayaLampu,
@@ -194,7 +205,6 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       .from("kontruksi_valid")
       .update({
         nama_titik: namaTitik,
-        daya_lampu: dayaLampu,
         zona: group,
         latitude: latitude ?? row.latitude,
         longitude: longitude ?? row.longitude,

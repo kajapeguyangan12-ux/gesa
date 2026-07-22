@@ -423,6 +423,7 @@ export function PublicReportForm() {
   const [description, setDescription] = useState("");
   const [photoDamageName, setPhotoDamageName] = useState("");
   const [idTitik, setIdTitik] = useState("");
+  const [lampConfiguration, setLampConfiguration] = useState("");
   const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber || "");
   const [reporterEmail, setReporterEmail] = useState(user?.email || "");
   const [loading, setLoading] = useState(false);
@@ -434,6 +435,24 @@ export function PublicReportForm() {
     const scannedId = params.get("idTitik")?.trim();
     if (scannedId) setIdTitik(scannedId);
   }, []);
+
+  useEffect(() => {
+    const pointId = idTitik.trim();
+    if (!pointId) {
+      setLampConfiguration("");
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/om/apj-point/${encodeURIComponent(pointId)}`, { cache: "no-store" });
+        const payload = (await response.json()) as { latest?: { lampConfiguration?: string } };
+        setLampConfiguration(response.ok ? payload.latest?.lampConfiguration || "" : "");
+      } catch {
+        setLampConfiguration("");
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [idTitik]);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -507,6 +526,9 @@ export function PublicReportForm() {
                 Scan
               </button>
             </div>
+            {lampConfiguration ? (
+              <span className="mt-1 inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[9px] font-bold text-sky-700">Lampu {lampConfiguration}</span>
+            ) : null}
           </label>
           <Field label="No. Telp" value={phoneNumber} onChange={setPhoneNumber} placeholder="Masukkan Nomor HP yang bisa dihubungi" />
           <label className="block">

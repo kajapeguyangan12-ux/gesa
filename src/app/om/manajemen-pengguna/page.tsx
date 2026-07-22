@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { OMPageShell } from "@/components/om/OMPageShell";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
+import { useAuth } from "@/hooks/useAuth";
 
 type OMUserRole = "petugas-om" | "petugas-om-preventif" | "petugas-om-correctif";
 
@@ -69,6 +70,8 @@ function RolePill({ role }: { role: string }) {
 }
 
 function OMUserManagementContent() {
+  const { user: currentUser } = useAuth();
+  const accountKabupaten = currentUser?.role === "super-admin" ? "" : currentUser?.kabupaten?.trim().toLowerCase() || "tabanan";
   const [users, setUsers] = useState<OMUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -95,6 +98,7 @@ function OMUserManagementContent() {
           limit: String(pageSize),
           offset: String(offset),
         });
+        if (accountKabupaten) params.set("kabupaten", accountKabupaten);
         const response = await fetch(`/api/admin/user-admin?${params.toString()}`, { cache: "no-store" });
         const payload = (await response.json()) as {
           users?: OMUser[];
@@ -120,7 +124,7 @@ function OMUserManagementContent() {
 
   useEffect(() => {
     void fetchUsers();
-  }, []);
+  }, [accountKabupaten]);
 
   const filteredUsers = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -148,7 +152,7 @@ function OMUserManagementContent() {
 
   const openAddForm = () => {
     setFormMode("add");
-    setForm(emptyForm);
+    setForm({ ...emptyForm, kabupaten: accountKabupaten || emptyForm.kabupaten });
     setError("");
     setMessage("");
     setShowForm(true);
@@ -164,7 +168,7 @@ function OMUserManagementContent() {
       password: "",
       role: isOmRole(normalizeRole(user.role || "")) ? (normalizeRole(user.role || "") as OMUserRole) : "petugas-om-preventif",
       phoneNumber: user.phoneNumber || "",
-      kabupaten: user.kabupaten || "tabanan",
+      kabupaten: accountKabupaten || user.kabupaten || "tabanan",
     });
     setError("");
     setMessage("");
@@ -195,7 +199,9 @@ function OMUserManagementContent() {
         password: form.password,
         role: form.role,
         phoneNumber: form.phoneNumber.trim(),
-        kabupaten: form.kabupaten,
+        kabupaten: accountKabupaten || form.kabupaten,
+        actorRole: currentUser?.role || "admin",
+        actorKabupaten: accountKabupaten,
       };
       const response = await fetch(
         formMode === "add" ? "/api/admin/user-admin" : `/api/admin/user-admin/${encodeURIComponent(form.id)}`,
@@ -313,7 +319,7 @@ function OMUserManagementContent() {
                 <option value="petugas-om-preventif">Petugas O&M Preventif</option>
                 <option value="petugas-om-correctif">Petugas O&M Correctif</option>
               </select>
-              <select value={form.kabupaten} onChange={(event) => setForm((current) => ({ ...current, kabupaten: event.target.value }))} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-teal-400">
+              <select disabled={Boolean(accountKabupaten)} value={accountKabupaten || form.kabupaten} onChange={(event) => setForm((current) => ({ ...current, kabupaten: event.target.value }))} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-teal-400 disabled:bg-slate-100">
                 {KABUPATEN_OPTIONS.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}

@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Image from "next/image";
 import { KABUPATEN_OPTIONS } from "@/utils/constants";
+import LampDistanceAnalysis from "@/components/kemerataan/LampDistanceAnalysis";
 
 interface GridCell {
   value: string;
@@ -71,7 +72,7 @@ const normalizeKabupatenList = (value: any): string[] => {
   return [];
 };
 
-export function KemeratanCahayaContent() {
+function UniformityAnalysisContent() {
   const router = useRouter();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super-admin";
@@ -2662,6 +2663,34 @@ export function KemeratanCahayaContent() {
       </div>
     )}
     </>
+  );
+}
+
+export function KemeratanCahayaContent() {
+  const [activeModuleTab, setActiveModuleTab] = useState<"uniformity" | "distance">("uniformity");
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <div className="sticky top-0 z-[70] border-b border-red-200 bg-white/95 px-4 py-2 shadow-sm backdrop-blur sm:px-6">
+        <div className="mx-auto flex max-w-[1920px] items-center gap-2 rounded-2xl bg-slate-100 p-1">
+          <button
+            type="button"
+            onClick={() => setActiveModuleTab("uniformity")}
+            className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-black transition ${activeModuleTab === "uniformity" ? "bg-red-600 text-white shadow-sm" : "text-slate-600 hover:bg-white"}`}
+          >
+            Analisis Kemerataan
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveModuleTab("distance")}
+            className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-black transition ${activeModuleTab === "distance" ? "bg-red-600 text-white shadow-sm" : "text-slate-600 hover:bg-white"}`}
+          >
+            Analisa Jarak Lampu
+          </button>
+        </div>
+      </div>
+      {activeModuleTab === "uniformity" ? <UniformityAnalysisContent /> : <LampDistanceAnalysis />}
+    </div>
   );
 }
 

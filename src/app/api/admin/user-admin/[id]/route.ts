@@ -33,7 +33,11 @@ export async function PATCH(
     const username = normalizeString(payload.username).toLowerCase();
     const email = normalizeString(payload.email).toLowerCase();
     const role = normalizeString(payload.role);
-    const kabupaten = normalizeString(payload.kabupaten).toLowerCase() || "tabanan";
+    const actorRole = normalizeString(payload.actorRole);
+    const actorKabupaten = normalizeString(payload.actorKabupaten).toLowerCase();
+    const kabupaten = actorRole === "admin" && actorKabupaten
+      ? actorKabupaten
+      : normalizeString(payload.kabupaten).toLowerCase() || "tabanan";
     const phoneNumber = normalizeString(payload.phoneNumber);
     const password = normalizeString(payload.password);
 

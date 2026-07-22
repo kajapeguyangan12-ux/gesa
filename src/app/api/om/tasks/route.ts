@@ -135,6 +135,7 @@ export async function GET(request: NextRequest) {
   try {
     const role = normalizeRole(normalizeString(request.nextUrl.searchParams.get("role")));
     const uid = normalizeString(request.nextUrl.searchParams.get("uid"));
+    const kabupaten = normalizeString(request.nextUrl.searchParams.get("kabupaten")).toLowerCase();
     const limit = Math.min(Math.max(Number.parseInt(request.nextUrl.searchParams.get("limit") || "100", 10) || 100, 1), 300);
     const supabase = getSupabaseAdminClient();
 
@@ -189,24 +190,39 @@ export async function GET(request: NextRequest) {
         ]);
         if (pointError) throw new Error(pointError.message);
         const powerByPoint = new Map<string, string>();
+        const areaByPoint = new Map<string, string>();
         for (const row of Array.isArray(pointRows) ? pointRows as Record<string, unknown>[] : []) {
           const raw = row.raw_payload && typeof row.raw_payload === "object" ? row.raw_payload as Record<string, unknown> : {};
           const power = resolveRawPointLampPower(raw, lampPowers);
           const pointId = normalizeString(row.id_titik);
           if (pointId && power && !powerByPoint.has(pointId)) powerByPoint.set(pointId, power);
+          const pointArea = normalizeString(raw.kabupaten || raw.area).toLowerCase();
+          if (pointId && pointArea && !areaByPoint.has(pointId)) areaByPoint.set(pointId, pointArea);
         }
-        tasks = tasks.map((task: any) => ({
-          ...task,
-          targetPoints: Array.isArray(task.targetPoints)
+        tasks = tasks.map((task: any) => {
+          const targetPoints = Array.isArray(task.targetPoints)
             ? task.targetPoints.map((point: Record<string, unknown>) => ({
                 ...point,
                 dayaLampu: powerByPoint.get(normalizeString(point.idTitik)) || point.dayaLampu,
+                kabupaten: normalizeString(point.kabupaten) || areaByPoint.get(normalizeString(point.idTitik)) || "",
               }))
-            : task.targetPoints,
-        }));
+            : task.targetPoints;
+          return {
+            ...task,
+            kabupaten: normalizeString(task.kabupaten).toLowerCase()
+              || (Array.isArray(targetPoints) ? normalizeString(targetPoints[0]?.kabupaten).toLowerCase() : "")
+              || areaByPoint.get(normalizeString(task.pointId))
+              || "",
+            targetPoints,
+          };
+        });
       }
     } catch {
       // Data tugas tetap tersedia bila sinkronisasi master lampu sedang tidak dapat dibaca.
+    }
+
+    if (kabupaten) {
+      tasks = tasks.filter((task: any) => normalizeString(task.kabupaten).toLowerCase() === kabupaten);
     }
 
     return NextResponse.json({
@@ -236,6 +252,10 @@ export async function POST(request: NextRequest) {
     const pointName = normalizeString(payload.pointName) || pointId;
     const assignedUid = normalizeString(payload.assignedUid);
     const assignedName = normalizeString(payload.assignedName);
+    const actorRole = normalizeString(payload.actorRole);
+    const actorKabupaten = normalizeString(payload.actorKabupaten).toLowerCase();
+    const requestedKabupaten = normalizeString(payload.kabupaten).toLowerCase();
+    const taskKabupaten = actorRole === "admin" ? actorKabupaten : requestedKabupaten;
 
     if (!["preventif", "korektif"].includes(taskType)) return NextResponse.json({ error: "Jenis tugas O&M tidak valid." }, { status: 400 });
     if (scope === "group" && !groupId) return NextResponse.json({ error: "Grup APJ wajib dipilih." }, { status: 400 });
@@ -243,8 +263,28 @@ export async function POST(request: NextRequest) {
     if (scope === "report" && !normalizeString(payload.reportId || payload.sourceReportId)) {
       return NextResponse.json({ error: "Laporan wajib dipilih untuk tugas korektif." }, { status: 400 });
     }
+    if (actorRole === "admin" && !["tabanan", "denpasar"].includes(actorKabupaten)) {
+      return NextResponse.json({ error: "Wilayah akun admin tidak valid." }, { status: 400 });
+    }
+
+    const targetPoints = Array.isArray(payload.targetPoints) ? payload.targetPoints as Record<string, unknown>[] : [];
+    if (actorRole === "admin" && targetPoints.some((point) => normalizeString(point.kabupaten).toLowerCase() !== actorKabupaten)) {
+      return NextResponse.json({ error: `Admin ${actorKabupaten} hanya dapat membagikan tugas untuk titik ${actorKabupaten}.` }, { status: 403 });
+    }
 
     const supabase = getSupabaseAdminClient() as any;
+    if (assignedUid && taskKabupaten) {
+      const { data: assignedRows, error: assignedError } = await supabase
+        .from("user_admin")
+        .select("uid, fb_doc_id, kabupaten")
+        .or(`uid.eq.${assignedUid},fb_doc_id.eq.${assignedUid}`)
+        .limit(1);
+      if (assignedError) throw new Error(assignedError.message);
+      const assignedArea = normalizeString(Array.isArray(assignedRows) ? assignedRows[0]?.kabupaten : "").toLowerCase();
+      if (!assignedArea || assignedArea !== taskKabupaten) {
+        return NextResponse.json({ error: `Petugas harus berasal dari wilayah ${taskKabupaten}.` }, { status: 403 });
+      }
+    }
     const now = new Date().toISOString();
     const taskId = createDocId("om_task");
     const targetRoles = taskType === "korektif" ? ["petugas-om-correctif", "petugas-om-corrective"] : ["petugas-om-preventif"];
@@ -270,6 +310,7 @@ export async function POST(request: NextRequest) {
       pointName,
       assignedUid,
       assignedName,
+      kabupaten: taskKabupaten,
       repeatMode: normalizeString(payload.repeatMode) || "mingguan",
       luxTarget: normalizeString(payload.luxTarget),
       status: "assigned",
